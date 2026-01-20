@@ -1,0 +1,39 @@
+{
+  "map": {
+    "basemap": "gray-vector",
+    "center": [-98.5795, 39.8283],
+    "zoom": 4
+  },
+  "selectionLayers": [
+    {
+      "title": "BLM Natl Visual Resource Inventory Classes (Polygon)",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0"
+    },
+    {
+      "title": "BLM Natl Grazing Allotment Polygons (Layer 1)",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Allotment_Polygons/FeatureServer/1"
+    }
+  ],
+  "reportLayers": [
+    {
+      "title": "BLM Natl Visual Resource Inventory Classes (Polygon)",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0"
+    },
+    {
+      "title": "USFWS Critical Habitat (all sublayers)",
+      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/USFWS_Critical_Habitat/FeatureServer"
+    },
+    {
+      "title": "BLM Natl Grazing Allotment Polygons (Layer 1)",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Allotment_Polygons/FeatureServer/1"
+    },
+    {
+      "title": "BLM Natl MLRS LUA ROW (Layer 0)",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_ROW/FeatureServer/0"
+    }
+  ],
+  "report": {
+    "maxSampleFeaturesPerLayer": 25,
+    "maxFieldsInTable": 8
+  }
+}
