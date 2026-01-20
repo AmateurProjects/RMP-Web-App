@@ -7,11 +7,13 @@
   "selectionLayers": [
     {
       "title": "BLM Natl Visual Resource Inventory Classes (Polygon)",
-      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0"
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0",
+      "visible": true
     },
     {
       "title": "BLM Natl Grazing Allotment Polygons (Layer 1)",
-      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Allotment_Polygons/FeatureServer/1"
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Allotment_Polygons/FeatureServer/1",
+      "visible": false
     }
   ],
   "reportLayers": [
@@ -34,6 +36,8 @@
   ],
   "report": {
     "maxSampleFeaturesPerLayer": 25,
-    "maxFieldsInTable": 8
+    "maxFieldsInTable": 8,
+    "pageSize": 1000,
+    "maxExportFeatures": 50000
   }
 }
