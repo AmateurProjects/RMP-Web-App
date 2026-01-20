@@ -25,3 +25,47 @@
         <select id="modeSelect">
           <option value="select">Select from layer</option>
           <option value="draw">Draw polygon</option>
+        </select>
+      </div>
+
+      <div id="selectModeControls">
+        <div class="row">
+          <label class="label">Selection layer</label>
+          <select id="selectionLayerSelect"></select>
+        </div>
+        <div class="hint">Click a polygon on the map to select it.</div>
+      </div>
+
+      <div id="drawModeControls" class="hidden">
+        <div class="row">
+          <button id="drawBtn" class="btn">Draw polygon</button>
+          <button id="stopDrawBtn" class="btn subtle">Stop</button>
+        </div>
+        <div class="hint">Draw a polygon; the most recent sketch is used.</div>
+      </div>
+
+      <div class="row">
+        <button id="runBtn" class="btn primary" disabled>Run report</button>
+        <button id="clearBtn" class="btn subtle">Clear</button>
+      </div>
+
+      <div id="status" class="status">Status: ready</div>
+    </div>
+
+    <div class="card">
+      <div class="row space-between">
+        <div class="label">Results</div>
+        <button id="exportAllBtn" class="btn subtle" disabled>Export all CSV</button>
+      </div>
+      <div id="results"></div>
+    </div>
+
+    <div class="card small">
+      <div class="label">Configured layers</div>
+      <div id="layerList" class="mono"></div>
+    </div>
+  </aside>
+
+  <script src="./app.js"></script>
+</body>
+</html>
