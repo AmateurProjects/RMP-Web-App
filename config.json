@@ -1,6 +1,6 @@
 {
   "map": {
-    "basemap": "gray-vector",
+    "basemap": "osm",
     "center": [-98.5795, 39.8283],
     "zoom": 4
   },
