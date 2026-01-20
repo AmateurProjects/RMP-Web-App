@@ -24,6 +24,9 @@ require([
     const statusEl = document.getElementById("status");
     const resultsEl = document.getElementById("results");
     const layerListEl = document.getElementById("layerList");
+    const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
+    const reportLayerTogglesEl = document.getElementById("reportLayerToggles");
+
 
     function setStatus(msg) { statusEl.textContent = "Status: " + msg; }
 
@@ -42,6 +45,8 @@ require([
     let sketch = null;
 
     let lastReportRowsByLayer = []; // for export-all
+    let reportLayerViews = new Map(); // url -> FeatureLayer (only if user toggles it on for map visibility)
+
 
     // ---------- Helpers ----------
     function escapeHtml(s) {
@@ -124,6 +129,80 @@ require([
         (config.reportLayers || []).forEach(l => lines.push("  - " + l.title));
 
         layerListEl.textContent = lines.join("\n");
+    }
+
+    function renderLayerToggles(map) {
+        // Guard: if the HTML containers don't exist, do nothing
+        if (!selectionLayerTogglesEl || !reportLayerTogglesEl) return;
+
+        // ---- Selection layers (already on map): toggle visibility
+        selectionLayerTogglesEl.innerHTML = (selectionLayers || []).map((e, i) => {
+            const checked = e.layer.visible ? "checked" : "";
+            return `
+            <div class="toggle-row">
+                <input type="checkbox" id="sellayer_${i}" ${checked} />
+                <label class="toggle-name" for="sellayer_${i}">${escapeHtml(e.cfg.title)}</label>
+            </div>
+            `;
+        }).join("");
+
+        (selectionLayers || []).forEach((e, i) => {
+            const cb = document.getElementById(`sellayer_${i}`);
+            if (!cb) return;
+            cb.addEventListener("change", () => {
+                e.layer.visible = cb.checked;
+            });
+        });
+
+        // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
+        // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
+        // We will show it in the list but disable the checkbox to avoid confusion.
+        reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
+            const isRoot = isFeatureServerRoot(l.url);
+            const existing = reportLayerViews.get(l.url);
+            const checked = existing ? (existing.visible ? "checked" : "") : "";
+            const disabled = isRoot ? "disabled" : "";
+            const note = isRoot ? ` <span class="small">(service root; not drawable)</span>` : "";
+
+            return `
+            <div class="toggle-row">
+                <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
+                <label class="toggle-name" for="rptlayer_${i}">${escapeHtml(l.title)}${note}</label>
+            </div>
+            `;
+        }).join("");
+
+        (config.reportLayers || []).forEach((l, i) => {
+            const cb = document.getElementById(`rptlayer_${i}`);
+            if (!cb) return;
+
+            // If disabled (FeatureServer root), no handler
+            if (cb.disabled) return;
+
+            cb.addEventListener("change", () => {
+                const wantVisible = cb.checked;
+
+                if (wantVisible) {
+                    // Lazily create & add to map if needed
+                    let lyr = reportLayerViews.get(l.url);
+                    if (!lyr) {
+                        lyr = new FeatureLayer({
+                            url: l.url,
+                            title: l.title,
+                            outFields: ["*"],
+                            visible: true
+                        });
+                        map.add(lyr);
+                        reportLayerViews.set(l.url, lyr);
+                    } else {
+                        lyr.visible = true;
+                    }
+                } else {
+                    const lyr = reportLayerViews.get(l.url);
+                    if (lyr) lyr.visible = false;
+                }
+            });
+        });
     }
 
     async function queryAllFeaturesPaged(layer, baseQuery, pageSize, maxExportFeatures) {
@@ -495,6 +574,8 @@ require([
 
         }));
         selectionLayers.forEach(e => map.add(e.layer));
+        renderLayerToggles(map);
+
 
         // Populate selection layer dropdown
         selectionLayerSelect.innerHTML = selectionLayers.map((e, i) =>
@@ -524,17 +605,54 @@ require([
         runBtn.addEventListener("click", runReport);
         clearBtn.addEventListener("click", clearAll);
 
-        exportAllBtn.addEventListener("click", () => {
-            // bundle all samples into one CSV with an added __layer column
-            const allRows = [];
-            for (const item of lastReportRowsByLayer) {
-                for (const r of (item.rows || [])) {
-                    allRows.push({ __layer: item.title, ...r });
+        exportAllBtn.addEventListener("click", async () => {
+            if (!lastReportRowsByLayer.length) return;
+
+            exportAllBtn.disabled = true;
+
+            try {
+                setStatus("exporting ALL (FULL)…");
+
+                const pageSize = config.report?.pageSize ?? 1000;
+                const maxExport = config.report?.maxExportFeatures ?? 50000;
+
+                const allRows = [];
+
+                for (let i = 0; i < lastReportRowsByLayer.length; i++) {
+                    const item = lastReportRowsByLayer[i];
+
+                    // Skip if we somehow don't have the query objects
+                    if (!item._layer || !item._exportQuery) continue;
+
+                    setStatus(`exporting ALL (FULL)… (${i + 1}/${lastReportRowsByLayer.length})`);
+
+                    // Use cached full results if available
+                    if (!item.fullRows) {
+                        const fullFeatures = await queryAllFeaturesPaged(
+                            item._layer,
+                            item._exportQuery,
+                            pageSize,
+                            maxExport
+                        );
+                        item.fullRows = flattenAttributes(fullFeatures);
+                    }
+
+                    for (const r of (item.fullRows || [])) {
+                        allRows.push({ __layer: item.title, ...r });
+                    }
                 }
+
+                const csv = toCsv(allRows);
+                downloadText("intersect_report_ALL_FULL.csv", csv || "");
+                setStatus("exported ALL (FULL)");
+            } catch (e) {
+                console.error(e);
+                setStatus("export ALL failed (see console)");
+            } finally {
+                exportAllBtn.disabled = false;
             }
-            const csv = toCsv(allRows);
-            downloadText("intersect_report_all_samples.csv", csv || "");
         });
+
 
         setMode("select");
         renderConfiguredLayerList();

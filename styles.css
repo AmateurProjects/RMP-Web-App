@@ -97,3 +97,14 @@ select{
 table{ border-collapse: collapse; width:100%; font-size:12px; }
 th, td{ border-bottom:1px solid #eee; padding:6px; vertical-align: top; }
 th{ background:#fafafa; text-align:left; }
+
+.toggle-row {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:6px 0;
+}
+.toggle-row input { transform: scale(1.05); }
+.toggle-name { flex:1; }
+
+

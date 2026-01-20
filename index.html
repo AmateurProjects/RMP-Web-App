@@ -61,9 +61,15 @@
     </div>
 
     <div class="card small">
-      <div class="label">Configured layers</div>
-      <div id="layerList" class="mono"></div>
+      <div class="label">Layers</div>
+
+      <div class="hint">Selection layers (click-to-select)</div>
+      <div id="selectionLayerToggles"></div>
+
+      <div class="hint" style="margin-top:10px;">Report layers (query-only unless toggled on)</div>
+      <div id="reportLayerToggles"></div>
     </div>
+
   </aside>
 
   <script src="./app.js"></script>
