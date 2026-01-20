@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Polygon Intersect Report Prototype</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.30/"></script>
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="viewDiv"></div>
+
+  <aside id="panel">
+    <div class="panel-header">
+      <div class="title">Intersect Report</div>
+      <div class="subtitle">Select a polygon or draw one, then run intersects against configured layers.</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label class="label">Polygon source</label>
+        <select id="modeSelect">
+          <option value="select">Select from layer</option>
+          <option value="draw">Draw polygon</option>
