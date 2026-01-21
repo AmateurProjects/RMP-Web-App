@@ -16,8 +16,23 @@
   <aside id="panel">
     <div class="panel-header">
       <div class="title">Intersect Report</div>
+
+      <!-- pre-alpha banner -->
+      <div class="banner banner-warn">
+        Pre-alpha: active development — outputs may change and results may be incomplete.
+      </div>
+
       <div class="subtitle">Select a polygon or draw one, then run intersects against configured layers.</div>
     </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" id="tabReportBtn" type="button">Report</button>
+      <button class="tab-btn" id="tabServicesBtn" type="button">Services</button>
+    </div>
+
+    <!-- Tab Panels -->
+    <section id="tabReportPanel" class="tab-panel active">
 
     <div class="card">
       <div class="row">
@@ -69,6 +84,24 @@
       <div class="hint" style="margin-top:10px;">Report layers (query-only unless toggled on)</div>
       <div id="reportLayerToggles"></div>
     </div>
+
+  </section>
+  
+  <!-- NEW: Services Tab -->
+  <section id="tabServicesPanel" class="tab-panel">
+    <div class="card">
+      <div class="row space-between">
+        <div class="label">Feature services used by this app</div>
+        <button id="refreshServicesBtn" class="btn subtle" type="button">Refresh</button>
+      </div>
+
+      <div class="hint">
+        Shows configured selection/report services, basic service info (from <span class="mono">?f=pjson</span>), and a simple UP/DOWN check.
+      </div>
+
+      <div id="servicesList" style="margin-top:10px;"></div>
+    </div>
+  </section>
 
   </aside>
 

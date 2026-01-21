@@ -107,4 +107,81 @@ th{ background:#fafafa; text-align:left; }
 .toggle-row input { transform: scale(1.05); }
 .toggle-name { flex:1; }
 
+/* ====== Banner ====== */
+.banner{
+  margin-top:8px;
+  padding:8px 10px;
+  border-radius:12px;
+  font-size:12px;
+  border:1px solid #eee;
+  background:#fafafa;
+  color:#444;
+}
+.banner-warn{
+  border-color:#f0e1b5;
+  background:#fff7db;
+  color:#6b4f00;
+}
+
+/* ====== Tabs ====== */
+.tabs{
+  display:flex;
+  gap:8px;
+  margin:8px 0 12px 0;
+}
+.tab-btn{
+  flex:1;
+  padding:8px 10px;
+  border:1px solid #ddd;
+  border-radius:12px;
+  background:#fafafa;
+  cursor:pointer;
+  font-size:13px;
+}
+.tab-btn:hover{ background:#eee; }
+.tab-btn.active{
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+
+.tab-panel{ display:none; }
+.tab-panel.active{ display:block; }
+
+/* ====== Services list ====== */
+.service-card{
+  border:1px solid #eee;
+  border-radius:14px;
+  padding:10px;
+  margin:10px 0;
+}
+.service-head{
+  display:flex;
+  justify-content: space-between;
+  gap:10px;
+  align-items: baseline;
+}
+.pill{
+  font-size:12px;
+  border:1px solid #eee;
+  border-radius:999px;
+  padding:3px 8px;
+  background:#fafafa;
+}
+.pill-up{
+  border-color:#cfe8cf;
+  background:#eef8ee;
+}
+.pill-down{
+  border-color:#f0caca;
+  background:#fdeeee;
+}
+.pill-warn{
+  border-color:#f0e1b5;
+  background:#fff7db;
+}
+.service-url{
+  margin-top:6px;
+  word-break: break-all;
+}
 

@@ -27,6 +27,14 @@ require([
     const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
     const reportLayerTogglesEl = document.getElementById("reportLayerToggles");
 
+    // Tabs + Services DOM
+    const tabReportBtn = document.getElementById("tabReportBtn");
+    const tabServicesBtn = document.getElementById("tabServicesBtn");
+    const tabReportPanel = document.getElementById("tabReportPanel");
+    const tabServicesPanel = document.getElementById("tabServicesPanel");
+
+    const servicesListEl = document.getElementById("servicesList");
+    const refreshServicesBtn = document.getElementById("refreshServicesBtn");
 
     function setStatus(msg) { statusEl.textContent = "Status: " + msg; }
 
@@ -49,6 +57,17 @@ require([
 
 
     // ---------- Helpers ----------
+    // Tabs
+    function setActiveTab(tabName) {
+    const isReport = (tabName === "report");
+
+        if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
+        if (tabServicesPanel) tabServicesPanel.classList.toggle("active", !isReport);
+
+        if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
+        if (tabServicesBtn) tabServicesBtn.classList.toggle("active", !isReport);
+    }
+
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, (c) => ({
             "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;"
@@ -64,6 +83,37 @@ require([
         const res = await fetch(url, { credentials: "omit" });
         if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText} for ${url}`);
         return res.json();
+    }
+
+    // timed JSON fetch for "UP/DOWN" checks
+    async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const t = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const res = await fetch(url, { credentials: "omit", signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } finally {
+        window.clearTimeout(t);
+    }
+    }
+
+    // read basic description from service/layer pjson
+    function pickServiceDescription(pjson) {
+    // Different services expose different fields; we pick the first useful one.
+    const candidates = [
+        pjson?.serviceDescription,
+        pjson?.description,
+        pjson?.documentInfo?.Title,
+        pjson?.name
+    ].filter(Boolean);
+
+    return candidates.length ? String(candidates[0]) : "";
+    }
+
+    function normalizePjsonUrl(u) {
+    return u.replace(/\/$/, "") + "?f=pjson";
     }
 
     async function expandServiceToSublayers(serviceUrl) {
@@ -229,6 +279,85 @@ require([
         return all;
     }
 
+    // ---------- Services tab ----------
+    function getConfiguredServices() {
+    // Show the “services used by the app itself” from config
+    const seen = new Set();
+    const out = [];
+
+    const add = (kind, title, url) => {
+        const key = `${kind}||${url}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({ kind, title, url });
+    };
+
+    (config.selectionLayers || []).forEach(l => add("Selection", l.title, l.url));
+    (config.reportLayers || []).forEach(l => add("Report", l.title, l.url));
+
+    return out;
+    }
+
+    async function refreshServicesTab() {
+    if (!servicesListEl) return;
+
+    const items = getConfiguredServices();
+    if (!items.length) {
+        servicesListEl.innerHTML = `<div class="small">No services configured.</div>`;
+        return;
+    }
+
+    servicesListEl.innerHTML = `<div class="small">Checking services…</div>`;
+
+    const timeoutMs = config?.services?.timeoutMs ?? 8000;
+
+    // Run checks sequentially (simple + predictable). We can add concurrency later if needed.
+    const cards = [];
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const pjsonUrl = normalizePjsonUrl(it.url);
+
+        let status = "DOWN";
+        let desc = "";
+        let errText = "";
+
+        try {
+        const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+        status = "UP";
+        desc = pickServiceDescription(pjson);
+        } catch (e) {
+        status = "DOWN";
+        errText = String(e?.message || e);
+        }
+
+        const pillClass = (status === "UP") ? "pill pill-up" : "pill pill-down";
+        const descHtml = desc
+        ? `<div class="small" style="margin-top:6px;">${escapeHtml(desc)}</div>`
+        : `<div class="small" style="margin-top:6px; opacity:.8;">(No description found in pjson)</div>`;
+
+        const errHtml = (status === "DOWN")
+        ? `<div class="small mono" style="margin-top:6px;">${escapeHtml(errText)}</div>`
+        : "";
+
+        cards.push(`
+        <div class="service-card">
+            <div class="service-head">
+            <div>
+                <div class="result-title">${escapeHtml(it.title)}</div>
+                <div class="small">${escapeHtml(it.kind)}</div>
+            </div>
+            <div class="${pillClass}">${status}</div>
+            </div>
+            <div class="small mono service-url">${escapeHtml(it.url)}</div>
+            ${descHtml}
+            ${errHtml}
+        </div>
+        `);
+    }
+
+    servicesListEl.innerHTML = cards.join("");
+    }
+
 
 
     // ---------- Report rendering ----------
@@ -271,18 +400,34 @@ require([
         URL.revokeObjectURL(url);
     }
 
-    function toCsv(rows) {
+    function toCsv(rows, preferredFirstCols = []) {
         if (!rows || !rows.length) return "";
-        const cols = Object.keys(rows[0]);
+
+        // Union of all keys across all rows
+        const colSet = new Set();
+        for (const r of rows) {
+            if (!r) continue;
+            Object.keys(r).forEach(k => colSet.add(k));
+        }
+
+        // Put preferred columns first (if present), then the rest alphabetically
+        const preferred = (preferredFirstCols || []).filter(c => colSet.has(c));
+        preferred.forEach(c => colSet.delete(c));
+
+        const rest = Array.from(colSet).sort((a, b) => a.localeCompare(b));
+        const cols = [...preferred, ...rest];
+
         const escape = (v) => {
             const s = (v == null) ? "" : String(v);
             if (/[,"\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
             return s;
         };
+
         const header = cols.map(escape).join(",");
-        const body = rows.map(r => cols.map(c => escape(r[c])).join(",")).join("\n");
+        const body = rows.map(r => cols.map(c => escape(r ? r[c] : "")).join(",")).join("\n");
         return header + "\n" + body;
     }
+
 
     function flattenAttributes(features) {
         return (features || []).map(f => (f && f.attributes) ? f.attributes : {});
@@ -587,6 +732,14 @@ require([
 
         await setActiveSelectionLayerByIndex(0);
 
+        // Tab wiring
+        if (tabReportBtn) tabReportBtn.addEventListener("click", () => setActiveTab("report"));
+        if (tabServicesBtn) tabServicesBtn.addEventListener("click", async () => {
+        setActiveTab("services");
+        await refreshServicesTab();
+        });
+        if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
+
         // UI wiring
         modeSelect.addEventListener("change", () => setMode(modeSelect.value));
         selectionLayerSelect.addEventListener("change", () => setActiveSelectionLayerByIndex(Number(selectionLayerSelect.value)));
@@ -642,7 +795,7 @@ require([
                     }
                 }
 
-                const csv = toCsv(allRows);
+                const csv = toCsv(allRows, ["__layer"]);
                 downloadText("intersect_report_ALL_FULL.csv", csv || "");
                 setStatus("exported ALL (FULL)");
             } catch (e) {
@@ -657,6 +810,11 @@ require([
         setMode("select");
         renderConfiguredLayerList();
         setStatus("ready");
+
+        // Preload service status once (optional). Keeps Services tab fast.
+        if (servicesListEl) {
+        refreshServicesTab().catch(() => {});
+        }
     }
 
     init().catch((e) => {
