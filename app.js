@@ -451,11 +451,10 @@ require([
             if (cb.disabled) return;
 
             cb.addEventListener("change", () => {
-                const wantVisible = cb.checked;
+                let lyr = reportLayerViews.get(l.url);
 
-                if (wantVisible) {
-                    // Lazily create & add to map if needed
-                    let lyr = reportLayerViews.get(l.url);
+                // If turning ON and we don't have the layer yet, create it
+                if (cb.checked) {
                     if (!lyr) {
                         const cfgMatch = layerCfgByUrl.get(l.url)?.cfg;
 
@@ -463,24 +462,22 @@ require([
                             url: l.url,
                             title: l.title,
                             outFields: ["*"],
-                            visible: true,
+                            visible: true, // will be immediately synced below
                             renderer: getPresetRenderer("report", cfgMatch) || undefined
                         });
+
                         map.add(lyr);
                         reportLayerViews.set(l.url, lyr);
 
                         const spin = document.getElementById(`rptlayer_spin_${i}`);
                         wireLayerUpdatingSpinner(lyr, spin);
 
-                        // Keep AOI above everything
                         ensureAoiOnTop(map);
-                    } else {
-                        lyr.visible = true;
                     }
-                } else {
-                    const lyr = reportLayerViews.get(l.url);
-                    if (lyr) lyr.visible = false;
                 }
+
+                // ✅ One source of truth: checkbox state
+                if (lyr) lyr.visible = cb.checked;
             });
         });
     }
