@@ -21,7 +21,7 @@ require([
     const runBtn = document.getElementById("runBtn");
     const clearBtn = document.getElementById("clearBtn");
     const exportAllBtn = document.getElementById("exportAllBtn");
-    const inspectToggle = document.getElementById("inspectToggle");
+    const inspectBtn = document.getElementById("inspectBtn");
 
     const mapPopupEl = document.getElementById("mapPopup");
     const mapPopupCloseEl = document.getElementById("mapPopupClose");
@@ -73,6 +73,8 @@ require([
 
     let view = null;
     let selectionGeom = null;
+    let inspectEnabled = true;
+
 
     // AOI overlay (always on top)
     let aoiLayer = null;      // GraphicsLayer
@@ -275,6 +277,29 @@ require([
         map.reorder(aoiLayer, map.layers.length - 1);
     }
 
+    function wireLayerUpdatingSpinner(layer, spinnerEl) {
+        if (!layer || !spinnerEl || !view) return;
+
+        // Wait for layerView so we can watch rendering/updating
+        layer.when(() => {
+            view.whenLayerView(layer).then((lv) => {
+                // initialize
+                spinnerEl.classList.toggle("hidden", !lv.updating);
+
+                // watch for changes
+                lv.watch("updating", (isUpdating) => {
+                    spinnerEl.classList.toggle("hidden", !isUpdating);
+                });
+            }).catch(() => {
+                // if layerView fails, hide spinner
+                spinnerEl.classList.add("hidden");
+            });
+        }).catch(() => {
+            spinnerEl.classList.add("hidden");
+        });
+    }
+
+
     function setAoiGeometry(geom) {
         // Clears and redraws AOI graphic so it’s always visible (and exportable later)
         if (!aoiLayer) return;
@@ -382,6 +407,7 @@ require([
             <div class="toggle-row">
                 <input type="checkbox" id="sellayer_${i}" ${checked} />
                 <label class="toggle-name" for="sellayer_${i}">${escapeHtml(e.cfg.title)}</label>
+                <span id="sellayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
             </div>
             `;
         }).join("");
@@ -392,13 +418,17 @@ require([
             cb.addEventListener("change", () => {
                 e.layer.visible = cb.checked;
             });
+
+            // spinner wiring (shows while layer view is updating)
+            const spin = document.getElementById(`sellayer_spin_${i}`);
+            wireLayerUpdatingSpinner(e.layer, spin);
         });
 
         // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
         // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
         // We will show it in the list but disable the checkbox to avoid confusion.
         reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
-            const isRoot = isFeatureServerRoot(l.url);
+            const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
             const existing = reportLayerViews.get(l.url);
             const checked = existing ? (existing.visible ? "checked" : "") : "";
             const disabled = isRoot ? "disabled" : "";
@@ -408,6 +438,7 @@ require([
             <div class="toggle-row">
                 <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
                 <label class="toggle-name" for="rptlayer_${i}">${escapeHtml(l.title)}${note}</label>
+                <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
             </div>
             `;
         }).join("");
@@ -437,6 +468,9 @@ require([
                         });
                         map.add(lyr);
                         reportLayerViews.set(l.url, lyr);
+
+                        const spin = document.getElementById(`rptlayer_spin_${i}`);
+                        wireLayerUpdatingSpinner(lyr, spin);
 
                         // Keep AOI above everything
                         ensureAoiOnTop(map);
@@ -591,31 +625,42 @@ require([
     function makeTable(features, maxFields) {
         if (!features || !features.length) return `<div class="small">No sample features fetched.</div>`;
 
-        // Show 4 random rows for a cleaner UI
         const picked = sampleWithoutReplacement(features, 4);
 
         const attrs0 = picked[0].attributes || {};
         const keys = Object.keys(attrs0).slice(0, maxFields);
 
-        const th = keys.map(k => `<th>${escapeHtml(k)}</th>`).join("");
+        const th = keys.map(k => `<th title="${escapeHtml(k)}">${escapeHtml(k)}</th>`).join("");
+
         const rows = picked.map(f => {
             const a = f.attributes || {};
             const tds = keys.map(k => {
                 const raw = (a[k] == null) ? "" : String(a[k]);
-                const safe = escapeHtml(raw);
-                return `<td title="${safe}">${safe}</td>`;
+
+                // truncate values longer than the *column name*
+                const maxLen = Math.max(4, String(k).length); // keep sane minimum
+                let shown = raw;
+
+                if (raw.length > maxLen) {
+                    shown = raw.slice(0, Math.max(1, maxLen - 1)) + "…";
+                }
+
+                const safeFull = escapeHtml(raw);
+                const safeShown = escapeHtml(shown);
+
+                return `<td title="${safeFull}">${safeShown}</td>`;
             }).join("");
             return `<tr>${tds}</tr>`;
         }).join("");
 
         return `
-      <div class="table-wrap">
-        <table>
-          <thead><tr>${th}</tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    `;
+        <div class="table-wrap">
+            <table class="result-table">
+            <thead><tr>${th}</tr></thead>
+            <tbody>${rows}</tbody>
+            </table>
+        </div>
+        `;
     }
 
     function downloadText(filename, text) {
@@ -1048,7 +1093,7 @@ require([
                     const graphic = match.graphic;
                     if (!graphic || !graphic.geometry) return;
 
-                    clearHighlight(); // optional: keep highlight off to avoid double-outline clutter
+                    clearHighlight();
 
                     setAoiGeometry(graphic.geometry);
                     setGeometryFromSelection(graphic.geometry);
@@ -1056,7 +1101,13 @@ require([
                     return;
                 }
 
-                // If no polygon selected: show a minimal “inspect layers here” popup (default behavior)
+                // NEW: If no polygon selected, only show info popup when Inspect is enabled
+                if (!inspectEnabled) {
+                    hideMapPopup();
+                    return;
+                }
+
+                // Show a minimal “inspect layers here” popup
                 const layerNames = [];
                 const seen = new Set();
 
@@ -1106,6 +1157,16 @@ require([
 
         // Disable Esri popup UI; we’ll use our own minimal popup
         view.popup.autoOpenEnabled = false;
+
+        // wire inspect button    
+        if (inspectBtn) {
+            inspectBtn.addEventListener("click", () => {
+                inspectEnabled = !inspectEnabled;
+                inspectBtn.textContent = inspectEnabled ? "Inspect: On" : "Inspect: Off";
+                inspectBtn.setAttribute("aria-pressed", inspectEnabled ? "true" : "false");
+                if (!inspectEnabled) hideMapPopup();
+            });
+        }
 
         // Wire custom popup close
         if (mapPopupCloseEl) mapPopupCloseEl.addEventListener("click", hideMapPopup);
@@ -1238,6 +1299,16 @@ require([
 
         runBtn.addEventListener("click", runReport);
         clearBtn.addEventListener("click", clearAll);
+
+        // Inspect button toggles informational click behavior
+        if (inspectBtn) {
+            inspectBtn.addEventListener("click", () => {
+                inspectEnabled = !inspectEnabled;
+                inspectBtn.textContent = inspectEnabled ? "Inspect: On" : "Inspect: Off";
+                inspectBtn.setAttribute("aria-pressed", inspectEnabled ? "true" : "false");
+                if (!inspectEnabled) hideMapPopup();
+            });
+        }
 
         exportAllBtn.addEventListener("click", async () => {
             if (!lastReportRowsByLayer.length) return;
