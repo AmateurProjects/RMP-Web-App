@@ -6,6 +6,11 @@
     "imageryBasemap": "satellite",
     "imageryOpacity": 0.75
   },
+  
+    "visualReport": {
+    "paddingFactor": 1.25,
+    "screenshotWidth": 1400
+  },
 
   "symbology": {
     "defaults": {
@@ -22,11 +27,6 @@
           "color": [0, 120, 212, 0.08],
           "outline": { "color": [0, 120, 212, 0.85], "width": 2 }
         }
-      },
-
-      "visualReport": {
-        "paddingFactor": 1.25,
-        "screenshotWidth": 1400
       },
 
       "report": {
@@ -48,18 +48,13 @@
       }
     }
   },
-  "selectionLayers": [
-    {
-      "title": "BLM Natl Visual Resource Inventory Classes (Polygon)",
-      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0",
-      "visible": true
-    },
-    {
-      "title": "BLM Natl Grazing Allotment Polygons (Layer 1)",
-      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Allotment_Polygons/FeatureServer/1",
-      "visible": false
-    }
-  ],
+"selectionLayers": [
+  {
+    "title": "BLM Natl PLSS CadNSDI (MapServer)",
+    "url": "https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer",
+    "visible": false
+  }
+],
   "reportLayers": [
     {
       "title": "BLM Natl Visual Resource Inventory Classes (Polygon)",

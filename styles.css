@@ -117,8 +117,25 @@ a:hover {
 }
 
 .table-wrap{ overflow:auto; border-radius:12px; border:1px solid #eee; margin-top:8px; }
-table{ border-collapse: collapse; width:100%; font-size:12px; }
-th, td{ border-bottom:1px solid #eee; padding:6px; vertical-align: top; }
+
+/* Fixed layout makes widths consistent and enables ellipsis truncation */
+table{
+  border-collapse: collapse;
+  width:100%;
+  font-size:12px;
+  table-layout: fixed;
+}
+
+th, td{
+  border-bottom:1px solid #eee;
+  padding:6px;
+  vertical-align: top;
+  max-width: 180px;           /* keeps columns from exploding */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 th{ background:#fafafa; text-align:left; }
 
 .toggle-row {
@@ -267,6 +284,36 @@ th{ background:#fafafa; text-align:left; }
   display: block;
   border-radius: 14px;
   border: 1px solid #eee;
+}
+
+/* ====== Custom map popup (replaces Esri popup UI) ====== */
+.map-popup{
+  position:absolute;
+  z-index: 50;              /* above map UI */
+  max-width: 320px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  box-shadow: 0 10px 35px rgba(0,0,0,.16);
+  padding: 10px;
+  pointer-events: auto;
+}
+
+.map-popup-close{
+  position:absolute;
+  top: 6px;
+  right: 10px;
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  line-height: 18px;
+  cursor: pointer;
+  opacity: .7;
+}
+.map-popup-close:hover{ opacity: 1; }
+
+.map-popup-content{
+  padding-right: 18px; /* room for X button */
 }
 
 

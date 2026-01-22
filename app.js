@@ -23,6 +23,9 @@ require([
     const exportAllBtn = document.getElementById("exportAllBtn");
     const inspectToggle = document.getElementById("inspectToggle");
 
+    const mapPopupEl = document.getElementById("mapPopup");
+    const mapPopupCloseEl = document.getElementById("mapPopupClose");
+    const mapPopupContentEl = document.getElementById("mapPopupContent");
 
     const statusEl = document.getElementById("status");
     const statusTextEl = document.getElementById("statusText");
@@ -113,9 +116,72 @@ require([
         }[c]));
     }
 
+    function hideMapPopup() {
+        if (!mapPopupEl) return;
+        mapPopupEl.classList.add("hidden");
+    }
+
+    function showMapPopupAtEvent(event, html) {
+        if (!mapPopupEl || !mapPopupContentEl || !view) return;
+
+        mapPopupContentEl.innerHTML = html || "";
+
+        // Position relative to the view container
+        const container = view.container;
+        const rect = container.getBoundingClientRect();
+
+        // event.x / event.y are screen coords relative to the view
+        const left = rect.left + event.x + 12;
+        const top  = rect.top + event.y + 12;
+
+        mapPopupEl.style.left = `${left}px`;
+        mapPopupEl.style.top  = `${top}px`;
+
+        mapPopupEl.classList.remove("hidden");
+    }
+
+
     function isFeatureServerRoot(url) {
         // ends with /FeatureServer (no trailing /0 etc.)
         return /\/FeatureServer\/?$/.test(url);
+    }
+
+    function isMapServerRoot(url) {
+        return /\/MapServer\/?$/.test(url);
+    }
+
+    // Expand a MapServer root into sublayers that can be used by FeatureLayer.
+    // Optionally filters to polygon layers only (best for “click a polygon to select”).
+    async function expandMapServerToSublayers(serviceUrl, { polygonOnly = true } = {}) {
+        const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
+        const info = await fetchJson(pjsonUrl);
+        const layers = Array.isArray(info?.layers) ? info.layers : [];
+
+        // If polygonOnly: we need each layer’s pjson to know geometryType (MapServer root doesn’t always include it).
+        const out = [];
+
+        for (const l of layers) {
+            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
+
+            if (polygonOnly) {
+                try {
+                    const lpjson = await fetchJson(layerUrl + "?f=pjson");
+                    const g = String(lpjson?.geometryType || "");
+                    // ArcGIS geometry types are like "esriGeometryPolygon"
+                    if (!g.toLowerCase().includes("polygon")) continue;
+                } catch (e) {
+                    // If a sublayer doesn’t return pjson, skip it (safer)
+                    continue;
+                }
+            }
+
+            out.push({
+                title: `${l.name}`,
+                url: layerUrl
+            });
+        }
+
+        return out;
     }
 
     function setBasemapBaseLayerOpacity(basemap, opacity) {
@@ -534,7 +600,11 @@ require([
         const th = keys.map(k => `<th>${escapeHtml(k)}</th>`).join("");
         const rows = picked.map(f => {
             const a = f.attributes || {};
-            const tds = keys.map(k => `<td>${escapeHtml(a[k] == null ? "" : a[k])}</td>`).join("");
+            const tds = keys.map(k => {
+                const raw = (a[k] == null) ? "" : String(a[k]);
+                const safe = escapeHtml(raw);
+                return `<td title="${safe}">${safe}</td>`;
+            }).join("");
             return `<tr>${tds}</tr>`;
         }).join("");
 
@@ -954,58 +1024,66 @@ require([
 
     function attachClickToSelect() {
         view.on("click", async (event) => {
-            if (modeSelect.value !== "select") return;
+
+            // If drawing AOI, let Sketch own the click experience
+            if (modeSelect.value === "draw") {
+                hideMapPopup();
+                return;
+            }
+
             if (!activeSelectionLayerView) return;
 
             try {
                 const hit = await view.hitTest(event);
                 const results = (hit && hit.results) ? hit.results : [];
 
-                // Optional inspect popup: show unique layer names under click
-                if (inspectToggle && inspectToggle.checked) {
-                    const layerNames = [];
-                    const seen = new Set();
+                // First: try to select from active selection layer
+                const match = results.find(r =>
+                    r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer
+                );
 
-                    results.forEach(r => {
-                        const lyr = r?.graphic?.layer;
-                        const title = lyr?.title ? String(lyr.title) : null;
-                        if (title && !seen.has(title)) {
-                            seen.add(title);
-                            layerNames.push(title);
-                        }
-                    });
+                if (match) {
+                    hideMapPopup();
 
-                    if (layerNames.length) {
-                        const html = `<div class="small">${layerNames.map(n => `<div>• ${escapeHtml(n)}</div>`).join("")}</div>`;
-                        view.popup.open({
-                            location: event.mapPoint,
-                            title: "Layers here",
-                            content: html
-                        });
-                    } else {
-                        view.popup.open({
-                            location: event.mapPoint,
-                            title: "Layers here",
-                            content: `<div class="small">(No layers found at this location.)</div>`
-                        });
-                    }
+                    const graphic = match.graphic;
+                    if (!graphic || !graphic.geometry) return;
+
+                    clearHighlight(); // optional: keep highlight off to avoid double-outline clutter
+
+                    setAoiGeometry(graphic.geometry);
+                    setGeometryFromSelection(graphic.geometry);
+                    setStatus("polygon selected (ready to run)");
+                    return;
                 }
 
-                const match = results.find(r => r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer);
+                // If no polygon selected: show a minimal “inspect layers here” popup (default behavior)
+                const layerNames = [];
+                const seen = new Set();
 
-                if (!match) return;
+                results.forEach(r => {
+                    const lyr = r?.graphic?.layer;
+                    const title = lyr?.title ? String(lyr.title) : null;
+                    if (title && !seen.has(title)) {
+                        seen.add(title);
+                        layerNames.push(title);
+                    }
+                });
 
-                const graphic = match.graphic;
-                if (!graphic || !graphic.geometry) return;
+                const html = layerNames.length
+                    ? `<div class="small">
+                        <div style="font-weight:700; margin-bottom:6px;">Layers here</div>
+                        ${layerNames.map(n => `<div>• ${escapeHtml(n)}</div>`).join("")}
+                    </div>`
+                    : `<div class="small">
+                        <div style="font-weight:700; margin-bottom:6px;">Layers here</div>
+                        <div>(No layers found at this location.)</div>
+                    </div>`;
 
-                clearHighlight(); // optional: keep highlight off to avoid double-outline clutter
+                showMapPopupAtEvent(event, html);
 
-                setAoiGeometry(graphic.geometry);      // AOI boundary on top (exportable later)
-                setGeometryFromSelection(graphic.geometry);
-                setStatus("polygon selected (ready to run)");
             } catch (e) {
                 console.error(e);
-                setStatus("select failed (see console)");
+                setStatus("click inspect failed (see console)");
             }
         });
     }
@@ -1025,6 +1103,12 @@ require([
             center: config.map?.center || [-98.5795, 39.8283],
             zoom: config.map?.zoom || 4
         });
+
+        // Disable Esri popup UI; we’ll use our own minimal popup
+        view.popup.autoOpenEnabled = false;
+
+        // Wire custom popup close
+        if (mapPopupCloseEl) mapPopupCloseEl.addEventListener("click", hideMapPopup);
 
         // Basemap toggle (near zoom controls)
         const imageryBasemapId = config?.map?.imageryBasemap || "satellite"; // "satellite" is Esri World Imagery
@@ -1073,9 +1157,28 @@ require([
             }
         });
 
-        // Selection layers (visible)
+        // Selection layers (may include MapServer roots that expand into many sublayers)
         const selCfgs = config.selectionLayers || [];
-        selectionLayers = selCfgs.map(cfg => ({
+        const expandedSelectionCfgs = [];
+
+        for (const cfg of selCfgs) {
+            const url = String(cfg?.url || "");
+            if (isMapServerRoot(url)) {
+                // Expand MapServer into polygon sublayers for selection
+                const subs = await expandMapServerToSublayers(url, { polygonOnly: true });
+                subs.forEach(sl => {
+                    expandedSelectionCfgs.push({
+                        title: `${cfg.title}: ${sl.title}`,
+                        url: sl.url,
+                        visible: false
+                    });
+                });
+            } else {
+                expandedSelectionCfgs.push(cfg);
+            }
+        }
+
+        selectionLayers = expandedSelectionCfgs.map(cfg => ({
             cfg,
             layer: new FeatureLayer({
                 url: cfg.url,
@@ -1085,6 +1188,7 @@ require([
                 renderer: getPresetRenderer("selection", cfg) || undefined
             })
         }));
+
         selectionLayers.forEach(e => map.add(e.layer));
         renderLayerToggles(map);
         ensureAoiOnTop(map);
