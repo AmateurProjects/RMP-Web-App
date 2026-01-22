@@ -31,7 +31,7 @@
         "type": "simple",
         "symbol": {
           "type": "simple-fill",
-          "color": [0, 0, 0, 0.02],
+          "color": [0, 0, 0, 0.07],
           "outline": { "type": "simple-line", "color": [0, 0, 0, 1], "width": 3, "style": "solid" }
         }
       }

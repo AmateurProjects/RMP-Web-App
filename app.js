@@ -22,6 +22,9 @@ require([
     const exportAllBtn = document.getElementById("exportAllBtn");
 
     const statusEl = document.getElementById("status");
+    const statusTextEl = document.getElementById("statusText");
+    const busyIndicatorEl = document.getElementById("busyIndicator");
+
     const resultsEl = document.getElementById("results");
     const layerListEl = document.getElementById("layerList");
     const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
@@ -36,7 +39,16 @@ require([
     const servicesListEl = document.getElementById("servicesList");
     const refreshServicesBtn = document.getElementById("refreshServicesBtn");
 
-    function setStatus(msg) { statusEl.textContent = "Status: " + msg; }
+    function setStatus(msg) {
+        const text = "Status: " + msg;
+        if (statusTextEl) statusTextEl.textContent = text;
+        else if (statusEl) statusEl.textContent = text;
+    }
+
+    function setBusy(isBusy) {
+        if (!busyIndicatorEl) return;
+        busyIndicatorEl.classList.toggle("hidden", !isBusy);
+    }
 
     // ---------- State ----------
     let config = null;
@@ -212,6 +224,7 @@ require([
 
         runBtn.disabled = true;
         setStatus("cleared");
+        setBusy(false);
     }
 
     function setGeometryFromSelection(geom) {
@@ -220,6 +233,14 @@ require([
     }
 
     function setMode(mode) {
+        function startDrawingNow() {
+            if (!sketch) return;
+            // Cancel any prior sketch session and start a new polygon immediately
+            sketch.cancel();
+            sketch.create("polygon");
+            setStatus("drawing polygon…");
+        }
+
         if (mode === "select") {
             selectModeControls.classList.remove("hidden");
             drawModeControls.classList.add("hidden");
@@ -230,7 +251,7 @@ require([
             selectModeControls.classList.add("hidden");
             drawModeControls.classList.remove("hidden");
             clearHighlight();
-            setStatus("draw mode: draw a polygon");
+            startDrawingNow(); // <-- auto start drawing immediately
         }
         // keep current selectionGeom if user switches modes intentionally
     }
@@ -535,6 +556,7 @@ require([
     async function runReport() {
         if (!selectionGeom) return;
 
+        setBusy(true);
         setStatus("running report…");
         resultsEl.innerHTML = "";
         exportAllBtn.disabled = true;
@@ -635,6 +657,7 @@ require([
         wireExportButtons();
         exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
         setStatus("done");
+        setBusy(false);
     }
 
         function wireExportButtons() {
@@ -827,9 +850,9 @@ require([
         selectionLayerSelect.addEventListener("change", () => setActiveSelectionLayerByIndex(Number(selectionLayerSelect.value)));
 
         drawBtn.addEventListener("click", () => {
-            view.ui.add(sketch, "top-left");
-            sketch.create("polygon");
-            setStatus("drawing polygon…");
+            // No sketch toolbar UI; just start drawing immediately
+            if (modeSelect.value !== "draw") modeSelect.value = "draw";
+            setMode("draw"); // will start drawing automatically
         });
 
         stopDrawBtn.addEventListener("click", () => {

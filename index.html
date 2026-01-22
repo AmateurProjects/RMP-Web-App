@@ -36,7 +36,7 @@
 
     <div class="card">
       <div class="row">
-        <label class="label">Polygon source</label>
+        <label class="label">Area of Interest</label>
         <select id="modeSelect">
           <option value="select">Select from layer</option>
           <option value="draw">Draw polygon</option>
@@ -64,7 +64,10 @@
         <button id="clearBtn" class="btn subtle">Clear</button>
       </div>
 
-      <div id="status" class="status">Status: ready</div>
+      <div id="status" class="status">
+        <span id="statusText">Status: ready</span>
+        <span id="busyIndicator" class="spinner hidden" aria-label="busy"></span>
+      </div>
     </div>
 
     <div class="card">

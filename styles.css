@@ -67,7 +67,23 @@ select{
   border:1px solid #eee;
   border-radius:12px;
   padding:8px 10px;
+
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap:10px;
 }
+
+/* simple animated busy indicator */
+.spinner{
+  width:14px;
+  height:14px;
+  border:2px solid rgba(0,0,0,.2);
+  border-top-color: rgba(0,0,0,.75);
+  border-radius:50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .hidden{ display:none; }
 .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
