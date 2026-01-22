@@ -44,6 +44,13 @@ require([
     let view = null;
     let selectionGeom = null;
 
+    // AOI overlay (always on top)
+    let aoiLayer = null;      // GraphicsLayer
+    let aoiGraphic = null;    // Graphic (single AOI graphic)
+
+    // Renderer lookup helpers
+    let layerCfgByUrl = new Map(); // url -> {kind, cfg}
+
     let selectionLayers = []; // { cfg, layer }
     let activeSelectionLayer = null; // FeatureLayer
     let activeSelectionLayerView = null;
@@ -116,6 +123,65 @@ require([
     return u.replace(/\/$/, "") + "?f=pjson";
     }
 
+    function buildLayerCfgIndex(cfg) {
+        const m = new Map();
+
+        const addList = (kind, arr) => {
+            (arr || []).forEach(l => {
+                if (!l || !l.url) return;
+                m.set(String(l.url), { kind, cfg: l });
+            });
+        };
+
+        addList("selection", cfg?.selectionLayers);
+        addList("report", cfg?.reportLayers);
+
+        return m;
+    }
+
+    function getPresetRenderer(kind, cfgObj) {
+        const sym = config?.symbology || {};
+        const defaults = sym.defaults || {};
+        const presets = sym.presets || {};
+
+        // Allow per-layer override later (optional)
+        const presetId =
+            (cfgObj && cfgObj.symbologyPreset) ||
+            (kind === "selection" ? defaults.selectionPreset :
+            kind === "report" ? defaults.reportPreset :
+            defaults.aoiPreset);
+
+        const r = presetId ? presets[presetId] : null;
+        return r || null;
+    }
+
+    function ensureAoiOnTop(map) {
+        if (!map || !aoiLayer) return;
+        // Put AOI layer at top draw order
+        map.reorder(aoiLayer, map.layers.length - 1);
+    }
+
+    function setAoiGeometry(geom) {
+        // Clears and redraws AOI graphic so it’s always visible (and exportable later)
+        if (!aoiLayer) return;
+
+        aoiLayer.removeAll();
+        aoiGraphic = null;
+
+        if (!geom) return;
+
+        const aoiRenderer = getPresetRenderer("aoi", null);
+        const aoiSymbol = aoiRenderer?.symbol; // simple renderer expected
+
+        aoiGraphic = new Graphic({
+            geometry: geom,
+            symbol: aoiSymbol || undefined
+        });
+
+        aoiLayer.add(aoiGraphic);
+    }
+
+
     async function expandServiceToSublayers(serviceUrl) {
         // Returns array of { title, url } for each sublayer
         const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
@@ -141,7 +207,8 @@ require([
         exportAllBtn.disabled = true;
         lastReportRowsByLayer = [];
 
-        if (drawLayer) drawLayer.removeAll();
+        if (aoiLayer) aoiLayer.removeAll();
+        aoiGraphic = null;
 
         runBtn.disabled = true;
         setStatus("cleared");
@@ -236,14 +303,20 @@ require([
                     // Lazily create & add to map if needed
                     let lyr = reportLayerViews.get(l.url);
                     if (!lyr) {
+                        const cfgMatch = layerCfgByUrl.get(l.url)?.cfg;
+
                         lyr = new FeatureLayer({
                             url: l.url,
                             title: l.title,
                             outFields: ["*"],
-                            visible: true
+                            visible: true,
+                            renderer: getPresetRenderer("report", cfgMatch) || undefined
                         });
                         map.add(lyr);
                         reportLayerViews.set(l.url, lyr);
+
+                        // Keep AOI above everything
+                        ensureAoiOnTop(map);
                     } else {
                         lyr.visible = true;
                     }
@@ -660,9 +733,9 @@ require([
                 const graphic = match.graphic;
                 if (!graphic || !graphic.geometry) return;
 
-                clearHighlight();
-                activeHighlightHandle = activeSelectionLayerView.highlight(graphic);
+                clearHighlight(); // optional: keep highlight off to avoid double-outline clutter
 
+                setAoiGeometry(graphic.geometry);      // AOI boundary on top (exportable later)
                 setGeometryFromSelection(graphic.geometry);
                 setStatus("polygon selected (ready to run)");
             } catch (e) {
@@ -677,6 +750,7 @@ require([
         setStatus("loading config…");
 
         config = await fetchJson("./config.json");
+        layerCfgByUrl = buildLayerCfgIndex(config);
 
         const map = new Map({ basemap: config.map?.basemap || "gray-vector" });
 
@@ -687,21 +761,29 @@ require([
             zoom: config.map?.zoom || 4
         });
 
-        // Draw layer + sketch
-        drawLayer = new GraphicsLayer({ title: "Drawn polygon" });
-        map.add(drawLayer);
+        // AOI layer + sketch (AOI must always be visible and on top)
+        aoiLayer = new GraphicsLayer({ title: "AOI" });
+        map.add(aoiLayer);
 
+        // Sketch draws directly into AOI layer
         sketch = new Sketch({
             view,
-            layer: drawLayer,
+            layer: aoiLayer,
             availableCreateTools: ["polygon"],
             creationMode: "single"
         });
 
+        // Apply AOI symbol to Sketch (uses the AOI preset renderer symbol)
+        const aoiRenderer = getPresetRenderer("aoi", null);
+        if (aoiRenderer && aoiRenderer.symbol) {
+            sketch.polygonSymbol = aoiRenderer.symbol;
+        }
+
         sketch.on("create", (evt) => {
             if (evt.state === "complete") {
-                // use the completed sketch geometry
-                setGeometryFromSelection(evt.graphic.geometry);
+                const geom = evt.graphic?.geometry || null;
+                setAoiGeometry(geom);          // ensure AOI is a single clean graphic
+                setGeometryFromSelection(geom);
                 setStatus("drawn polygon ready (run report)");
             }
         });
@@ -714,13 +796,13 @@ require([
                 url: cfg.url,
                 title: cfg.title,
                 outFields: ["*"],
-                visible: cfg.visible !== false
+                visible: cfg.visible !== false,
+                renderer: getPresetRenderer("selection", cfg) || undefined
             })
-
         }));
         selectionLayers.forEach(e => map.add(e.layer));
         renderLayerToggles(map);
-
+        ensureAoiOnTop(map);
 
         // Populate selection layer dropdown
         selectionLayerSelect.innerHTML = selectionLayers.map((e, i) =>
