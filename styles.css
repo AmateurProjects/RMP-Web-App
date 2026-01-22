@@ -88,6 +88,13 @@ select{
 .hidden{ display:none; }
 .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
 
+a {
+  color: inherit;
+}
+a:hover {
+  text-decoration: underline;
+}
+
 .result-card{
   border:1px solid #eee;
   border-radius:14px;
@@ -177,6 +184,48 @@ th{ background:#fafafa; text-align:left; }
   gap:10px;
   align-items: baseline;
 }
+
+/* Services description clamping + expand */
+.service-desc {
+  margin-top: 6px;
+
+  /* fallback: max height (approx 3 lines) */
+  max-height: 4.5em;
+  overflow: hidden;
+
+  /* standard (draft) property for compatibility/lint */
+  line-clamp: 3;
+
+  /* current browser support */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+
+  white-space: normal;
+}
+
+.service-card.expanded .service-desc {
+  max-height: none;
+
+  /* reset clamps when expanded */
+  line-clamp: unset;
+  -webkit-line-clamp: initial;
+
+  display: block;
+  overflow: visible;
+}
+.service-desc-toggle {
+  margin-top: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-decoration: underline;
+  opacity: 0.85;
+}
+.service-desc-toggle:hover { opacity: 1; }
+
 .pill{
   font-size:12px;
   border:1px solid #eee;
@@ -200,4 +249,12 @@ th{ background:#fafafa; text-align:left; }
   margin-top:6px;
   word-break: break-all;
 }
+
+.esri-basemap-toggle__container,
+.esri-basemap-toggle {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+
 

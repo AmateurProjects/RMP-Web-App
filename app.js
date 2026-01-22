@@ -6,8 +6,9 @@ require([
     "esri/layers/FeatureLayer",
     "esri/layers/GraphicsLayer",
     "esri/widgets/Sketch",
+    "esri/widgets/BasemapToggle",
     "esri/Graphic"
-], function (Map, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic) {
+], function (Map, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic) {
 
     // ---------- DOM ----------
     const modeSelect = document.getElementById("modeSelect");
@@ -20,6 +21,8 @@ require([
     const runBtn = document.getElementById("runBtn");
     const clearBtn = document.getElementById("clearBtn");
     const exportAllBtn = document.getElementById("exportAllBtn");
+    const inspectToggle = document.getElementById("inspectToggle");
+
 
     const statusEl = document.getElementById("status");
     const statusTextEl = document.getElementById("statusText");
@@ -96,6 +99,22 @@ require([
     function isFeatureServerRoot(url) {
         // ends with /FeatureServer (no trailing /0 etc.)
         return /\/FeatureServer\/?$/.test(url);
+    }
+
+    function setBasemapBaseLayerOpacity(basemap, opacity) {
+        try {
+            const baseLayers = basemap?.baseLayers?.toArray ? basemap.baseLayers.toArray() : [];
+            baseLayers.forEach(l => { l.opacity = opacity; });
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    function isImageryBasemap(basemap) {
+        // For ArcGIS JS basemap IDs like "satellite", "hybrid"
+        const id = (basemap && (basemap.id || basemap.portalItem?.id || basemap.title)) ? String(basemap.id || basemap.title || "") : "";
+        const title = basemap?.title ? String(basemap.title).toLowerCase() : "";
+        return title.includes("satellite") || title.includes("imagery") || title.includes("hybrid") || id.toLowerCase().includes("satellite") || id.toLowerCase().includes("hybrid");
     }
 
     async function fetchJson(url) {
@@ -200,7 +219,7 @@ require([
         const info = await fetchJson(pjsonUrl);
         const layers = (info && info.layers) ? info.layers : [];
         return layers.map(l => ({
-            title: `${info.serviceDescription ? info.serviceDescription + " - " : ""}${l.name}`.trim() || l.name || `Layer ${l.id}`,
+            title: (l && l.name) ? String(l.name) : `Layer ${l.id}`,
             url: serviceUrl.replace(/\/$/, "") + "/" + l.id
         }));
     }
@@ -426,7 +445,10 @@ require([
 
         const pillClass = (status === "UP") ? "pill pill-up" : "pill pill-down";
         const descHtml = desc
-        ? `<div class="small" style="margin-top:6px;">${escapeHtml(desc)}</div>`
+        ? `
+        <div class="small service-desc" id="svc_desc_${i}">${escapeHtml(desc)}</div>
+        <button class="service-desc-toggle" type="button" data-desc-toggle="${i}">Show more</button>
+        `
         : `<div class="small" style="margin-top:6px; opacity:.8;">(No description found in pjson)</div>`;
 
         const errHtml = (status === "DOWN")
@@ -442,7 +464,9 @@ require([
             </div>
             <div class="${pillClass}">${status}</div>
             </div>
-            <div class="small mono service-url">${escapeHtml(it.url)}</div>
+            <div class="small mono service-url">
+            <a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">Service URL</a>
+            </div>
             ${descHtml}
             ${errHtml}
         </div>
@@ -450,23 +474,48 @@ require([
     }
 
     servicesListEl.innerHTML = cards.join("");
+
+    // Wire description expand/collapse toggles
+    servicesListEl.querySelectorAll("button[data-desc-toggle]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const idx = btn.getAttribute("data-desc-toggle");
+            const card = btn.closest(".service-card");
+            if (!card) return;
+            const isExpanded = card.classList.toggle("expanded");
+            btn.textContent = isExpanded ? "Show less" : "Show more";
+        });
+    });
+
     }
-
-
 
     // ---------- Report rendering ----------
     function renderResults(cardsHtml) {
         resultsEl.innerHTML = cardsHtml || `<div class="small">No results yet.</div>`;
     }
 
+
+    function sampleWithoutReplacement(arr, n) {
+    const a = (arr || []).slice();
+    if (a.length <= n) return a;
+    // Fisher–Yates shuffle partial
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a.slice(0, n);
+    }
+
     function makeTable(features, maxFields) {
         if (!features || !features.length) return `<div class="small">No sample features fetched.</div>`;
 
-        const attrs0 = features[0].attributes || {};
+        // Show 4 random rows for a cleaner UI
+        const picked = sampleWithoutReplacement(features, 4);
+
+        const attrs0 = picked[0].attributes || {};
         const keys = Object.keys(attrs0).slice(0, maxFields);
 
         const th = keys.map(k => `<th>${escapeHtml(k)}</th>`).join("");
-        const rows = features.map(f => {
+        const rows = picked.map(f => {
             const a = f.attributes || {};
             const tds = keys.map(k => `<td>${escapeHtml(a[k] == null ? "" : a[k])}</td>`).join("");
             return `<tr>${tds}</tr>`;
@@ -627,7 +676,9 @@ require([
               <div class="result-title">${escapeHtml(r.title)}</div>
               <div class="badge">count: <b>${r.count}</b></div>
             </div>
-            <div class="small mono">${escapeHtml(r.url)}</div>
+                <div class="small mono">
+                <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
+                </div>
             <div style="margin-top:8px;">
               ${tableHtml}
               <div class="row" style="margin-top:8px;">
@@ -749,6 +800,37 @@ require([
             try {
                 const hit = await view.hitTest(event);
                 const results = (hit && hit.results) ? hit.results : [];
+
+                // Optional inspect popup: show unique layer names under click
+                if (inspectToggle && inspectToggle.checked) {
+                    const layerNames = [];
+                    const seen = new Set();
+
+                    results.forEach(r => {
+                        const lyr = r?.graphic?.layer;
+                        const title = lyr?.title ? String(lyr.title) : null;
+                        if (title && !seen.has(title)) {
+                            seen.add(title);
+                            layerNames.push(title);
+                        }
+                    });
+
+                    if (layerNames.length) {
+                        const html = `<div class="small">${layerNames.map(n => `<div>• ${escapeHtml(n)}</div>`).join("")}</div>`;
+                        view.popup.open({
+                            location: event.mapPoint,
+                            title: "Layers here",
+                            content: html
+                        });
+                    } else {
+                        view.popup.open({
+                            location: event.mapPoint,
+                            title: "Layers here",
+                            content: `<div class="small">(No layers found at this location.)</div>`
+                        });
+                    }
+                }
+
                 const match = results.find(r => r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer);
 
                 if (!match) return;
@@ -783,6 +865,26 @@ require([
             center: config.map?.center || [-98.5795, 39.8283],
             zoom: config.map?.zoom || 4
         });
+
+        // Basemap toggle (near zoom controls)
+        const imageryBasemapId = config?.map?.imageryBasemap || "satellite"; // "satellite" is Esri World Imagery
+        const imageryOpacity = config?.map?.imageryOpacity ?? 0.75;
+
+        const basemapToggle = new BasemapToggle({
+            view,
+            nextBasemap: imageryBasemapId
+        });
+        view.ui.add(basemapToggle, "top-left");
+
+        // Enforce imagery opacity when imagery is active (and restore for non-imagery)
+        view.watch("map.basemap", (bm) => {
+            if (!bm) return;
+            if (isImageryBasemap(bm)) setBasemapBaseLayerOpacity(bm, imageryOpacity);
+            else setBasemapBaseLayerOpacity(bm, 1);
+        });
+
+        // Apply once on load
+        if (isImageryBasemap(view.map.basemap)) setBasemapBaseLayerOpacity(view.map.basemap, imageryOpacity);
 
         // AOI layer + sketch (AOI must always be visible and on top)
         aoiLayer = new GraphicsLayer({ title: "AOI" });

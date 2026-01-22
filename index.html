@@ -53,8 +53,8 @@
 
       <div id="drawModeControls" class="hidden">
         <div class="row">
-          <button id="drawBtn" class="btn">Draw polygon</button>
-          <button id="stopDrawBtn" class="btn subtle">Stop</button>
+          <button id="drawBtn" class="btn" type="button">Draw polygon</button>
+          <button id="stopDrawBtn" class="btn subtle" type="button">Stop</button>
         </div>
         <div class="hint">Draw a polygon; the most recent sketch is used.</div>
       </div>
@@ -62,6 +62,14 @@
       <div class="row">
         <button id="runBtn" class="btn primary" disabled>Run report</button>
         <button id="clearBtn" class="btn subtle">Clear</button>
+      </div>
+
+      <div class="row">
+        <label class="label" style="margin-right:8px;">Inspect map</label>
+        <label class="small" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="inspectToggle" />
+          Show layers under click
+        </label>
       </div>
 
       <div id="status" class="status">
@@ -73,7 +81,7 @@
     <div class="card">
       <div class="row space-between">
         <div class="label">Results</div>
-        <button id="exportAllBtn" class="btn subtle" disabled>Export all CSV</button>
+          <button id="exportAllBtn" class="btn subtle" type="button" disabled>Export all CSV</button>
       </div>
       <div id="results"></div>
     </div>
