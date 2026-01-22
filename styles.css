@@ -256,5 +256,17 @@ th{ background:#fafafa; text-align:left; }
   overflow: hidden;
 }
 
+/* ====== Visual Report ====== */
+.visual-map-wrap {
+  margin-top: 10px;
+}
+
+.visual-map-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+  border: 1px solid #eee;
+}
 
 

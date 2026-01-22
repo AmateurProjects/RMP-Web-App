@@ -33,11 +33,23 @@ require([
     const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
     const reportLayerTogglesEl = document.getElementById("reportLayerToggles");
 
-    // Tabs + Services DOM
+    // Tabs + Services + Visual DOM
     const tabReportBtn = document.getElementById("tabReportBtn");
+    const tabVisualBtn = document.getElementById("tabVisualBtn");
     const tabServicesBtn = document.getElementById("tabServicesBtn");
+
     const tabReportPanel = document.getElementById("tabReportPanel");
+    const tabVisualPanel = document.getElementById("tabVisualPanel");
     const tabServicesPanel = document.getElementById("tabServicesPanel");
+
+    // Visual report DOM
+    const generateVisualBtn = document.getElementById("generateVisualBtn");
+    const visualReportStatusEl = document.getElementById("visualReportStatus");
+    const visualReportMapWrapEl = document.getElementById("visualReportMapWrap");
+    const visualReportImgEl = document.getElementById("visualReportImg");
+    const visualReportSummaryEl = document.getElementById("visualReportSummary");
+    const downloadMapBtn = document.getElementById("downloadMapBtn");
+    const printVisualBtn = document.getElementById("printVisualBtn");
 
     const servicesListEl = document.getElementById("servicesList");
     const refreshServicesBtn = document.getElementById("refreshServicesBtn");
@@ -79,15 +91,20 @@ require([
 
 
     // ---------- Helpers ----------
+
     // Tabs
     function setActiveTab(tabName) {
-    const isReport = (tabName === "report");
+        const isReport = (tabName === "report");
+        const isVisual = (tabName === "visual");
+        const isServices = (tabName === "services");
 
         if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
-        if (tabServicesPanel) tabServicesPanel.classList.toggle("active", !isReport);
+        if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
+        if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
 
         if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
-        if (tabServicesBtn) tabServicesBtn.classList.toggle("active", !isReport);
+        if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
+        if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
     }
 
     function escapeHtml(s) {
@@ -661,11 +678,13 @@ require([
             lastReportRowsByLayer.push({
                 title: r.title,
                 url: r.url,
+                count: r.count,       // <-- store count for summary stats
                 rows,                 // sample rows shown in the UI table
                 _layer: r.layer,      // FeatureLayer instance used for querying
                 _exportQuery: r.exportQuery, // Query object (intersects geometry etc.)
                 fullRows: null        // will be filled on-demand when user exports FULL
             });
+
 
                 const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
                 const tableHtml = (r.features && r.features.length) ? makeTable(r.features, maxFields) : `<div class="small">No sample rows.</div>`;
@@ -708,6 +727,7 @@ require([
         wireExportButtons();
         exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
         setStatus("done");
+        renderVisualSummary();
         setBusy(false);
     }
 
@@ -778,6 +798,146 @@ require([
     function safeFilename(name) {
         return String(name).replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "export";
     }
+
+    function setVisualStatus(msg) {
+        if (visualReportStatusEl) visualReportStatusEl.textContent = msg || "";
+    }
+
+    function renderVisualSummary() {
+        if (!visualReportSummaryEl) return;
+
+        if (!selectionGeom) {
+            visualReportSummaryEl.innerHTML = `<div class="small">(No AOI selected.)</div>`;
+            return;
+        }
+
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            visualReportSummaryEl.innerHTML = `<div class="small">(Run the report to populate layer counts.)</div>`;
+            return;
+        }
+
+        const totalLayers = lastReportRowsByLayer.length;
+        const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0);
+        const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+
+        const top = layersWithHits
+            .slice()
+            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .slice(0, 12);
+
+        const listHtml = top.length
+            ? `<div style="margin-top:8px;">
+                ${top.map(x => `<div class="small">• ${escapeHtml(x.title)} <span class="mono">(${x.count})</span></div>`).join("")}
+            </div>`
+            : `<div class="small" style="margin-top:8px;">(No intersect hits.)</div>`;
+
+        visualReportSummaryEl.innerHTML = `
+        <div class="small">Layers queried: <b>${totalLayers}</b></div>
+        <div class="small">Layers with hits: <b>${layersWithHits.length}</b></div>
+        <div class="small">Total intersecting features (sum of counts): <b>${totalHits}</b></div>
+        ${listHtml}
+        `;
+    }
+
+    async function generateVisualReport() {
+        if (!view) return;
+
+        if (!selectionGeom) {
+            setVisualStatus("Select or draw an AOI first.");
+            return;
+        }
+
+        setBusy(true);
+        setVisualStatus("Generating map…");
+        if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
+        if (downloadMapBtn) downloadMapBtn.disabled = true;
+        if (printVisualBtn) printVisualBtn.disabled = true;
+
+        try {
+            // Zoom to AOI with padding
+            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+            const width = config?.visualReport?.screenshotWidth ?? 1400;
+
+            // Use AOI extent if available; fallback to goTo geometry directly
+            const ext = selectionGeom?.extent;
+            if (ext && ext.expand) {
+                await view.goTo(ext.expand(paddingFactor), { animate: true, duration: 450 });
+            } else {
+                await view.goTo(selectionGeom, { animate: true, duration: 450 });
+            }
+
+            // Ensure AOI draws on top (if you implemented AOI reorder helper)
+            // If you have ensureAoiOnTop(map) in your codebase, keep this:
+            try { ensureAoiOnTop(view.map); } catch (e) {}
+
+            // Screenshot the current view
+            const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
+            const dataUrl = ss?.dataUrl;
+
+            if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+            if (visualReportImgEl) visualReportImgEl.src = dataUrl;
+            if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
+
+            // Enable download
+            if (downloadMapBtn) {
+                downloadMapBtn.disabled = false;
+                downloadMapBtn.onclick = () => {
+                    const a = document.createElement("a");
+                    a.href = dataUrl;
+                    a.download = "AOI_map.png";
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                };
+            }
+
+            // Enable print (simple print window with image + summary)
+            if (printVisualBtn) {
+                printVisualBtn.disabled = false;
+                printVisualBtn.onclick = () => {
+                    const summaryHtml = visualReportSummaryEl ? visualReportSummaryEl.innerHTML : "";
+                    const w = window.open("", "_blank");
+                    if (!w) return;
+
+                    w.document.write(`
+                    <!doctype html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8" />
+                        <meta name="viewport" content="width=device-width,initial-scale=1" />
+                        <title>Visual Report</title>
+                        <style>
+                        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+                        h1 { font-size: 18px; margin: 0 0 10px 0; }
+                        img { width: 100%; height: auto; border: 1px solid #ddd; border-radius: 12px; }
+                        .small { font-size: 12px; color: #444; }
+                        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+                        .section { margin-top: 14px; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Visual Report</h1>
+                        <div class="section"><img src="${dataUrl}" alt="AOI map" /></div>
+                        <div class="section">${summaryHtml}</div>
+                        <script>window.onload = () => window.print();</script>
+                    </body>
+                    </html>
+                    `);
+                    w.document.close();
+                };
+            }
+
+            setVisualStatus("Done.");
+        } catch (e) {
+            console.error(e);
+            setVisualStatus("Failed to generate map (see console).");
+        } finally {
+            renderVisualSummary();
+            setBusy(false);
+        }
+    }
+
 
     // ---------- Selection layer setup ----------
     async function setActiveSelectionLayerByIndex(idx) {
@@ -941,11 +1101,21 @@ require([
 
         // Tab wiring
         if (tabReportBtn) tabReportBtn.addEventListener("click", () => setActiveTab("report"));
-        if (tabServicesBtn) tabServicesBtn.addEventListener("click", async () => {
-        setActiveTab("services");
-        await refreshServicesTab();
+
+        if (tabVisualBtn) tabVisualBtn.addEventListener("click", () => {
+            setActiveTab("visual");
+            renderVisualSummary();
+            setVisualStatus(selectionGeom ? "Ready." : "Select or draw an AOI first.");
         });
+
+        if (tabServicesBtn) tabServicesBtn.addEventListener("click", async () => {
+            setActiveTab("services");
+            await refreshServicesTab();
+        });
+
         if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
+        if (generateVisualBtn) generateVisualBtn.addEventListener("click", generateVisualReport);
+
 
         // UI wiring
         modeSelect.addEventListener("change", () => setMode(modeSelect.value));

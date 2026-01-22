@@ -28,6 +28,7 @@
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab-btn active" id="tabReportBtn" type="button">Report</button>
+      <button class="tab-btn" id="tabVisualBtn" type="button">Visual Report</button>
       <button class="tab-btn" id="tabServicesBtn" type="button">Services</button>
     </div>
 
@@ -98,6 +99,36 @@
 
   </section>
   
+<!-- NEW: Visual Report Tab -->
+<section id="tabVisualPanel" class="tab-panel">
+  <div class="card">
+    <div class="row space-between">
+      <div class="label">Visual Report</div>
+      <button id="generateVisualBtn" class="btn primary" type="button">Generate</button>
+    </div>
+
+    <div class="hint">
+      Creates a simple report view: AOI map + summary statistics. (Run the report first for best results.)
+    </div>
+
+    <div id="visualReportStatus" class="small" style="margin-top:10px;"></div>
+
+    <div id="visualReportMapWrap" class="visual-map-wrap hidden">
+      <img id="visualReportImg" class="visual-map-img" alt="AOI map preview" />
+      <div class="row" style="margin-top:10px;">
+        <button id="downloadMapBtn" class="btn subtle" type="button" disabled>Download map PNG</button>
+        <button id="printVisualBtn" class="btn subtle" type="button" disabled>Print</button>
+      </div>
+    </div>
+
+    <div class="card small" style="margin-top:10px;">
+      <div class="label">Summary</div>
+      <div id="visualReportSummary"></div>
+    </div>
+  </div>
+</section>
+
+
   <!-- NEW: Services Tab -->
   <section id="tabServicesPanel" class="tab-panel">
     <div class="card">

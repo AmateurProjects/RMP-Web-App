@@ -13,6 +13,7 @@
       "reportPreset": "report",
       "aoiPreset": "aoi"
     },
+
     "presets": {
       "selection": {
         "type": "simple",
@@ -22,6 +23,12 @@
           "outline": { "color": [0, 120, 212, 0.85], "width": 2 }
         }
       },
+
+      "visualReport": {
+        "paddingFactor": 1.25,
+        "screenshotWidth": 1400
+      },
+
       "report": {
         "type": "simple",
         "symbol": {
@@ -30,6 +37,7 @@
           "outline": { "color": [0, 120, 212, 0.70], "width": 1.5 }
         }
       },
+
       "aoi": {
         "type": "simple",
         "symbol": {
