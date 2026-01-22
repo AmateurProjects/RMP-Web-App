@@ -450,35 +450,40 @@ require([
             // If disabled (FeatureServer root), no handler
             if (cb.disabled) return;
 
-            cb.addEventListener("change", () => {
-                let lyr = reportLayerViews.get(l.url);
+        cb.addEventListener("change", () => {
+            let lyr = reportLayerViews.get(l.url);
 
-                // If turning ON and we don't have the layer yet, create it
-                if (cb.checked) {
-                    if (!lyr) {
-                        const cfgMatch = layerCfgByUrl.get(l.url)?.cfg;
+            if (cb.checked) {
+                // turning ON
+                if (!lyr) {
+                    const cfgMatch = layerCfgByUrl.get(l.url)?.cfg;
 
-                        lyr = new FeatureLayer({
-                            url: l.url,
-                            title: l.title,
-                            outFields: ["*"],
-                            visible: true, // will be immediately synced below
-                            renderer: getPresetRenderer("report", cfgMatch) || undefined
-                        });
+                    lyr = new FeatureLayer({
+                        url: l.url,
+                        title: l.title,
+                        outFields: ["*"],
+                        visible: true,
+                        renderer: getPresetRenderer("report", cfgMatch) || undefined
+                    });
 
-                        map.add(lyr);
-                        reportLayerViews.set(l.url, lyr);
+                    map.add(lyr);
+                    reportLayerViews.set(l.url, lyr);
 
-                        const spin = document.getElementById(`rptlayer_spin_${i}`);
-                        wireLayerUpdatingSpinner(lyr, spin);
+                    const spin = document.getElementById(`rptlayer_spin_${i}`);
+                    wireLayerUpdatingSpinner(lyr, spin);
 
-                        ensureAoiOnTop(map);
-                    }
+                    ensureAoiOnTop(map);
+                } else {
+                    lyr.visible = true;
                 }
-
-                // ✅ One source of truth: checkbox state
-                if (lyr) lyr.visible = cb.checked;
-            });
+            } else {
+                // turning OFF — remove from map so it *actually disappears*
+                if (lyr) {
+                    map.remove(lyr);
+                    reportLayerViews.delete(l.url);
+                }
+            }
+        });
         });
     }
 
