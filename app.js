@@ -463,7 +463,8 @@ require([
         // We will show it in the list but disable the checkbox to avoid confusion.
         reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
             const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
-            const existing = reportLayerViews.get(l.url);
+            const key = String(l.url || "").replace(/\/+$/, "");
+            const existing = reportLayerViews.get(key);
             const checked = existing ? (existing.visible ? "checked" : "") : "";
             const disabled = isRoot ? "disabled" : "";
             const note = isRoot ? ` <span class="small">(service root; not drawable)</span>` : "";
@@ -484,40 +485,51 @@ require([
             // If disabled (FeatureServer root), no handler
             if (cb.disabled) return;
 
-        cb.addEventListener("change", () => {
-            let lyr = reportLayerViews.get(l.url);
+            // Normalize URL key so get/set/delete always match (trailing slash is the usual culprit)
+            const key = String(l.url || "").replace(/\/+$/, "");
 
-            if (cb.checked) {
-                // turning ON
-                if (!lyr) {
-                    const cfgMatch = layerCfgByUrl.get(l.url)?.cfg;
+            cb.addEventListener("change", () => {
+                let lyr = reportLayerViews.get(key);
 
-                    lyr = new FeatureLayer({
-                        url: l.url,
-                        title: l.title,
-                        outFields: ["*"],
-                        visible: true,
-                        renderer: getPresetRenderer("report", cfgMatch) || undefined
-                    });
+                if (cb.checked) {
+                    // turning ON
+                    if (!lyr) {
+                        const cfgMatch = layerCfgByUrl.get(key)?.cfg || layerCfgByUrl.get(l.url)?.cfg;
 
-                    map.add(lyr);
-                    reportLayerViews.set(l.url, lyr);
+                        lyr = new FeatureLayer({
+                            url: l.url,
+                            title: l.title,
+                            outFields: ["*"],
+                            visible: true,
+                            renderer: getPresetRenderer("report", cfgMatch) || undefined
+                        });
 
-                    const spin = document.getElementById(`rptlayer_spin_${i}`);
-                    wireLayerUpdatingSpinner(lyr, spin);
+                        map.add(lyr);
+                        reportLayerViews.set(key, lyr);
 
-                    ensureAoiOnTop(map);
+                        const spin = document.getElementById(`rptlayer_spin_${i}`);
+                        wireLayerUpdatingSpinner(lyr, spin);
+
+                        ensureAoiOnTop(map);
+                    } else {
+                        lyr.visible = true;
+                    }
                 } else {
-                    lyr.visible = true;
+                    // turning OFF — remove from map so it *actually disappears*
+                    if (lyr) {
+                        map.remove(lyr);
+                        reportLayerViews.delete(key);
+                    } else {
+                        // defensive cleanup: if for some reason we missed the reference, try removing by URL match
+                        const toRemove = map.layers
+                            .toArray()
+                            .find(x => x?.type === "feature" && String(x?.url || "").replace(/\/+$/, "") === key);
+
+                        if (toRemove) map.remove(toRemove);
+                        reportLayerViews.delete(key);
+                    }
                 }
-            } else {
-                // turning OFF — remove from map so it *actually disappears*
-                if (lyr) {
-                    map.remove(lyr);
-                    reportLayerViews.delete(l.url);
-                }
-            }
-        });
+            });
         });
     }
 
