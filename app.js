@@ -412,17 +412,51 @@ require([
             `;
         }).join("");
 
-        (selectionLayers || []).forEach((e, i) => {
-            const cb = document.getElementById(`sellayer_${i}`);
-            if (!cb) return;
-            cb.addEventListener("change", () => {
-                e.layer.visible = cb.checked;
-            });
+    (selectionLayers || []).forEach((e, i) => {
+        const cb = document.getElementById(`sellayer_${i}`);
+        if (!cb) return;
 
-            // spinner wiring (shows while layer view is updating)
-            const spin = document.getElementById(`sellayer_spin_${i}`);
-            wireLayerUpdatingSpinner(e.layer, spin);
+        cb.addEventListener("change", async () => {
+            const isOnMap = map.layers.includes(e.layer);
+
+            if (cb.checked) {
+                // turning ON — add to map if not present
+                if (!isOnMap) map.add(e.layer);
+                e.layer.visible = true;
+                ensureAoiOnTop(map);
+
+                // If nothing is active, make this the active selection layer
+                if (!activeSelectionLayer) {
+                    selectionLayerSelect.value = String(i);
+                    await setActiveSelectionLayerByIndex(i);
+                }
+            } else {
+                // turning OFF — remove from map so it *actually disappears*
+                if (isOnMap) map.remove(e.layer);
+
+                // If the user just removed the active selection layer,
+                // switch active selection to the next available ON-map layer (or null).
+                if (activeSelectionLayer === e.layer) {
+                    activeSelectionLayer = null;
+                    activeSelectionLayerView = null;
+
+                    // find first selection layer currently ON the map
+                    const nextIdx = (selectionLayers || []).findIndex(x => map.layers.includes(x.layer));
+                    if (nextIdx >= 0) {
+                        selectionLayerSelect.value = String(nextIdx);
+                        await setActiveSelectionLayerByIndex(nextIdx);
+                    } else {
+                        setGeometryFromSelection(null);
+                        setStatus("no selection layers visible (turn one on)");
+                    }
+                }
+            }
         });
+
+        // spinner wiring (shows while layer view is updating)
+        const spin = document.getElementById(`sellayer_spin_${i}`);
+        wireLayerUpdatingSpinner(e.layer, spin);
+    });
 
         // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
         // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
@@ -745,29 +779,64 @@ require([
         exportAllBtn.disabled = true;
         lastReportRowsByLayer = [];
 
-        const reportCfgs = config.reportLayers || [];
-        const expandedTargets = [];
+    const combinedCfgs = [
+        ...(config.reportLayers || []),
+        ...(config.selectionLayers || [])
+    ];
 
-        // Expand FeatureServer roots into sublayers
-        for (const cfg of reportCfgs) {
-            if (isFeatureServerRoot(cfg.url)) {
-                try {
-                    const sublayers = await expandServiceToSublayers(cfg.url);
-                    sublayers.forEach(sl => expandedTargets.push({
-                        title: `${cfg.title}: ${sl.title}`,
-                        url: sl.url
-                    }));
-                } catch (e) {
-                    expandedTargets.push({
-                        title: `${cfg.title} (FAILED to expand)`,
-                        url: cfg.url,
-                        error: e
-                    });
-                }
-            } else {
-                expandedTargets.push({ title: cfg.title, url: cfg.url });
+    // De-duplicate by URL (same service could appear in both lists)
+    const seenUrls = new Set();
+    const reportCfgs = combinedCfgs.filter(l => {
+        const url = String(l?.url || "");
+        if (!url) return false;
+        if (seenUrls.has(url)) return false;
+        seenUrls.add(url);
+        return true;
+    });
+
+    const expandedTargets = [];
+
+    // Expand service roots into sublayers
+    for (const cfg of reportCfgs) {
+        const url = String(cfg.url || "");
+
+        if (isFeatureServerRoot(url)) {
+            try {
+                const sublayers = await expandServiceToSublayers(url);
+                sublayers.forEach(sl => expandedTargets.push({
+                    title: `${cfg.title}: ${sl.title}`,
+                    url: sl.url
+                }));
+            } catch (e) {
+                expandedTargets.push({
+                    title: `${cfg.title} (FAILED to expand)`,
+                    url,
+                    error: e
+                });
             }
+            continue;
         }
+
+        if (isMapServerRoot(url)) {
+            try {
+                // For reporting, include ALL sublayers (not polygonOnly)
+                const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
+                subs.forEach(sl => expandedTargets.push({
+                    title: `${cfg.title}: ${sl.title}`,
+                    url: sl.url
+                }));
+            } catch (e) {
+                expandedTargets.push({
+                    title: `${cfg.title} (FAILED to expand)`,
+                    url,
+                    error: e
+                });
+            }
+            continue;
+        }
+
+        expandedTargets.push({ title: cfg.title, url });
+    }
 
         const cards = [];
         for (let i = 0; i < expandedTargets.length; i++) {
