@@ -8,7 +8,7 @@ require([
     "esri/widgets/Sketch",
     "esri/widgets/BasemapToggle",
     "esri/Graphic"
-], function (Map, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic) {
+], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic) {
 
     // ---------- DOM ----------
     const modeSelect = document.getElementById("modeSelect");
@@ -1229,7 +1229,7 @@ require([
         config = await fetchJson("./config.json");
         layerCfgByUrl = buildLayerCfgIndex(config);
 
-        const map = new Map({ basemap: config.map?.basemap || "gray-vector" });
+        const map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
 
         view = new MapView({
             container: "viewDiv",
