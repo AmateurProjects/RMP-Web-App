@@ -12,7 +12,10 @@ require([
 
     // ---------- DOM ----------
     const modeSelect = document.getElementById("modeSelect");
-    const selectionLayerSelect = document.getElementById("selectionLayerSelect");
+    // PLSS selection tools (Township / Section / Intersected)
+    const plssTownshipBtn = document.getElementById("plssTownshipBtn");
+    const plssSectionBtn = document.getElementById("plssSectionBtn");
+    const plssIntersectedBtn = document.getElementById("plssIntersectedBtn");
     const selectModeControls = document.getElementById("selectModeControls");
     const drawModeControls = document.getElementById("drawModeControls");
 
@@ -117,6 +120,24 @@ require([
             "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;"
         }[c]));
     }
+
+    function normalize(s){ return String(s || "").toLowerCase(); }
+
+    function findSelectionLayerIndexByNameIncludes(needle) {
+        const n = normalize(needle);
+        return (selectionLayers || []).findIndex(e => normalize(e?.cfg?.title).includes(n));
+    }
+
+    function setPlssToolActive(which) {
+        const set = (btn, on) => {
+            if (!btn) return;
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+        };
+        set(plssTownshipBtn, which === "township");
+        set(plssSectionBtn, which === "section");
+        set(plssIntersectedBtn, which === "intersected");
+    }
+
 
     function hideMapPopup() {
         if (!mapPopupEl) return;
@@ -276,6 +297,37 @@ require([
         // Put AOI layer at top draw order
         map.reorder(aoiLayer, map.layers.length - 1);
     }
+
+        // Wire PLSS selection tools to actual PLSS sublayers
+        const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
+        const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
+        const intersectedIdx = findSelectionLayerIndexByNameIncludes("intersected"); // "PLSS Intersected"
+
+        if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", async () => {
+            if (townshipIdx >= 0) await setActiveSelectionLayerByIndex(townshipIdx);
+            setPlssToolActive("township");
+        });
+
+        if (plssSectionBtn) plssSectionBtn.addEventListener("click", async () => {
+            if (sectionIdx >= 0) await setActiveSelectionLayerByIndex(sectionIdx);
+            setPlssToolActive("section");
+        });
+
+        if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", async () => {
+            if (intersectedIdx >= 0) await setActiveSelectionLayerByIndex(intersectedIdx);
+            setPlssToolActive("intersected");
+        });
+
+        // Default active tool = Township (if present)
+        if (townshipIdx >= 0) {
+            await setActiveSelectionLayerByIndex(townshipIdx);
+            setPlssToolActive("township");
+        } else {
+            // fallback to first selection layer
+            await setActiveSelectionLayerByIndex(0);
+            setPlssToolActive("township"); // best-effort UI state
+        }
+
 
     function wireLayerUpdatingSpinner(layer, spinnerEl) {
         if (!layer || !spinnerEl || !view) return;
@@ -1311,11 +1363,11 @@ require([
                 // Expand MapServer into polygon sublayers for selection
                 const subs = await expandMapServerToSublayers(url, { polygonOnly: true });
                 subs.forEach(sl => {
-                    expandedSelectionCfgs.push({
-                        title: `${cfg.title}: ${sl.title}`,
-                        url: sl.url,
-                        visible: false
-                    });
+                expandedSelectionCfgs.push({
+                    title: `${cfg.title}: ${sl.title}`,
+                    url: sl.url,
+                    visible: true
+                });
                 });
             } else {
                 expandedSelectionCfgs.push(cfg);
@@ -1337,15 +1389,9 @@ require([
         renderLayerToggles(map);
         ensureAoiOnTop(map);
 
-        // Populate selection layer dropdown
-        selectionLayerSelect.innerHTML = selectionLayers.map((e, i) =>
-            `<option value="${i}">${escapeHtml(e.cfg.title)}</option>`
-        ).join("");
 
         await view.when();
         attachClickToSelect();
-
-        await setActiveSelectionLayerByIndex(0);
 
         // Tab wiring
         if (tabReportBtn) tabReportBtn.addEventListener("click", () => setActiveTab("report"));
@@ -1367,7 +1413,6 @@ require([
 
         // UI wiring
         modeSelect.addEventListener("change", () => setMode(modeSelect.value));
-        selectionLayerSelect.addEventListener("change", () => setActiveSelectionLayerByIndex(Number(selectionLayerSelect.value)));
 
         drawBtn.addEventListener("click", () => {
             // No sketch toolbar UI; just start drawing immediately

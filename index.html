@@ -49,13 +49,30 @@
         </select>
       </div>
 
-      <div id="selectModeControls">
-        <div class="row">
-          <label class="label">Selection layer</label>
-          <select id="selectionLayerSelect"></select>
+    <div id="selectModeControls">
+      <div class="row">
+        <label class="label">PLSS select</label>
+
+        <div id="plssSelectTools" class="toolgroup" role="group" aria-label="PLSS selection layer">
+          <button id="plssTownshipBtn" class="toolbtn" type="button" aria-pressed="true" title="Township (largest)">
+            <span class="box box-lg" aria-hidden="true"></span>
+            <span class="tooltext">Township</span>
+          </button>
+
+          <button id="plssSectionBtn" class="toolbtn" type="button" aria-pressed="false" title="Section (medium)">
+            <span class="box box-md" aria-hidden="true"></span>
+            <span class="tooltext">Section</span>
+          </button>
+
+          <button id="plssIntersectedBtn" class="toolbtn" type="button" aria-pressed="false" title="PLSS Intersected (small)">
+            <span class="box box-sm" aria-hidden="true"></span>
+            <span class="tooltext">Intersected</span>
+          </button>
         </div>
-        <div class="hint">Click a polygon on the map to select it.</div>
       </div>
+
+      <div class="hint">Click a polygon on the map to select the AOI.</div>
+    </div>
 
       <div id="drawModeControls" class="hidden">
         <div class="row">

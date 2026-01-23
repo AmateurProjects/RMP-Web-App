@@ -59,6 +59,46 @@ select{
 
 .btn.subtle{ background:#fafafa; }
 
+/* ====== PLSS Selection Tools (Township / Section / Intersected) ====== */
+.toolgroup{
+  display:flex;
+  gap:8px;
+  width:100%;
+}
+
+.toolbtn{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 10px;
+  border:1px solid #ddd;
+  border-radius:12px;
+  background:#fafafa;
+  cursor:pointer;
+  font-size:13px;
+  white-space: nowrap;
+}
+
+.toolbtn:hover{ background:#eee; }
+
+.toolbtn[aria-pressed="true"]{
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+
+.tooltext{ font-size:12px; font-weight:600; }
+
+.box{
+  display:inline-block;
+  border:2px solid currentColor;
+  border-radius:4px;
+}
+
+.box-lg{ width:18px; height:18px; }
+.box-md{ width:14px; height:14px; }
+.box-sm{ width:10px; height:10px; }
+
 .status{
   margin-top:8px;
   font-size:12px;

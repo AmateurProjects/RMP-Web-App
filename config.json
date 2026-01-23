@@ -52,7 +52,7 @@
   {
     "title": "BLM Natl PLSS CadNSDI (MapServer)",
     "url": "https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer",
-    "visible": false
+    "visible": true
   }
 ],
   "reportLayers": [
