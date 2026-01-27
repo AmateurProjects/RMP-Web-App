@@ -180,13 +180,21 @@ th, td{
   border-bottom:1px solid #eee;
   padding:6px;
   vertical-align: top;
-  max-width: 180px;           /* keeps columns from exploding */
+  max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 th{ background:#fafafa; text-align:left; }
+
+/* ✅ Item 5: show full column names (wrap header text) */
+th{
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}
 
 .toggle-row {
   display:flex;
@@ -379,3 +387,39 @@ th{ background:#fafafa; text-align:left; }
   white-space: nowrap;
 }
 
+/* ====== Inspect icon toggle ====== */
+.iconbtn{
+  width: 36px;
+  height: 36px;
+  border:1px solid #ddd;
+  border-radius: 12px;
+  background:#fafafa;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+}
+.iconbtn:hover{ background:#eee; }
+.iconbtn[aria-pressed="true"]{
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+.icon-i{
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  line-height: 16px;
+}
+
+/* Screen-reader only text */
+.sr-only{
+  position:absolute;
+  width:1px; height:1px;
+  padding:0; margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}

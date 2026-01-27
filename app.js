@@ -91,7 +91,6 @@ require([
     let activeSelectionLayerView = null;
     let activeHighlightHandle = null;
 
-    let drawLayer = null;
     let sketch = null;
 
     let lastReportRowsByLayer = []; // for export-all
@@ -298,26 +297,21 @@ require([
         map.reorder(aoiLayer, map.layers.length - 1);
     }
 
-    function wireLayerUpdatingSpinner(layer, spinnerEl) {
+    async function wireLayerUpdatingSpinner(layer, spinnerEl) {
         if (!layer || !spinnerEl || !view) return;
 
-        // Wait for layerView so we can watch rendering/updating
-        layer.when(() => {
-            view.whenLayerView(layer).then((lv) => {
-                // initialize
-                spinnerEl.classList.toggle("hidden", !lv.updating);
+        try {
+            await layer.when();
+            const lv = await view.whenLayerView(layer);
 
-                // watch for changes
-                lv.watch("updating", (isUpdating) => {
-                    spinnerEl.classList.toggle("hidden", !isUpdating);
-                });
-            }).catch(() => {
-                // if layerView fails, hide spinner
-                spinnerEl.classList.add("hidden");
+            spinnerEl.classList.toggle("hidden", !lv.updating);
+
+            lv.watch("updating", (isUpdating) => {
+                spinnerEl.classList.toggle("hidden", !isUpdating);
             });
-        }).catch(() => {
+        } catch (e) {
             spinnerEl.classList.add("hidden");
-        });
+        }
     }
 
 
@@ -405,6 +399,8 @@ require([
     }
 
     function renderConfiguredLayerList() {
+        if (!layerListEl) return;
+
         const lines = [];
 
         lines.push("Selection layers:");
@@ -448,7 +444,6 @@ require([
 
                 // If nothing is active, make this the active selection layer
                 if (!activeSelectionLayer) {
-                    selectionLayerSelect.value = String(i);
                     await setActiveSelectionLayerByIndex(i);
                 }
             } else {
@@ -464,7 +459,6 @@ require([
                     // find first selection layer currently ON the map
                     const nextIdx = (selectionLayers || []).findIndex(x => map.layers.includes(x.layer));
                     if (nextIdx >= 0) {
-                        selectionLayerSelect.value = String(nextIdx);
                         await setActiveSelectionLayerByIndex(nextIdx);
                     } else {
                         setGeometryFromSelection(null);
@@ -1018,6 +1012,125 @@ require([
         return String(name).replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "export";
     }
 
+
+    function getVisualSummaryLines() {
+        // Uses the same stats as renderVisualSummary(), but returns plain text lines for PNG.
+        if (!selectionGeom) return ["No AOI selected."];
+
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            return ["Run the report to populate layer counts."];
+        }
+
+        const totalLayers = lastReportRowsByLayer.length;
+        const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0);
+        const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+
+        const top = layersWithHits
+            .slice()
+            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .slice(0, 10);
+
+        const lines = [
+            `Layers queried: ${totalLayers}`,
+            `Layers with hits: ${layersWithHits.length}`,
+            `Total intersecting features (sum of counts): ${totalHits}`,
+            ""
+        ];
+
+        if (top.length) {
+            lines.push("Top layers:");
+            top.forEach(x => lines.push(`• ${x.title} (${x.count || 0})`));
+        } else {
+            lines.push("(No intersect hits.)");
+        }
+
+        return lines;
+    }
+
+    function wrapText(ctx, text, maxWidth) {
+        const words = String(text || "").split(/\s+/).filter(Boolean);
+        if (!words.length) return [""];
+
+        const lines = [];
+        let line = words[0];
+
+        for (let i = 1; i < words.length; i++) {
+            const test = line + " " + words[i];
+            if (ctx.measureText(test).width <= maxWidth) line = test;
+            else { lines.push(line); line = words[i]; }
+        }
+        lines.push(line);
+        return lines;
+    }
+
+    async function buildVisualPngWithSummary(mapDataUrl) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        await new Promise((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = (e) => reject(e);
+            img.src = mapDataUrl;
+        });
+
+        const padding = 18;
+        const lineH = 18;
+        const titleH = 22;
+
+        // Create a canvas the same width as the screenshot
+        const w = img.naturalWidth || img.width;
+        const summaryLines = getVisualSummaryLines();
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        // Set fonts for measuring/wrapping
+        ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+
+        // Wrap lines to fit
+        const maxTextWidth = w - padding * 2;
+        const wrapped = [];
+        for (const line of summaryLines) {
+            if (!line) { wrapped.push(""); continue; }
+            wrapText(ctx, line, maxTextWidth).forEach(x => wrapped.push(x));
+        }
+
+        const summaryBlockH = padding + titleH + (wrapped.length * lineH) + padding;
+
+        canvas.width = w;
+        canvas.height = img.height + summaryBlockH;
+
+        // Background
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw map screenshot
+        ctx.drawImage(img, 0, 0);
+
+        // Draw summary panel background
+        const y0 = img.height;
+        ctx.fillStyle = "rgba(255,255,255,0.96)";
+        ctx.fillRect(0, y0, canvas.width, summaryBlockH);
+
+        // Summary title
+        ctx.fillStyle = "#111111";
+        ctx.font = "700 16px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+        ctx.fillText("Visual Report Summary", padding, y0 + padding + 16);
+
+        // Summary lines
+        ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+        let y = y0 + padding + titleH;
+
+        for (const line of wrapped) {
+            if (!line) { y += lineH; continue; }
+            ctx.fillText(line, padding, y);
+            y += lineH;
+        }
+
+        return canvas.toDataURL("image/png");
+    }
+
+
     function setVisualStatus(msg) {
         if (visualReportStatusEl) visualReportStatusEl.textContent = msg || "";
     }
@@ -1095,7 +1208,10 @@ require([
 
             if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
-            if (visualReportImgEl) visualReportImgEl.src = dataUrl;
+            // ✅ Item 6: bake summary stats into the PNG
+            const combinedUrl = await buildVisualPngWithSummary(dataUrl);
+
+            if (visualReportImgEl) visualReportImgEl.src = combinedUrl;
             if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
 
             // Enable download
@@ -1103,8 +1219,8 @@ require([
                 downloadMapBtn.disabled = false;
                 downloadMapBtn.onclick = () => {
                     const a = document.createElement("a");
-                    a.href = dataUrl;
-                    a.download = "AOI_map.png";
+                    a.href = combinedUrl;
+                    a.download = "AOI_map_with_summary.png";
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -1137,7 +1253,9 @@ require([
                     </head>
                     <body>
                         <h1>Visual Report</h1>
-                        <div class="section"><img src="${dataUrl}" alt="AOI map" /></div>
+                        <div class="section">
+                        <img src="${combinedUrl}" alt="AOI map" />
+                        </div>
                         <div class="section">${summaryHtml}</div>
                         <script>window.onload = () => window.print();</script>
                     </body>
@@ -1266,7 +1384,7 @@ require([
         if (inspectBtn) {
             inspectBtn.addEventListener("click", () => {
                 inspectEnabled = !inspectEnabled;
-                inspectBtn.textContent = inspectEnabled ? "Inspect: On" : "Inspect: Off";
+                inspectBtn.title = inspectEnabled ? "Inspect: On" : "Inspect: Off";
                 inspectBtn.setAttribute("aria-pressed", inspectEnabled ? "true" : "false");
                 if (!inspectEnabled) hideMapPopup();
             });
@@ -1441,31 +1559,28 @@ require([
 
 
         // UI wiring
-        modeSelect.addEventListener("change", () => setMode(modeSelect.value));
+        if (modeSelect) {
+            modeSelect.addEventListener("change", () => setMode(modeSelect.value));
+        }
 
-        drawBtn.addEventListener("click", () => {
-            // No sketch toolbar UI; just start drawing immediately
-            if (modeSelect.value !== "draw") modeSelect.value = "draw";
-            setMode("draw"); // will start drawing automatically
-        });
-
-        stopDrawBtn.addEventListener("click", () => {
-            sketch.cancel();
-            setStatus("draw stopped");
-        });
-
-        runBtn.addEventListener("click", runReport);
-        clearBtn.addEventListener("click", clearAll);
-
-        // Inspect button toggles informational click behavior
-        if (inspectBtn) {
-            inspectBtn.addEventListener("click", () => {
-                inspectEnabled = !inspectEnabled;
-                inspectBtn.textContent = inspectEnabled ? "Inspect: On" : "Inspect: Off";
-                inspectBtn.setAttribute("aria-pressed", inspectEnabled ? "true" : "false");
-                if (!inspectEnabled) hideMapPopup();
+        if (drawBtn) {
+            drawBtn.addEventListener("click", () => {
+                // No sketch toolbar UI; just start drawing immediately
+                if (modeSelect && modeSelect.value !== "draw") modeSelect.value = "draw";
+                setMode("draw"); // will start drawing automatically
             });
         }
+
+        if (stopDrawBtn) {
+            stopDrawBtn.addEventListener("click", () => {
+                if (sketch) sketch.cancel();
+                setStatus("draw stopped");
+            });
+        }
+
+        if (runBtn) runBtn.addEventListener("click", runReport);
+        if (clearBtn) clearBtn.addEventListener("click", clearAll);
+
 
         exportAllBtn.addEventListener("click", async () => {
             if (!lastReportRowsByLayer.length) return;
