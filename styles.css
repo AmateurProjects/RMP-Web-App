@@ -379,13 +379,23 @@ th{
   width: 100%;
 }
 
-.result-table th,
-.result-table td{
+/* Keep data cells compact */
+.result-table td {
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Show FULL column names in headers */
+.result-table th {
+  max-width: none;          /* allow header to grow */
+  white-space: normal;      /* allow wrapping */
+  overflow: visible;        /* don't clip */
+  text-overflow: unset;     /* no ellipsis */
+  word-break: break-word;   /* wrap long field names */
+}
+
 
 /* ====== Inspect icon toggle ====== */
 .iconbtn{
