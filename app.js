@@ -89,7 +89,6 @@ require([
     let selectionLayers = []; // { cfg, layer }
     let activeSelectionLayer = null; // FeatureLayer
     let activeSelectionLayerView = null;
-    let activeHighlightHandle = null;
 
     let sketch = null;
 
@@ -347,16 +346,9 @@ require([
         }));
     }
 
-    function clearHighlight() {
-        if (activeHighlightHandle) {
-            activeHighlightHandle.remove();
-            activeHighlightHandle = null;
-        }
-    }
 
     function clearAll() {
         selectionGeom = null;
-        clearHighlight();
         resultsEl.innerHTML = "";
         exportAllBtn.disabled = true;
         lastReportRowsByLayer = [];
@@ -392,7 +384,6 @@ require([
         } else {
             selectModeControls.classList.add("hidden");
             drawModeControls.classList.remove("hidden");
-            clearHighlight();
             startDrawingNow(); // <-- auto start drawing immediately
         }
         // keep current selectionGeom if user switches modes intentionally
@@ -967,7 +958,6 @@ require([
                     }
 
                     btn.disabled = true;
-                    const oldStatus = statusEl.textContent;
 
                     try {
                         setStatus("exporting FULL CSV…");
@@ -1284,7 +1274,6 @@ require([
         activeSelectionLayer = entry.layer;
         activeSelectionLayerView = await view.whenLayerView(activeSelectionLayer);
 
-        clearHighlight();
         setGeometryFromSelection(null);
         setStatus("select mode: click a polygon");
     }
@@ -1314,9 +1303,6 @@ require([
 
                     const graphic = match.graphic;
                     if (!graphic || !graphic.geometry) return;
-
-                    clearHighlight();
-
                     setAoiGeometry(graphic.geometry);
                     setGeometryFromSelection(graphic.geometry);
                     setStatus("polygon selected (ready to run)");
