@@ -298,37 +298,6 @@ require([
         map.reorder(aoiLayer, map.layers.length - 1);
     }
 
-        // Wire PLSS selection tools to actual PLSS sublayers
-        const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
-        const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
-        const intersectedIdx = findSelectionLayerIndexByNameIncludes("intersected"); // "PLSS Intersected"
-
-        if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", async () => {
-            if (townshipIdx >= 0) await setActiveSelectionLayerByIndex(townshipIdx);
-            setPlssToolActive("township");
-        });
-
-        if (plssSectionBtn) plssSectionBtn.addEventListener("click", async () => {
-            if (sectionIdx >= 0) await setActiveSelectionLayerByIndex(sectionIdx);
-            setPlssToolActive("section");
-        });
-
-        if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", async () => {
-            if (intersectedIdx >= 0) await setActiveSelectionLayerByIndex(intersectedIdx);
-            setPlssToolActive("intersected");
-        });
-
-        // Default active tool = Township (if present)
-        if (townshipIdx >= 0) {
-            await setActiveSelectionLayerByIndex(townshipIdx);
-            setPlssToolActive("township");
-        } else {
-            // fallback to first selection layer
-            await setActiveSelectionLayerByIndex(0);
-            setPlssToolActive("township"); // best-effort UI state
-        }
-
-
     function wireLayerUpdatingSpinner(layer, spinnerEl) {
         if (!layer || !spinnerEl || !view) return;
 
@@ -1357,20 +1326,50 @@ require([
         const selCfgs = config.selectionLayers || [];
         const expandedSelectionCfgs = [];
 
+        // Track PLSS State Boundaries so it can be report-only (not selectable)
+        let plssStateBoundary = null; // { title, url }
+
         for (const cfg of selCfgs) {
             const url = String(cfg?.url || "");
             if (isMapServerRoot(url)) {
                 // Expand MapServer into polygon sublayers for selection
                 const subs = await expandMapServerToSublayers(url, { polygonOnly: true });
+
                 subs.forEach(sl => {
-                expandedSelectionCfgs.push({
-                    title: `${cfg.title}: ${sl.title}`,
-                    url: sl.url,
-                    visible: true
-                });
+                    const subTitle = String(sl.title || "");
+
+                    // ✅ Item 4: remove "State Boundaries" from Selection (but keep for Report)
+                    if (subTitle.toLowerCase() === "state boundaries") {
+                        plssStateBoundary = {
+                            title: `${cfg.title}: ${subTitle}`,
+                            url: sl.url
+                        };
+                        return; // skip adding to selection
+                    }
+
+                    expandedSelectionCfgs.push({
+                        title: `${cfg.title}: ${subTitle}`,
+                        url: sl.url,
+                        visible: true
+                    });
                 });
             } else {
                 expandedSelectionCfgs.push(cfg);
+            }
+        }
+
+        // ✅ Ensure State Boundaries still appears in REPORT layers
+        if (plssStateBoundary) {
+            const alreadyInReport = (config.reportLayers || []).some(r => {
+                return String(r?.url || "").replace(/\/+$/, "") === String(plssStateBoundary.url).replace(/\/+$/, "");
+            });
+
+            if (!alreadyInReport) {
+                config.reportLayers = config.reportLayers || [];
+                config.reportLayers.push({
+                    title: plssStateBoundary.title,
+                    url: plssStateBoundary.url
+                });
             }
         }
 
@@ -1392,6 +1391,36 @@ require([
 
         await view.when();
         attachClickToSelect();
+
+        // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
+        const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
+        const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
+        const intersectedIdx = findSelectionLayerIndexByNameIncludes("intersected"); // "PLSS Intersected"
+
+        if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", async () => {
+            if (townshipIdx >= 0) await setActiveSelectionLayerByIndex(townshipIdx);
+            setPlssToolActive("township");
+        });
+
+        if (plssSectionBtn) plssSectionBtn.addEventListener("click", async () => {
+            if (sectionIdx >= 0) await setActiveSelectionLayerByIndex(sectionIdx);
+            setPlssToolActive("section");
+        });
+
+        if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", async () => {
+            if (intersectedIdx >= 0) await setActiveSelectionLayerByIndex(intersectedIdx);
+            setPlssToolActive("intersected");
+        });
+
+        // Default active tool = Township (if present)
+        if (townshipIdx >= 0) {
+            await setActiveSelectionLayerByIndex(townshipIdx);
+            setPlssToolActive("township");
+        } else {
+            await setActiveSelectionLayerByIndex(0);
+            setPlssToolActive("township"); // best-effort UI state
+        }
+
 
         // Tab wiring
         if (tabReportBtn) tabReportBtn.addEventListener("click", () => setActiveTab("report"));
