@@ -63,7 +63,10 @@ select{
 .toolgroup{
   display:flex;
   gap:8px;
-  width:100%;
+  flex: 1 1 auto;  /* take remaining space after the label */
+  min-width: 0;    /* allow children to shrink within */
+  overflow: hidden; /* optional: hard-stop any stray overflow */
+  flex-wrap: wrap;
 }
 
 .toolbtn{
