@@ -1390,6 +1390,34 @@ async function autoZoomToLayerMinVisible(layer) {
         }
     }
 
+async function getFullFeatureGeometryFromLayer(layer, graphic) {
+    if (!layer || !graphic) return graphic?.geometry || null;
+
+    // Identify the layer’s ObjectID field and read the OID off the hitTest graphic
+    const oidField = layer.objectIdField || "OBJECTID";
+    const oid = graphic?.attributes?.[oidField];
+
+    // If we can’t determine OID, fall back to whatever we have
+    if (oid == null) return graphic?.geometry || null;
+
+    try {
+        const q = layer.createQuery();
+        q.objectIds = [oid];
+        q.returnGeometry = true;
+        q.outFields = [oidField];
+        q.outSpatialReference = view?.spatialReference; // match the view SR
+        // Important: reduce generalization. 0 means “don’t generalize” (service-dependent).
+        // If 0 causes issues, set something small like 0.1 or omit.
+        q.maxAllowableOffset = 0;
+
+        const fs = await layer.queryFeatures(q);
+        const feat = fs?.features?.[0];
+        return feat?.geometry || graphic?.geometry || null;
+    } catch (e) {
+        console.warn("Full-geometry query failed; falling back to hit geometry", e);
+        return graphic?.geometry || null;
+    }
+}
 
     // ---------- Selection layer setup ----------
     async function setActiveSelectionLayerByIndex(idx) {
@@ -1422,16 +1450,21 @@ async function autoZoomToLayerMinVisible(layer) {
                     r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer
                 );
 
-                if (match) {
-                    const graphic = match.graphic;
-                    if (!graphic || !graphic.geometry) return;
-                    setAoiGeometry(graphic.geometry);
-                    setGeometryFromSelection(graphic.geometry);
-                    aoiSource = "select";
-                    aoiSourceLayerTitle = activeSelectionLayer?.title || null;
-                    setStatus("polygon selected (ready to run)");
-                    return;
-                }
+        if (match) {
+            const graphic = match.graphic;
+            if (!graphic) return;
+        
+            // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
+            const fullGeom = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
+            if (!fullGeom) return;
+        
+            setAoiGeometry(fullGeom);
+            setGeometryFromSelection(fullGeom);
+            aoiSource = "select";
+            aoiSourceLayerTitle = activeSelectionLayer?.title || null;
+            setStatus("polygon selected (ready to run)");
+            return;
+        }
 
 
             } catch (e) {
