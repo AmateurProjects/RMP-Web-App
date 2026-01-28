@@ -612,5 +612,5 @@ function renderLayerToggles(map) {
             }
         });
     });
-}
-
+    }
+});
