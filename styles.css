@@ -77,6 +77,13 @@ select{
   cursor:pointer;
   font-size:13px;
   white-space: nowrap;
+  flex: 1 1 0;     /* let buttons share row width */
+  min-width: 0;    /* allow internal text to shrink */
+}
+
+.tooltext{
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .toolbtn:hover{ background:#eee; }

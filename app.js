@@ -35,7 +35,6 @@ require([
     const busyIndicatorEl = document.getElementById("busyIndicator");
 
     const resultsEl = document.getElementById("results");
-    const layerListEl = document.getElementById("layerList");
     const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
     const reportLayerTogglesEl = document.getElementById("reportLayerToggles");
 
@@ -389,20 +388,6 @@ require([
         // keep current selectionGeom if user switches modes intentionally
     }
 
-    function renderConfiguredLayerList() {
-        if (!layerListEl) return;
-
-        const lines = [];
-
-        lines.push("Selection layers:");
-        (config.selectionLayers || []).forEach(l => lines.push("  - " + l.title));
-
-        lines.push("");
-        lines.push("Report layers:");
-        (config.reportLayers || []).forEach(l => lines.push("  - " + l.title));
-
-        layerListEl.textContent = lines.join("\n");
-    }
 
     function renderLayerToggles(map) {
         // Guard: if the HTML containers don't exist, do nothing
@@ -1618,7 +1603,6 @@ require([
 
 
         setMode("select");
-        renderConfiguredLayerList();
         setStatus("ready");
 
         // Preload service status once (optional). Keeps Services tab fast.
