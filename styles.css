@@ -3,7 +3,8 @@ html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
 #panel{
   position:absolute;
   top:12px; right:12px;
-  width:420px;
+  width:520px;
+  max-width: calc(100vw - 24px); /* keep it inside the viewport */
   max-height: calc(100% - 24px);
   overflow:auto;
   background:#fff;
@@ -65,8 +66,8 @@ select{
   gap:8px;
   flex: 1 1 auto;  /* take remaining space after the label */
   min-width: 0;    /* allow children to shrink within */
-  overflow: hidden; /* optional: hard-stop any stray overflow */
-  flex-wrap: wrap;
+  overflow: visible;
+  flex-wrap: nowrap;
 }
 
 .toolbtn{
@@ -80,13 +81,14 @@ select{
   cursor:pointer;
   font-size:13px;
   white-space: nowrap;
-  flex: 1 1 0;     /* let buttons share row width */
+  flex: 1 1 140px; /* prevents labels from collapsing */
   min-width: 0;    /* allow internal text to shrink */
 }
 
 .tooltext{
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size:12px;
+  font-weight:600;
 }
 
 .toolbtn:hover{ background:#eee; }
@@ -96,8 +98,6 @@ select{
   color:#fff;
   border-color:#111;
 }
-
-.tooltext{ font-size:12px; font-weight:600; }
 
 .box{
   display:inline-block;
