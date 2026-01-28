@@ -87,6 +87,8 @@ require([
     let selectionLayers = []; // { cfg, layer }
     let activeSelectionLayer = null; // FeatureLayer
     let activeSelectionLayerView = null;
+    let aoiSourcePlssTool = null; // "township" | "section" | "intersected" | null
+
 
     let sketch = null;
 
@@ -834,7 +836,7 @@ async function autoZoomToLayerMinVisible(layer) {
     return a.slice(0, n);
     }
 
-    function makeTable(features, maxFields) {
+    function makeTable(features, maxFields, totalCount) {
         if (!features || !features.length) return `<div class="small">No sample features fetched.</div>`;
 
         const picked = sampleWithoutReplacement(features, 4);
@@ -865,11 +867,22 @@ async function autoZoomToLayerMinVisible(layer) {
             return `<tr>${tds}</tr>`;
         }).join("");
 
+        // Add an ellipsis row if there are more rows than we’re showing
+        let moreRowHtml = "";
+        const total = Number(totalCount || 0);
+        const shown = picked.length;
+
+        if (total > shown) {
+            const more = total - shown;
+            const msg = `… ${more} more row${more === 1 ? "" : "s"} (see FULL export)`;
+            moreRowHtml = `<tr><td colspan="${keys.length}" class="small" style="opacity:.8;">${escapeHtml(msg)}</td></tr>`;
+        }
+
         return `
         <div class="table-wrap">
             <table class="result-table">
             <thead><tr>${th}</tr></thead>
-            <tbody>${rows}</tbody>
+            <tbody>${rows}${moreRowHtml}</tbody>
             </table>
         </div>
         `;
@@ -941,13 +954,13 @@ async function autoZoomToLayerMinVisible(layer) {
 
 
     // ---------- Query logic ----------
-    async function querySingleLayer(layerUrl, layerTitle, geom, options = {}) {
+    async function querySingleLayer(layerUrl, layerTitle, geom, spatialRel = "intersects") {
         const applyTouchFilter = !!options.applyTouchFilter;        
         const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
 
         const q = layer.createQuery();
         q.geometry = geom;
-        q.spatialRelationship = "intersects";
+        q.spatialRelationship = spatialRel;
         q.outFields = ["*"];
         q.returnGeometry = true; // needed for touching-only filter
         q.returnGeomertry = applyTouchFilter;
@@ -1057,7 +1070,16 @@ async function autoZoomToLayerMinVisible(layer) {
 
             try {
             const plss = isPlssLayerTitleOrUrl(t.title, t.url);
-            const r = await querySingleLayer(t.url, t.title, selectionGeom, { applyTouchFilter: plss });
+            const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
+
+            // Only tighten the relationship in the specific failing case:
+            // AOI chosen from Township/Section, and target layer is PLSS Intersected.
+            const spatialRel =
+                (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
+                    ? "within"
+                    : "intersects";
+
+            const r = await querySingleLayer(t.url, t.title, selectionGeom, spatialRel);
             const rows = flattenAttributes(r.features);
 
             // Store sample rows PLUS the objects we need for FULL export paging
@@ -1073,13 +1095,22 @@ async function autoZoomToLayerMinVisible(layer) {
 
 
                 const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
-                const tableHtml = (r.features && r.features.length) ? makeTable(r.features, maxFields) : `<div class="small">No sample rows.</div>`;
+                const tableHtml = (r.features && r.features.length)
+                    ? makeTable(r.features, maxFields, r.count)
+                    : `<div class="small">No sample rows.</div>`;
 
                 cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
-              <div class="badge">count: <b>${r.count}</b></div>
+                <div class="badge">
+                count: <b>${r.count}</b>
+                ${
+                    (config.report?.maxExportFeatures && r.count > config.report.maxExportFeatures)
+                    ? `<span class="small" style="margin-left:8px; opacity:.85;">(FULL export capped at ${config.report.maxExportFeatures})</span>`
+                    : ``
+                }
+                </div>
             </div>
                 <div class="small mono">
                 <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
@@ -1697,6 +1728,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         // Set as active selection layer
         if (idxToEnable >= 0) {
             await setActiveSelectionLayerByIndex(idxToEnable);
+            aoiSourcePlssTool = which; // <-- ADD: remember which PLSS tool is driving AOI selection
             setPlssToolActive(which);
 
             // Auto-zoom to minimum visible zoom level (using layer.minScale)
