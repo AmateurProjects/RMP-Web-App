@@ -86,7 +86,8 @@ require([
     let sketch = null;
 
     let lastReportRowsByLayer = []; // for export-all
-    let reportLayerViews = new Map(); // url -> FeatureLayer (only if user toggles it on for map visibility)
+    let reportLayerViews = new Map(); 
+    // key -> FeatureLayer OR FeatureLayer[] (for FeatureServer/MapServer roots that expand into multiple drawable layers)
 
 
     // ---------- Helpers ----------
@@ -369,6 +370,32 @@ async function autoZoomToLayerMinVisible(layer) {
         }));
     }
 
+    // Expand a FeatureServer root into polygon sublayers (drawable FeatureLayer URLs).
+    async function expandFeatureServerToPolygonSublayers(serviceUrl) {
+        const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
+        const info = await fetchJson(pjsonUrl);
+        const layers = Array.isArray(info?.layers) ? info.layers : [];
+
+        const out = [];
+        for (const l of layers) {
+            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
+
+            try {
+                const lpjson = await fetchJson(layerUrl + "?f=pjson");
+                const g = String(lpjson?.geometryType || "").toLowerCase();
+                if (!g.includes("polygon")) continue;
+            } catch (e) {
+                continue;
+            }
+
+            out.push({
+                title: l?.name ? String(l.name) : `Layer ${l.id}`,
+                url: layerUrl
+            });
+        }
+
+        return out;
+    }
 
     function clearAll() {
         selectionGeom = null;
@@ -478,12 +505,23 @@ async function autoZoomToLayerMinVisible(layer) {
         // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
         // We will show it in the list but disable the checkbox to avoid confusion.
         reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
-            const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
-            const key = String(l.url || "").replace(/\/+$/, "");
-            const existing = reportLayerViews.get(key);
-            const checked = existing ? (existing.visible ? "checked" : "") : "";
-            const disabled = isRoot ? "disabled" : "";
-            const note = isRoot ? ` <span class="small">(service root; not drawable)</span>` : "";
+        const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
+        const key = String(l.url || "").replace(/\/+$/, "");
+        const existing = reportLayerViews.get(key);
+
+        // If existing is an array (expanded root), consider it checked if any layer exists
+        const isChecked =
+            Array.isArray(existing) ? (existing.length > 0) :
+            existing ? !!existing.visible :
+            false;
+
+        const checked = isChecked ? "checked" : "";
+
+        // ✅ Do NOT disable FeatureServer roots anymore (we will expand them to drawable polygon sublayers)
+        const disabled = ""; 
+
+        // Update note text
+        const note = isRoot ? ` <span class="small">(expands to polygon sublayers)</span>` : "";
 
             return `
                 <div class="toggle-row">
@@ -499,17 +537,53 @@ async function autoZoomToLayerMinVisible(layer) {
             const cb = document.getElementById(`rptlayer_${i}`);
             if (!cb) return;
 
-            // If disabled (FeatureServer root), no handler
-            if (cb.disabled) return;
-
             // Normalize URL key so get/set/delete always match (trailing slash is the usual culprit)
             const key = String(l.url || "").replace(/\/+$/, "");
 
-            cb.addEventListener("change", () => {
-                let lyr = reportLayerViews.get(key);
+        cb.addEventListener("change", async () => {
+            const key = String(l.url || "").replace(/\/+$/, "");
 
-                if (cb.checked) {
-                    // turning ON
+            // Spinner element for this row
+            const spin = document.getElementById(`rptlayer_spin_${i}`);
+
+            if (cb.checked) {
+                // turning ON
+                try {
+                    if (spin) spin.classList.remove("hidden");
+
+                    // ROOT = expand to polygon sublayers and add them all
+                    if (isFeatureServerRoot(l.url)) {
+                        const subs = await expandFeatureServerToPolygonSublayers(l.url);
+
+                        const cfgMatch = layerCfgByUrl.get(key)?.cfg || layerCfgByUrl.get(l.url)?.cfg;
+
+                        const created = subs.map(sl => new FeatureLayer({
+                            url: sl.url,
+                            title: `${l.title}: ${sl.title}`,
+                            outFields: ["*"],
+                            visible: true,
+                            renderer: getPresetRenderer("report", cfgMatch) || undefined
+                        }));
+
+                        created.forEach(lyr => map.add(lyr));
+                        reportLayerViews.set(key, created);
+
+                        // optional: wire spinner to the first layer (good enough)
+                        if (created.length && spin) wireLayerUpdatingSpinner(created[0], spin);
+
+                        ensureAoiOnTop(map);
+                        return;
+                    }
+
+                    // (Optional later) handle MapServer roots similarly if you ever add one as a root in report list
+                    // else: normal single FeatureLayer URL
+                    let lyr = reportLayerViews.get(key);
+                    if (Array.isArray(lyr)) {
+                        // shouldn't happen for non-root, but be defensive
+                        lyr.forEach(x => map.add(x));
+                        return;
+                    }
+
                     if (!lyr) {
                         const cfgMatch = layerCfgByUrl.get(key)?.cfg || layerCfgByUrl.get(l.url)?.cfg;
 
@@ -524,29 +598,42 @@ async function autoZoomToLayerMinVisible(layer) {
                         map.add(lyr);
                         reportLayerViews.set(key, lyr);
 
-                        const spin = document.getElementById(`rptlayer_spin_${i}`);
-                        wireLayerUpdatingSpinner(lyr, spin);
-
+                        if (spin) wireLayerUpdatingSpinner(lyr, spin);
                         ensureAoiOnTop(map);
                     } else {
                         lyr.visible = true;
                     }
-                } else {
-                    // turning OFF — remove from map so it *actually disappears*
-                    if (lyr) {
-                        map.remove(lyr);
-                        reportLayerViews.delete(key);
-                    } else {
-                        // defensive cleanup: if for some reason we missed the reference, try removing by URL match
-                        const toRemove = map.layers
-                            .toArray()
-                            .find(x => x?.type === "feature" && String(x?.url || "").replace(/\/+$/, "") === key);
-
-                        if (toRemove) map.remove(toRemove);
-                        reportLayerViews.delete(key);
-                    }
+                } catch (e) {
+                    console.error(e);
+                    setStatus("failed to enable report layer (see console)");
+                    cb.checked = false;
+                } finally {
+                    if (spin) spin.classList.add("hidden");
                 }
-            });
+
+            } else {
+                // turning OFF — remove from map
+                const lyr = reportLayerViews.get(key);
+
+                if (Array.isArray(lyr)) {
+                    lyr.forEach(x => { try { map.remove(x); } catch (e) {} });
+                    reportLayerViews.delete(key);
+                    return;
+                }
+
+                if (lyr) {
+                    map.remove(lyr);
+                    reportLayerViews.delete(key);
+                } else {
+                    // defensive cleanup by URL match
+                    const toRemove = map.layers
+                        .toArray()
+                        .find(x => x?.type === "feature" && String(x?.url || "").replace(/\/+$/, "") === key);
+
+                    if (toRemove) map.remove(toRemove);
+                    reportLayerViews.delete(key);
+                }
+            }
         });
     }
 
