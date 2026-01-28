@@ -168,17 +168,21 @@ require([
         }
     }
 
-    async function autoZoomToLayerMinVisible(layer) {
-        if (!view || !layer) return;
+async function autoZoomToLayerMinVisible(layer) {
+    if (!view || !layer) return;
 
-        // ArcGIS uses minScale: if view.scale is GREATER than minScale, you're zoomed out too far
-        const minScale = Number(layer.minScale || 0);
-        if (!minScale || !isFinite(minScale) || minScale <= 0) return;
+    const minScale = Number(layer.minScale || 0);
+    if (!minScale || !isFinite(minScale) || minScale <= 0) return;
 
-        if (view.scale > minScale) {
-            await view.goTo({ scale: minScale }, { animate: true, duration: 450 });
-        }
+    // Nudge a bit more zoomed-in than minScale so the layer reliably renders.
+    // Smaller scale number = more zoomed in.
+    const nudgeFactor = 0.92; // 8% more zoomed in than minScale (tweak 0.90–0.95 if desired)
+    const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
+
+    if (view.scale > targetScale) {
+        await view.goTo({ scale: targetScale }, { animate: true, duration: 450 });
     }
+}
 
 
     function isFeatureServerRoot(url) {
