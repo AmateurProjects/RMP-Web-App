@@ -7,8 +7,12 @@ require([
     "esri/layers/GraphicsLayer",
     "esri/widgets/Sketch",
     "esri/widgets/BasemapToggle",
-    "esri/Graphic"
-], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic) {
+    "esri/Graphic",
+    "esri/Graphic",
+    "esri/geometry/geometryEngine"
+], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic, geometryEngine) {
+
+
 
     // ---------- DOM ----------
     const modeSelect = document.getElementById("modeSelect");
@@ -70,6 +74,8 @@ require([
 
     let view = null;
     let selectionGeom = null;
+    let aoiSource = null;            // "draw" | "select"
+    let aoiSourceLayerTitle = null;  // optional: which selection layer was clicked
     let map = null; // <-- add (so PLSS buttons can add/remove selection layers)
 
     // AOI overlay (always on top)
@@ -861,6 +867,26 @@ async function autoZoomToLayerMinVisible(layer) {
         return (features || []).map(f => (f && f.attributes) ? f.attributes : {});
     }
 
+    function getReportGeometry() {
+        if (!selectionGeom) return null;
+
+        // Only shrink when AOI was selected from PLSS (boundary-touch neighbors)
+        if (aoiSource !== "select") return selectionGeom;
+
+        // Only shrink polygons
+        if (selectionGeom.type !== "polygon") return selectionGeom;
+
+        try {
+            // Shrink inward ~1 meter so touching neighbors don't count as intersects
+            const shrunk = geometryEngine.geodesicBuffer(selectionGeom, -1, "meters");
+            return shrunk || selectionGeom;
+        } catch (e) {
+            console.warn("AOI shrink failed; using original geometry", e);
+            return selectionGeom;
+        }
+    }
+
+
     // ---------- Query logic ----------
     async function querySingleLayer(layerUrl, layerTitle, geom) {
         const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
@@ -888,7 +914,8 @@ async function autoZoomToLayerMinVisible(layer) {
 
 
     async function runReport() {
-        if (!selectionGeom) return;
+        const reportGeom = getReportGeometry();
+        if (!reportGeom) return;
 
         setBusy(true);
         setStatus("running report…");
@@ -973,8 +1000,7 @@ async function autoZoomToLayerMinVisible(layer) {
             }
 
             try {
-                const r = await querySingleLayer(t.url, t.title, selectionGeom);
-
+            const r = await querySingleLayer(t.url, t.title, reportGeom);
             const rows = flattenAttributes(r.features);
 
             // Store sample rows PLUS the objects we need for FULL export paging
@@ -1401,6 +1427,8 @@ async function autoZoomToLayerMinVisible(layer) {
                     if (!graphic || !graphic.geometry) return;
                     setAoiGeometry(graphic.geometry);
                     setGeometryFromSelection(graphic.geometry);
+                    aoiSource = "select";
+                    aoiSourceLayerTitle = activeSelectionLayer?.title || null;
                     setStatus("polygon selected (ready to run)");
                     return;
                 }
@@ -1475,6 +1503,8 @@ async function autoZoomToLayerMinVisible(layer) {
             if (evt.state === "complete") {
                 const geom = evt.graphic?.geometry || null;
                 setAoiGeometry(geom);          // ensure AOI is a single clean graphic
+                aoiSource = "draw";
+                aoiSourceLayerTitle = null;
                 setGeometryFromSelection(geom);
                 setStatus("drawn polygon ready (run report)");
             }
