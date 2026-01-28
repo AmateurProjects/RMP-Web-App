@@ -354,36 +354,6 @@ th{
   border: 1px solid #eee;
 }
 
-/* ====== Custom map popup (replaces Esri popup UI) ====== */
-.map-popup{
-  position:absolute;
-  z-index: 50;              /* above map UI */
-  max-width: 320px;
-  background: #fff;
-  border: 1px solid #eee;
-  border-radius: 14px;
-  box-shadow: 0 10px 35px rgba(0,0,0,.16);
-  padding: 10px;
-  pointer-events: auto;
-}
-
-.map-popup-close{
-  position:absolute;
-  top: 6px;
-  right: 10px;
-  border: 0;
-  background: transparent;
-  font-size: 18px;
-  line-height: 18px;
-  cursor: pointer;
-  opacity: .7;
-}
-.map-popup-close:hover{ opacity: 1; }
-
-.map-popup-content{
-  padding-right: 18px; /* room for X button */
-}
-
 .result-table{
   table-layout: fixed;
   width: 100%;
@@ -406,40 +376,3 @@ th{
   word-break: break-word;   /* wrap long field names */
 }
 
-
-/* ====== Inspect icon toggle ====== */
-.iconbtn{
-  width: 36px;
-  height: 36px;
-  border:1px solid #ddd;
-  border-radius: 12px;
-  background:#fafafa;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:0;
-}
-.iconbtn:hover{ background:#eee; }
-.iconbtn[aria-pressed="true"]{
-  background:#111;
-  color:#fff;
-  border-color:#111;
-}
-.icon-i{
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  font-weight: 800;
-  font-size: 16px;
-  line-height: 16px;
-}
-
-/* Screen-reader only text */
-.sr-only{
-  position:absolute;
-  width:1px; height:1px;
-  padding:0; margin:-1px;
-  overflow:hidden;
-  clip:rect(0,0,0,0);
-  white-space:nowrap;
-  border:0;
-}

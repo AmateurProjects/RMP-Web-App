@@ -24,11 +24,6 @@ require([
     const runBtn = document.getElementById("runBtn");
     const clearBtn = document.getElementById("clearBtn");
     const exportAllBtn = document.getElementById("exportAllBtn");
-    const inspectBtn = document.getElementById("inspectBtn");
-
-    const mapPopupEl = document.getElementById("mapPopup");
-    const mapPopupCloseEl = document.getElementById("mapPopupClose");
-    const mapPopupContentEl = document.getElementById("mapPopupContent");
 
     const statusEl = document.getElementById("status");
     const statusTextEl = document.getElementById("statusText");
@@ -75,8 +70,6 @@ require([
 
     let view = null;
     let selectionGeom = null;
-    let inspectEnabled = true;
-
 
     // AOI overlay (always on top)
     let aoiLayer = null;      // GraphicsLayer
@@ -135,30 +128,6 @@ require([
         set(plssIntersectedBtn, which === "intersected");
     }
 
-
-    function hideMapPopup() {
-        if (!mapPopupEl) return;
-        mapPopupEl.classList.add("hidden");
-    }
-
-    function showMapPopupAtEvent(event, html) {
-        if (!mapPopupEl || !mapPopupContentEl || !view) return;
-
-        mapPopupContentEl.innerHTML = html || "";
-
-        // Position relative to the view container
-        const container = view.container;
-        const rect = container.getBoundingClientRect();
-
-        // event.x / event.y are screen coords relative to the view
-        const left = rect.left + event.x + 12;
-        const top  = rect.top + event.y + 12;
-
-        mapPopupEl.style.left = `${left}px`;
-        mapPopupEl.style.top  = `${top}px`;
-
-        mapPopupEl.classList.remove("hidden");
-    }
 
 
     function isFeatureServerRoot(url) {
@@ -1268,7 +1237,6 @@ require([
 
             // If drawing AOI, let Sketch own the click experience
             if (modeSelect.value === "draw") {
-                hideMapPopup();
                 return;
             }
 
@@ -1284,8 +1252,6 @@ require([
                 );
 
                 if (match) {
-                    hideMapPopup();
-
                     const graphic = match.graphic;
                     if (!graphic || !graphic.geometry) return;
                     setAoiGeometry(graphic.geometry);
@@ -1294,36 +1260,6 @@ require([
                     return;
                 }
 
-                // NEW: If no polygon selected, only show info popup when Inspect is enabled
-                if (!inspectEnabled) {
-                    hideMapPopup();
-                    return;
-                }
-
-                // Show a minimal “inspect layers here” popup
-                const layerNames = [];
-                const seen = new Set();
-
-                results.forEach(r => {
-                    const lyr = r?.graphic?.layer;
-                    const title = lyr?.title ? String(lyr.title) : null;
-                    if (title && !seen.has(title)) {
-                        seen.add(title);
-                        layerNames.push(title);
-                    }
-                });
-
-                const html = layerNames.length
-                    ? `<div class="small">
-                        <div style="font-weight:700; margin-bottom:6px;">Layers here</div>
-                        ${layerNames.map(n => `<div>• ${escapeHtml(n)}</div>`).join("")}
-                    </div>`
-                    : `<div class="small">
-                        <div style="font-weight:700; margin-bottom:6px;">Layers here</div>
-                        <div>(No layers found at this location.)</div>
-                    </div>`;
-
-                showMapPopupAtEvent(event, html);
 
             } catch (e) {
                 console.error(e);
@@ -1351,18 +1287,6 @@ require([
         // Disable Esri popup UI; we’ll use our own minimal popup
         view.popup.autoOpenEnabled = false;
 
-        // wire inspect button    
-        if (inspectBtn) {
-            inspectBtn.addEventListener("click", () => {
-                inspectEnabled = !inspectEnabled;
-                inspectBtn.title = inspectEnabled ? "Inspect: On" : "Inspect: Off";
-                inspectBtn.setAttribute("aria-pressed", inspectEnabled ? "true" : "false");
-                if (!inspectEnabled) hideMapPopup();
-            });
-        }
-
-        // Wire custom popup close
-        if (mapPopupCloseEl) mapPopupCloseEl.addEventListener("click", hideMapPopup);
 
         // Basemap toggle (near zoom controls)
         const imageryBasemapId = config?.map?.imageryBasemap || "satellite"; // "satellite" is Esri World Imagery
