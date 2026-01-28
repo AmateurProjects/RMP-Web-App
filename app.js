@@ -88,6 +88,8 @@ require([
     let activeSelectionLayer = null; // FeatureLayer
     let activeSelectionLayerView = null;
     let aoiSourcePlssTool = null; // "township" | "section" | "intersected" | null
+    let aoiSourceLayerUrl = null;      // URL of the selection layer used to pick AOI (select mode)
+    let plssParcelLayerUrl = null;     // URL of PLSS Intersected (UI will call "Parcel")
 
 
     let sketch = null;
@@ -447,6 +449,9 @@ async function autoZoomToLayerMinVisible(layer) {
 
     function clearAll() {
         selectionGeom = null;
+        aoiSource = null;
+        aoiSourceLayerTitle = null;
+        aoiSourceLayerUrl = null;
         resultsEl.innerHTML = "";
         exportAllBtn.disabled = true;
         lastReportRowsByLayer = [];
@@ -977,10 +982,29 @@ async function autoZoomToLayerMinVisible(layer) {
         exportAllBtn.disabled = true;
         lastReportRowsByLayer = [];
 
-    const combinedCfgs = [
-        ...(config.reportLayers || []),
-        ...(config.selectionLayers || [])
-    ];
+        // Start with report layers only (State Boundaries should already be in here via init())
+        const combinedCfgs = [
+            ...(config.reportLayers || [])
+        ];
+
+        // Add ONLY the PLSS layer implied by the AOI source:
+        // - select-mode AOI: include the selection layer that was clicked
+        // - draw-mode AOI: include PLSS Intersected ("Parcel")
+        if (aoiSource === "select") {
+            if (aoiSourceLayerUrl) {
+                combinedCfgs.push({
+                    title: aoiSourceLayerTitle || "AOI Source (PLSS)",
+                    url: aoiSourceLayerUrl
+                });
+            }
+        } else if (aoiSource === "draw") {
+            if (plssParcelLayerUrl) {
+                combinedCfgs.push({
+                    title: "PLSS: Intersected", // UI rename to "Parcel" later
+                    url: plssParcelLayerUrl
+                });
+            }
+        }
 
     // De-duplicate by URL (same service could appear in both lists)
     const seenUrls = new Set();
@@ -1535,6 +1559,8 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
      setGeometryFromSelection(fullGeom);
      aoiSource = "select";
      aoiSourceLayerTitle = activeSelectionLayer?.title || null;
+     aoiSourceLayerUrl = activeSelectionLayer?.url || null;
+
     // Keep PLSS tool context in-sync even if user didn’t click the toolbar button
     if (aoiSourceLayerTitle) {
         const t = normalize(aoiSourceLayerTitle);
@@ -1697,6 +1723,9 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
     const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
     const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
     const intersectedIdx = findSelectionLayerIndexByNameIncludes("intersected"); // "PLSS Intersected"
+    plssParcelLayerUrl = (intersectedIdx >= 0) ? (selectionLayers[intersectedIdx]?.cfg?.url || null) : null;
+
+
 
     // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
     async function activatePlss(which, idxToEnable) {
