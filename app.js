@@ -90,6 +90,7 @@ require([
     let aoiSourcePlssTool = null; // "township" | "section" | "intersected" | null
     let aoiSourceLayerUrl = null;      // URL of the selection layer used to pick AOI (select mode)
     let plssParcelLayerUrl = null;     // URL of PLSS Intersected (UI will call "Parcel")
+    let plssStateLayerUrl = null;      // URL of PLSS State Boundaries (single canonical)
 
 
     let sketch = null;
@@ -982,83 +983,98 @@ async function autoZoomToLayerMinVisible(layer) {
         exportAllBtn.disabled = true;
         lastReportRowsByLayer = [];
 
-        // Start with report layers only (State Boundaries should already be in here via init())
-        const combinedCfgs = [
-            ...(config.reportLayers || [])
-        ];
+// Start with report layers only
+const combinedCfgs = [
+    ...(config.reportLayers || [])
+];
 
-        // Add ONLY the PLSS layer implied by the AOI source:
-        // - select-mode AOI: include the selection layer that was clicked
-        // - draw-mode AOI: include PLSS Intersected ("Parcel")
-        if (aoiSource === "select") {
-            if (aoiSourceLayerUrl) {
-                combinedCfgs.push({
-                    title: aoiSourceLayerTitle || "AOI Source (PLSS)",
-                    url: aoiSourceLayerUrl
-                });
-            }
-        } else if (aoiSource === "draw") {
-            if (plssParcelLayerUrl) {
-                combinedCfgs.push({
-                    title: "PLSS: Intersected", // UI rename to "Parcel" later
-                    url: plssParcelLayerUrl
-                });
-            }
-        }
-
-    // De-duplicate by URL (same service could appear in both lists)
-    const seenUrls = new Set();
-    const reportCfgs = combinedCfgs.filter(l => {
-        const url = String(l?.url || "");
-        if (!url) return false;
-        if (seenUrls.has(url)) return false;
-        seenUrls.add(url);
-        return true;
+// ✅ Ensure exactly ONE State Boundaries is included (prefer our captured URL)
+if (plssStateLayerUrl) {
+    combinedCfgs.push({
+        title: "PLSS: State Boundaries",
+        url: plssStateLayerUrl
     });
+}
 
-    const expandedTargets = [];
-
-    // Expand service roots into sublayers
-    for (const cfg of reportCfgs) {
-        const url = String(cfg.url || "");
-
-        if (isFeatureServerRoot(url)) {
-            try {
-                const sublayers = await expandServiceToSublayers(url);
-                sublayers.forEach(sl => expandedTargets.push({
-                    title: `${cfg.title}: ${sl.title}`,
-                    url: sl.url
-                }));
-            } catch (e) {
-                expandedTargets.push({
-                    title: `${cfg.title} (FAILED to expand)`,
-                    url,
-                    error: e
-                });
-            }
-            continue;
-        }
-
-        if (isMapServerRoot(url)) {
-            try {
-                // For reporting, include ALL sublayers (not polygonOnly)
-                const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
-                subs.forEach(sl => expandedTargets.push({
-                    title: `${cfg.title}: ${sl.title}`,
-                    url: sl.url
-                }));
-            } catch (e) {
-                expandedTargets.push({
-                    title: `${cfg.title} (FAILED to expand)`,
-                    url,
-                    error: e
-                });
-            }
-            continue;
-        }
-
-        expandedTargets.push({ title: cfg.title, url });
+// ✅ Add ONLY the PLSS layer implied by the AOI source:
+// - select-mode AOI: include the selection layer that was clicked
+// - draw-mode AOI: include PLSS Intersected ("Parcel")
+if (aoiSource === "select") {
+    if (aoiSourceLayerUrl) {
+        combinedCfgs.push({
+            title: aoiSourceLayerTitle || "AOI Source (PLSS)",
+            url: aoiSourceLayerUrl
+        });
     }
+} else if (aoiSource === "draw") {
+    if (plssParcelLayerUrl) {
+        combinedCfgs.push({
+            title: "PLSS: Intersected", // UI rename to "Parcel" later
+            url: plssParcelLayerUrl
+        });
+    }
+}
+
+// De-duplicate by normalized URL
+const seenUrls = new Set();
+const reportCfgs = combinedCfgs.filter(l => {
+    const url = String(l?.url || "").replace(/\/+$/, "");
+    if (!url) return false;
+    if (seenUrls.has(url)) return false;
+    seenUrls.add(url);
+    return true;
+});
+
+const expandedTargets = [];
+
+// Expand service roots into sublayers
+for (const cfg of reportCfgs) {
+    const url = String(cfg.url || "");
+
+    // ✅ Never expand the PLSS selection MapServer root into the report.
+    // We only ever want explicit PLSS sublayers: (AOI source OR Parcel) + State.
+    if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
+        // If someone accidentally added a PLSS MapServer root to reportLayers,
+        // skip it here so it can't flood the report with Township/Section/Intersected again.
+        continue;
+    }
+
+    if (isFeatureServerRoot(url)) {
+        try {
+            const sublayers = await expandServiceToSublayers(url);
+            sublayers.forEach(sl => expandedTargets.push({
+                title: `${cfg.title}: ${sl.title}`,
+                url: sl.url
+            }));
+        } catch (e) {
+            expandedTargets.push({
+                title: `${cfg.title} (FAILED to expand)`,
+                url,
+                error: e
+            });
+        }
+        continue;
+    }
+
+    if (isMapServerRoot(url)) {
+        try {
+            const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
+            subs.forEach(sl => expandedTargets.push({
+                title: `${cfg.title}: ${sl.title}`,
+                url: sl.url
+            }));
+        } catch (e) {
+            expandedTargets.push({
+                title: `${cfg.title} (FAILED to expand)`,
+                url,
+                error: e
+            });
+        }
+        continue;
+    }
+
+    expandedTargets.push({ title: cfg.title, url });
+}
 
         const cards = [];
         for (let i = 0; i < expandedTargets.length; i++) {
@@ -1671,6 +1687,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                             title: `${cfg.title}: ${subTitle}`,
                             url: sl.url
                         };
+                        plssStateLayerUrl = sl.url;
                         return; // skip adding to selection
                     }
 
