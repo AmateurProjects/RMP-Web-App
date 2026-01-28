@@ -136,6 +136,13 @@ require([
         );
     }
 
+    function isPlssIntersectedLayerTitle(title) {
+        const t = normalize(title);
+        // Match your naming: "PLSS: Intersected" etc.
+        return t.includes("intersected");
+    }
+
+
     function filterTouchingOnly(features, aoiGeom) {
         // Drops polygon features that only touch AOI at an edge/vertex (intersection area == 0)
         if (!features?.length || !aoiGeom) return features || [];
@@ -479,10 +486,6 @@ async function autoZoomToLayerMinVisible(layer) {
         }
         // keep current selectionGeom if user switches modes intentionally
     }
-
-    function filterTouchingOnly(features, aoiGeom) {
-        // Drops polygon features that only touch AOI at an edge/vertex (intersection area == 0)
-        if (!features?.length || !aoiGeom) return features || [];
 
         const EPS = 0.000001; // square-meters threshold; tiny >0 filter
 
@@ -954,17 +957,16 @@ async function autoZoomToLayerMinVisible(layer) {
 
 
     // ---------- Query logic ----------
-    async function querySingleLayer(layerUrl, layerTitle, geom, spatialRel = "intersects") {
-        const applyTouchFilter = !!options.applyTouchFilter;        
+    async function querySingleLayer(layerUrl, layerTitle, geom, spatialRel = "intersects", options = {}) {
+        const applyTouchFilter = !!options.applyTouchFilter;
         const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
 
         const q = layer.createQuery();
         q.geometry = geom;
         q.spatialRelationship = spatialRel;
         q.outFields = ["*"];
-        q.returnGeometry = true; // needed for touching-only filter
-        q.returnGeomertry = applyTouchFilter;
-
+        q.returnGeometry = applyTouchFilter; // only return geometry when filtering touching-only
+        
         const count = await layer.queryFeatureCount(q);
 
         const maxSamples = config.report?.maxSampleFeaturesPerLayer ?? 25;
@@ -1079,7 +1081,7 @@ async function autoZoomToLayerMinVisible(layer) {
                     ? "within"
                     : "intersects";
 
-            const r = await querySingleLayer(t.url, t.title, selectionGeom, spatialRel);
+            const r = await querySingleLayer(t.url, t.title, reportGeom, spatialRel);
             const rows = flattenAttributes(r.features);
 
             // Store sample rows PLUS the objects we need for FULL export paging
@@ -1538,21 +1540,28 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                     r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer
                 );
 
-        if (match) {
-            const graphic = match.graphic;
-            if (!graphic) return;
-        
-            // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
-            const fullGeom = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
-            if (!fullGeom) return;
-        
-            setAoiGeometry(fullGeom);
-            setGeometryFromSelection(fullGeom);
-            aoiSource = "select";
-            aoiSourceLayerTitle = activeSelectionLayer?.title || null;
-            setStatus("polygon selected (ready to run)");
-            return;
-        }
+ if (match) {
+     const graphic = match.graphic;
+     if (!graphic) return;
+
+     // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
+     const fullGeom = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
+     if (!fullGeom) return;
+
+     setAoiGeometry(fullGeom);
+     setGeometryFromSelection(fullGeom);
+     aoiSource = "select";
+     aoiSourceLayerTitle = activeSelectionLayer?.title || null;
+    // Keep PLSS tool context in-sync even if user didn’t click the toolbar button
+    if (aoiSourceLayerTitle) {
+        const t = normalize(aoiSourceLayerTitle);
+        if (t.includes("township")) aoiSourcePlssTool = "township";
+        else if (t.includes("section")) aoiSourcePlssTool = "section";
+        else if (t.includes("intersected")) aoiSourcePlssTool = "intersected";
+    }
+     setStatus("polygon selected (ready to run)");
+     return;
+ }
 
 
             } catch (e) {
