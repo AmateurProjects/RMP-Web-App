@@ -70,6 +70,7 @@ require([
 
     let view = null;
     let selectionGeom = null;
+    let map = null; // <-- add (so PLSS buttons can add/remove selection layers)
 
     // AOI overlay (always on top)
     let aoiLayer = null;      // GraphicsLayer
@@ -128,6 +129,56 @@ require([
         set(plssIntersectedBtn, which === "intersected");
     }
 
+    function updateSelectionToggleCheckbox(idx, checked) {
+        const cb = document.getElementById(`sellayer_${idx}`);
+        if (!cb) return;
+        cb.checked = !!checked;
+    }
+
+    function isLayerOnMap(layer) {
+        if (!map || !layer) return false;
+        return map.layers.includes(layer);
+    }
+
+    function enableSelectionLayer(idx) {
+        const entry = selectionLayers[idx];
+        if (!entry) return;
+        if (!isLayerOnMap(entry.layer)) map.add(entry.layer);
+        entry.layer.visible = true;
+        updateSelectionToggleCheckbox(idx, true);
+        ensureAoiOnTop(map);
+    }
+
+    function disableSelectionLayer(idx) {
+        const entry = selectionLayers[idx];
+        if (!entry) return;
+
+        // Remove from map (your desired behavior vs hide)
+        if (isLayerOnMap(entry.layer)) map.remove(entry.layer);
+
+        // Also mark it invisible for safety (even though removed)
+        entry.layer.visible = false;
+
+        updateSelectionToggleCheckbox(idx, false);
+
+        // If we just disabled the active selection layer, clear active pointers
+        if (activeSelectionLayer === entry.layer) {
+            activeSelectionLayer = null;
+            activeSelectionLayerView = null;
+        }
+    }
+
+    async function autoZoomToLayerMinVisible(layer) {
+        if (!view || !layer) return;
+
+        // ArcGIS uses minScale: if view.scale is GREATER than minScale, you're zoomed out too far
+        const minScale = Number(layer.minScale || 0);
+        if (!minScale || !isFinite(minScale) || minScale <= 0) return;
+
+        if (view.scale > minScale) {
+            await view.goTo({ scale: minScale }, { animate: true, duration: 450 });
+        }
+    }
 
 
     function isFeatureServerRoot(url) {
@@ -1275,7 +1326,7 @@ require([
         config = await fetchJson("./config.json");
         layerCfgByUrl = buildLayerCfgIndex(config);
 
-        const map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
+        map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
 
         view = new MapView({
             container: "viewDiv",
@@ -1405,34 +1456,62 @@ require([
         await view.when();
         attachClickToSelect();
 
-        // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
-        const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
-        const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
-        const intersectedIdx = findSelectionLayerIndexByNameIncludes("intersected"); // "PLSS Intersected"
+    // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
+    const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
+    const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
+    const intersectedIdx = findSelectionLayerIndexByNameIncludes("intersected"); // "PLSS Intersected"
 
-        if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", async () => {
-            if (townshipIdx >= 0) await setActiveSelectionLayerByIndex(townshipIdx);
-            setPlssToolActive("township");
-        });
-
-        if (plssSectionBtn) plssSectionBtn.addEventListener("click", async () => {
-            if (sectionIdx >= 0) await setActiveSelectionLayerByIndex(sectionIdx);
-            setPlssToolActive("section");
-        });
-
-        if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", async () => {
-            if (intersectedIdx >= 0) await setActiveSelectionLayerByIndex(intersectedIdx);
-            setPlssToolActive("intersected");
-        });
-
-        // Default active tool = Township (if present)
-        if (townshipIdx >= 0) {
-            await setActiveSelectionLayerByIndex(townshipIdx);
-            setPlssToolActive("township");
-        } else {
-            await setActiveSelectionLayerByIndex(0);
-            setPlssToolActive("township"); // best-effort UI state
+    // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
+    async function activatePlss(which, idxToEnable) {
+        // Force select mode (PLSS tools are select-only)
+        if (modeSelect && modeSelect.value !== "select") {
+            modeSelect.value = "select";
+            setMode("select");
         }
+
+        // Enable chosen layer even if user unchecked it earlier
+        const trio = [townshipIdx, sectionIdx, intersectedIdx].filter(i => i >= 0);
+
+        // Disable the other two first
+        for (const idx of trio) {
+            if (idx !== idxToEnable) disableSelectionLayer(idx);
+        }
+
+        // Enable the chosen one
+        if (idxToEnable >= 0) enableSelectionLayer(idxToEnable);
+
+        // Set as active selection layer
+        if (idxToEnable >= 0) {
+            await setActiveSelectionLayerByIndex(idxToEnable);
+            setPlssToolActive(which);
+
+            // Auto-zoom to minimum visible zoom level (using layer.minScale)
+            const lyr = selectionLayers[idxToEnable]?.layer;
+            await autoZoomToLayerMinVisible(lyr);
+
+            setStatus(`PLSS select: ${which} (click a polygon)`);
+        } else {
+            setPlssToolActive(which);
+            setStatus("PLSS select: layer not found in selection layers");
+        }
+    }
+
+    if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", () => activatePlss("township", townshipIdx));
+    if (plssSectionBtn) plssSectionBtn.addEventListener("click", () => activatePlss("section", sectionIdx));
+    if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", () => activatePlss("intersected", intersectedIdx));
+
+    // Default to Township if present, otherwise Section, otherwise Intersected, otherwise first selection layer
+    if (townshipIdx >= 0) {
+        await activatePlss("township", townshipIdx);
+    } else if (sectionIdx >= 0) {
+        await activatePlss("section", sectionIdx);
+    } else if (intersectedIdx >= 0) {
+        await activatePlss("intersected", intersectedIdx);
+    } else if (selectionLayers.length) {
+        enableSelectionLayer(0);
+        await setActiveSelectionLayerByIndex(0);
+        setPlssToolActive("township"); // best-effort UI state
+    }
 
 
         // Tab wiring
