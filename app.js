@@ -487,23 +487,6 @@ async function autoZoomToLayerMinVisible(layer) {
         // keep current selectionGeom if user switches modes intentionally
     }
 
-        const EPS = 0.000001; // square-meters threshold; tiny >0 filter
-
-        return features.filter(f => {
-            const g = f?.geometry;
-            if (!g) return false;
-            try {
-                const inter = geometryEngine.intersect(aoiGeom, g);
-                if (!inter) return false;
-                const area = geometryEngine.geodesicArea(inter, "square-meters");
-                return area > EPS;
-            } catch (e) {
-                // If geometry ops fail, keep it rather than dropping possibly-valid results
-                return true;
-            }
-        });
-    }
-
     function renderLayerToggles(map) {
         // Guard: if the HTML containers don't exist, do nothing
         if (!selectionLayerTogglesEl || !reportLayerTogglesEl) return;
