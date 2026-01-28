@@ -1542,31 +1542,37 @@ for (const cfg of reportCfgs) {
     }
 
 async function getFullFeatureGeometryFromLayer(layer, graphic) {
-    if (!layer || !graphic) return graphic?.geometry || null;
+    if (!layer || !graphic) {
+        return { geometry: graphic?.geometry || null, objectId: null, objectIdField: null };
+    }
 
-    // Identify the layer’s ObjectID field and read the OID off the hitTest graphic
     const oidField = layer.objectIdField || "OBJECTID";
     const oid = graphic?.attributes?.[oidField];
 
     // If we can’t determine OID, fall back to whatever we have
-    if (oid == null) return graphic?.geometry || null;
+    if (oid == null) {
+        return { geometry: graphic?.geometry || null, objectId: null, objectIdField: oidField };
+    }
 
     try {
         const q = layer.createQuery();
         q.objectIds = [oid];
         q.returnGeometry = true;
-        q.outFields = [oidField];
-        q.outSpatialReference = view?.spatialReference; // match the view SR
-        // Important: reduce generalization. 0 means “don’t generalize” (service-dependent).
-        // If 0 causes issues, set something small like 0.1 or omit.
+        q.outFields = [oidField];           // ensure OID comes back
+        q.outSpatialReference = view?.spatialReference;
         q.maxAllowableOffset = 0;
 
         const fs = await layer.queryFeatures(q);
         const feat = fs?.features?.[0];
-        return feat?.geometry || graphic?.geometry || null;
+
+        return {
+            geometry: feat?.geometry || graphic?.geometry || null,
+            objectId: feat?.attributes?.[oidField] ?? oid,
+            objectIdField: oidField
+        };
     } catch (e) {
         console.warn("Full-geometry query failed; falling back to hit geometry", e);
-        return graphic?.geometry || null;
+        return { geometry: graphic?.geometry || null, objectId: oid, objectIdField: oidField };
     }
 }
 
@@ -1606,17 +1612,20 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
      if (!graphic) return;
 
      // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
-     const fullGeom = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
-     if (!fullGeom) return;
+    const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
+    const fullGeom = full?.geometry || null;
+    if (!fullGeom) return;
 
-     setAoiGeometry(fullGeom);
-     setGeometryFromSelection(fullGeom);
+    setAoiGeometry(fullGeom);
+    setGeometryFromSelection(fullGeom);
      aoiSource = "select";
      aoiSourceLayerTitle = activeSelectionLayer?.title || null;
      aoiSourceLayerUrl = activeSelectionLayer?.url || null;
      
-     aoiSourceObjectIdField = activeSelectionLayer?.objectIdField || "OBJECTID";
-     aoiSourceObjectId = graphic?.attributes?.[aoiSourceObjectIdField] ?? null;
+        aoiSourceObjectIdField = full?.objectIdField || activeSelectionLayer?.objectIdField || "OBJECTID";
+        aoiSourceObjectId = (full?.objectId != null)
+            ? full.objectId
+            : (graphic?.attributes?.[aoiSourceObjectIdField] ?? null);
 
 
 
@@ -1703,6 +1712,9 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                 setAoiGeometry(geom);          // ensure AOI is a single clean graphic
                 aoiSource = "draw";
                 aoiSourceLayerTitle = null;
+                aoiSourceLayerUrl = null;
+                aoiSourceObjectId = null;
+                aoiSourceObjectIdField = null;
                 setGeometryFromSelection(geom);
                 setStatus("drawn polygon ready (run report)");
             }
