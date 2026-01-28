@@ -8,7 +8,6 @@ require([
     "esri/widgets/Sketch",
     "esri/widgets/BasemapToggle",
     "esri/Graphic",
-    "esri/Graphic",
     "esri/geometry/geometryEngine"
 ], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic, geometryEngine) {
 
@@ -120,6 +119,40 @@ require([
     }
 
     function normalize(s){ return String(s || "").toLowerCase(); }
+
+    function isPlssLayerTitleOrUrl(title, url) {
+        const t = normalize(title);
+        const u = normalize(url);
+        // Tune this if you want it stricter; this keeps it PLSS-focused.
+        return (
+            t.includes("plss") ||
+            t.includes("township") ||
+            t.includes("section") ||
+            t.includes("intersected") ||
+            u.includes("/plss") ||
+            u.includes("plss")
+        );
+    }
+
+    function filterTouchingOnly(features, aoiGeom) {
+        // Drops polygon features that only touch AOI at an edge/vertex (intersection area == 0)
+        if (!features?.length || !aoiGeom) return features || [];
+        const EPS = 0.000001; // sq meters
+
+        return features.filter(f => {
+            const g = f?.geometry;
+            if (!g) return false;
+            try {
+                const inter = geometryEngine.intersect(aoiGeom, g);
+                if (!inter) return false;
+                const area = geometryEngine.geodesicArea(inter, "square-meters");
+                return area > EPS;
+            } catch (e) {
+                // If geometry ops fail, keep it (don’t accidentally drop legit hits)
+                return true;
+            }
+        });
+    }
 
     function findSelectionLayerIndexByNameIncludes(needle) {
         const n = normalize(needle);
@@ -445,6 +478,26 @@ async function autoZoomToLayerMinVisible(layer) {
         // keep current selectionGeom if user switches modes intentionally
     }
 
+    function filterTouchingOnly(features, aoiGeom) {
+        // Drops polygon features that only touch AOI at an edge/vertex (intersection area == 0)
+        if (!features?.length || !aoiGeom) return features || [];
+
+        const EPS = 0.000001; // square-meters threshold; tiny >0 filter
+
+        return features.filter(f => {
+            const g = f?.geometry;
+            if (!g) return false;
+            try {
+                const inter = geometryEngine.intersect(aoiGeom, g);
+                if (!inter) return false;
+                const area = geometryEngine.geodesicArea(inter, "square-meters");
+                return area > EPS;
+            } catch (e) {
+                // If geometry ops fail, keep it rather than dropping possibly-valid results
+                return true;
+            }
+        });
+    }
 
     function renderLayerToggles(map) {
         // Guard: if the HTML containers don't exist, do nothing
@@ -888,26 +941,29 @@ async function autoZoomToLayerMinVisible(layer) {
 
 
     // ---------- Query logic ----------
-    async function querySingleLayer(layerUrl, layerTitle, geom) {
+    async function querySingleLayer(layerUrl, layerTitle, geom, options = {}) {
+        const applyTouchFilter = !!options.applyTouchFilter;        
         const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
 
         const q = layer.createQuery();
         q.geometry = geom;
         q.spatialRelationship = "intersects";
         q.outFields = ["*"];
-        q.returnGeometry = false;
+        q.returnGeometry = true; // needed for touching-only filter
+        q.returnGeomertry = applyTouchFilter;
 
         const count = await layer.queryFeatureCount(q);
 
         const maxSamples = config.report?.maxSampleFeaturesPerLayer ?? 25;
         let features = [];
 
-        if (count > 0 && maxSamples > 0) {
-            const q2 = q.clone();
-            q2.num = Math.min(maxSamples, 2000);
-            const fs = await layer.queryFeatures(q2);
-            features = fs?.features ?? [];
-        }
+         if (count > 0 && maxSamples > 0) {
+             const q2 = q.clone();
+             q2.num = Math.min(maxSamples, 2000);
+             const fs = await layer.queryFeatures(q2);
+             const raw = fs?.features ?? [];
+             features = applyTouchFilter ? filterTouchingOnly(raw, geom) : raw;
+         }
 
         return { title: layerTitle, url: layerUrl, count, features, layer, exportQuery: q };
     }
@@ -1000,7 +1056,8 @@ async function autoZoomToLayerMinVisible(layer) {
             }
 
             try {
-            const r = await querySingleLayer(t.url, t.title, reportGeom);
+            const plss = isPlssLayerTitleOrUrl(t.title, t.url);
+            const r = await querySingleLayer(t.url, t.title, selectionGeom, { applyTouchFilter: plss });
             const rows = flattenAttributes(r.features);
 
             // Store sample rows PLUS the objects we need for FULL export paging
