@@ -1040,17 +1040,18 @@ if (aoiSource === "select") {
     }
 }
 
-// De-duplicate by normalized URL
-const seenUrls = new Set();
-const reportCfgs = combinedCfgs.filter(l => {
-    const url = String(l?.url || "").replace(/\/+$/, "");
-    if (!url) return false;
-    if (seenUrls.has(url)) return false;
-    seenUrls.add(url);
-    return true;
-});
+// De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
+const byUrl = new Map(); // urlKey -> { title, url }
 
-const expandedTargets = [];
+for (const l of combinedCfgs) {
+  const urlKey = String(l?.url || "").replace(/\/+$/, "");
+  if (!urlKey) continue;
+
+  // Keep the last occurrence for a given URL
+  byUrl.set(urlKey, { title: l.title, url: urlKey });
+}
+
+const reportCfgs = Array.from(byUrl.values());
 
 // Expand service roots into sublayers
 for (const cfg of reportCfgs) {
