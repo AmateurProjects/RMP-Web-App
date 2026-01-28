@@ -176,7 +176,7 @@ async function autoZoomToLayerMinVisible(layer) {
 
     // Nudge a bit more zoomed-in than minScale so the layer reliably renders.
     // Smaller scale number = more zoomed in.
-    const nudgeFactor = 0.80; // 20% more zoomed in than minScale (tweak 0.90–0.95 if desired)
+    const nudgeFactor = 0.70; // 30% more zoomed in than minScale (tweak 0.90–0.95 if desired)
     const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
 
     if (view.scale > targetScale) {
