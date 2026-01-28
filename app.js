@@ -91,6 +91,8 @@ require([
     let aoiSourceLayerUrl = null;      // URL of the selection layer used to pick AOI (select mode)
     let plssParcelLayerUrl = null;     // URL of PLSS Intersected (UI will call "Parcel")
     let plssStateLayerUrl = null;      // URL of PLSS State Boundaries (single canonical)
+    let aoiSourceObjectId = null;      // ObjectID of the clicked AOI polygon (select mode)
+    let aoiSourceObjectIdField = null; // ObjectID field name for that layer
 
 
     let sketch = null;
@@ -450,6 +452,8 @@ async function autoZoomToLayerMinVisible(layer) {
 
     function clearAll() {
         selectionGeom = null;
+        aoiSourceObjectId = null;
+        aoiSourceObjectIdField = null;
         aoiSource = null;
         aoiSourceLayerTitle = null;
         aoiSourceLayerUrl = null;
@@ -948,26 +952,47 @@ async function autoZoomToLayerMinVisible(layer) {
     // ---------- Query logic ----------
     async function querySingleLayer(layerUrl, layerTitle, geom, spatialRel = "intersects", options = {}) {
         const applyTouchFilter = !!options.applyTouchFilter;
+        const objectId = options.objectId ?? null;
+        const objectIdField = options.objectIdField || "OBJECTID";
+
         const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
 
         const q = layer.createQuery();
+        q.outFields = ["*"];
+
+        // ✅ Special case: AOI-source layer should return the exact clicked feature (1 row)
+        if (objectId != null) {
+            q.objectIds = [objectId];
+            q.returnGeometry = false;
+            const fs = await layer.queryFeatures(q);
+            const feats = fs?.features ?? [];
+            return {
+                title: layerTitle,
+                url: layerUrl,
+                count: feats.length,
+                features: feats,
+                layer,
+                exportQuery: q
+            };
+        }
+
+        // Default: geometry intersect behavior for normal report layers
         q.geometry = geom;
         q.spatialRelationship = spatialRel;
-        q.outFields = ["*"];
         q.returnGeometry = applyTouchFilter; // only return geometry when filtering touching-only
-        
+
         const count = await layer.queryFeatureCount(q);
 
         const maxSamples = config.report?.maxSampleFeaturesPerLayer ?? 25;
         let features = [];
 
-         if (count > 0 && maxSamples > 0) {
-             const q2 = q.clone();
-             q2.num = Math.min(maxSamples, 2000);
-             const fs = await layer.queryFeatures(q2);
-             const raw = fs?.features ?? [];
-             features = applyTouchFilter ? filterTouchingOnly(raw, geom) : raw;
-         }
+        if (count > 0 && maxSamples > 0) {
+            const q2 = q.clone();
+            q2.num = Math.min(maxSamples, 2000);
+            const fs = await layer.queryFeatures(q2);
+            const raw = fs?.features ?? [];
+            features = applyTouchFilter ? filterTouchingOnly(raw, geom) : raw;
+        }
 
         return { title: layerTitle, url: layerUrl, count, features, layer, exportQuery: q };
     }
@@ -1104,7 +1129,20 @@ for (const cfg of reportCfgs) {
                     ? "within"
                     : "intersects";
 
-            const r = await querySingleLayer(t.url, t.title, reportGeom, spatialRel);
+            const isAoiSourcePlss =
+                (aoiSource === "select") &&
+                aoiSourceLayerUrl &&
+                String(t.url).replace(/\/+$/, "") === String(aoiSourceLayerUrl).replace(/\/+$/, "");
+
+            const r = await querySingleLayer(
+                t.url,
+                t.title,
+                reportGeom,
+                spatialRel,
+                isAoiSourcePlss
+                    ? { objectId: aoiSourceObjectId, objectIdField: aoiSourceObjectIdField }
+                    : {}
+            );
             const rows = flattenAttributes(r.features);
 
             // Store sample rows PLUS the objects we need for FULL export paging
@@ -1576,6 +1614,11 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
      aoiSource = "select";
      aoiSourceLayerTitle = activeSelectionLayer?.title || null;
      aoiSourceLayerUrl = activeSelectionLayer?.url || null;
+     
+     aoiSourceObjectIdField = activeSelectionLayer?.objectIdField || "OBJECTID";
+     aoiSourceObjectId = graphic?.attributes?.[aoiSourceObjectIdField] ?? null;
+
+
 
     // Keep PLSS tool context in-sync even if user didn’t click the toolbar button
     if (aoiSourceLayerTitle) {
