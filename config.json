@@ -19,35 +19,33 @@
       "aoiPreset": "aoi"
     },
 
-    "presets": {
-      "selection": {
-        "type": "simple",
-        "symbol": {
-          "type": "simple-fill",
-          "color": [0, 120, 212, 0.08],
-          "outline": { "color": [0, 120, 212, 0.85], "width": 2 }
-        }
-      },
-
-      "report": {
-        "type": "simple",
-        "symbol": {
-          "type": "simple-fill",
-          "color": [0, 120, 212, 0.10],
-          "outline": { "color": [0, 120, 212, 0.70], "width": 1.5 }
-        }
-      },
-
-      "aoi": {
-        "type": "simple",
-        "symbol": {
-          "type": "simple-fill",
-          "color": [0, 0, 0, 0.07],
-          "outline": { "type": "simple-line", "color": [0, 0, 0, 1], "width": 3, "style": "solid" }
-        }
+  "presets": {
+    "selection": {
+      "type": "simple",
+      "symbol": {
+        "type": "simple-fill",
+        "color": [0, 120, 212, 0.10],
+        "outline": { "color": [0, 120, 212, 0.95], "width": 2.5 }
+      }
+    },
+    "report": {
+      "type": "simple",
+      "symbol": {
+        "type": "simple-fill",
+        "color": [255, 149, 0, 0.06],
+        "outline": { "color": [255, 149, 0, 0.95], "width": 1.5 }
+      }
+    },
+    "aoi": {
+      "type": "simple",
+      "symbol": {
+        "type": "simple-fill",
+        "color": [0, 0, 0, 0.07],
+        "outline": { "type": "simple-line", "color": [0, 0, 0, 1], "width": 3, "style": "solid" }
       }
     }
-  },
+  }
+},
 "selectionLayers": [
   {
     "title": "BLM Natl PLSS CadNSDI (MapServer)",

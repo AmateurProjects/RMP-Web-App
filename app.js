@@ -420,13 +420,14 @@ async function autoZoomToLayerMinVisible(layer) {
         // ---- Selection layers (already on map): toggle visibility
         selectionLayerTogglesEl.innerHTML = (selectionLayers || []).map((e, i) => {
             const checked = e.layer.visible ? "checked" : "";
-            return `
+        return `
             <div class="toggle-row">
                 <input type="checkbox" id="sellayer_${i}" ${checked} />
+                <span class="layer-swatch layer-swatch-selection" aria-hidden="true" title="Selection layer"></span>
                 <label class="toggle-name" for="sellayer_${i}">${escapeHtml(e.cfg.title)}</label>
                 <span id="sellayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
             </div>
-            `;
+        `;
         }).join("");
 
     (selectionLayers || []).forEach((e, i) => {
@@ -485,11 +486,12 @@ async function autoZoomToLayerMinVisible(layer) {
             const note = isRoot ? ` <span class="small">(service root; not drawable)</span>` : "";
 
             return `
-            <div class="toggle-row">
-                <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
-                <label class="toggle-name" for="rptlayer_${i}">${escapeHtml(l.title)}${note}</label>
-                <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
-            </div>
+                <div class="toggle-row">
+                    <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
+                    <span class="layer-swatch layer-swatch-report" aria-hidden="true" title="Report layer"></span>
+                    <label class="toggle-name" for="rptlayer_${i}">${escapeHtml(l.title)}${note}</label>
+                    <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
+                </div>
             `;
         }).join("");
 
