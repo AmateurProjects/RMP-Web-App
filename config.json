@@ -1,58 +1,99 @@
 {
   "map": {
     "basemap": "gray-vector",
-    "center": [-98.5795, 39.8283],
+    "center": [
+      -98.5795,
+      39.8283
+    ],
     "zoom": 4,
     "imageryBasemap": "satellite",
     "imageryOpacity": 0.75
   },
-  
-    "visualReport": {
+  "visualReport": {
     "paddingFactor": 1.25,
     "screenshotWidth": 1400
   },
-
   "symbology": {
     "defaults": {
       "selectionPreset": "selection",
       "reportPreset": "report",
       "aoiPreset": "aoi"
     },
-
-  "presets": {
-    "selection": {
-      "type": "simple",
-      "symbol": {
-        "type": "simple-fill",
-        "color": [0, 120, 212, 0.10],
-        "outline": { "color": [0, 120, 212, 0.95], "width": 2.5 }
-      }
-    },
-    "report": {
-      "type": "simple",
-      "symbol": {
-        "type": "simple-fill",
-        "color": [255, 149, 0, 0.06],
-        "outline": { "color": [255, 149, 0, 0.95], "width": 1.5 }
-      }
-    },
-    "aoi": {
-      "type": "simple",
-      "symbol": {
-        "type": "simple-fill",
-        "color": [0, 0, 0, 0.07],
-        "outline": { "type": "simple-line", "color": [0, 0, 0, 1], "width": 3, "style": "solid" }
+    "presets": {
+      "selection": {
+        "type": "simple",
+        "symbol": {
+          "type": "simple-fill",
+          "color": [
+            0,
+            120,
+            212,
+            0.10
+          ],
+          "outline": {
+            "color": [
+              0,
+              120,
+              212,
+              0.95
+            ],
+            "width": 2.5
+          }
+        }
+      },
+      "report": {
+        "type": "simple",
+        "symbol": {
+          "type": "simple-fill",
+          "color": [
+            255,
+            149,
+            0,
+            0.06
+          ],
+          "outline": {
+            "color": [
+              255,
+              149,
+              0,
+              0.95
+            ],
+            "width": 1.5
+          }
+        }
+      },
+      "aoi": {
+        "type": "simple",
+        "symbol": {
+          "type": "simple-fill",
+          "color": [
+            0,
+            0,
+            0,
+            0.07
+          ],
+          "outline": {
+            "type": "simple-line",
+            "color": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "width": 3,
+            "style": "solid"
+          }
+        }
       }
     }
-  }
-},
-"selectionLayers": [
-  {
-    "title": "BLM Natl PLSS CadNSDI (MapServer)",
-    "url": "https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer",
-    "visible": true
-  }
-],
+  },
+  "selectionLayers": [
+    {
+      "title": "BLM Natl PLSS CadNSDI (MapServer)",
+      "url": "https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer",
+      "visible": true
+    }
+  ],
   "reportLayers": [
     {
       "title": "BLM Natl Visual Resource Inventory Classes (Polygon)",
@@ -69,6 +110,30 @@
     {
       "title": "BLM Natl MLRS LUA ROW (Layer 0)",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_ROW/FeatureServer/0"
+    },
+    {
+      "title": "BLM National Land Use Plans (Approved 2022)",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Land_Use_Plans_Approved_2022/FeatureServer/1"
+    },
+    {
+      "title": "BLM Areas of Critical Environmental Concern (ACEC)",
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_ACEC/MapServer/0"
+    },
+    {
+      "title": "BLM National Conservation Areas (NLCS)",
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_NM_NCA/MapServer/0"
+    },
+    {
+      "title": "BLM Wilderness Areas (NLCS)",
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_WLD_WSA/MapServer/0"
+    },
+    {
+      "title": "BLM Wilderness Study Areas (WSA)",
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_WLD_WSA/MapServer/1"
+    },
+    {
+      "title": "BLM Wild Horse & Burro Areas",
+      "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_WHB_Geocortex/MapServer"
     }
   ],
   "report": {
