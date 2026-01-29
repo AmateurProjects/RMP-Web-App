@@ -93,6 +93,7 @@ require([
     let plssStateLayerUrl = null;      // URL of PLSS State Boundaries (single canonical)
     let aoiSourceObjectId = null;      // ObjectID of the clicked AOI polygon (select mode)
     let aoiSourceObjectIdField = null; // ObjectID field name for that layer
+    let aoiSourceFeature = null;       // ✅ cached clicked feature (attributes for AOI Source card)
 
 
     let sketch = null;
@@ -457,6 +458,7 @@ async function autoZoomToLayerMinVisible(layer) {
         aoiSource = null;
         aoiSourceLayerTitle = null;
         aoiSourceLayerUrl = null;
+        aoiSourceFeature = null; // ✅ clear cached AOI source feature
         resultsEl.innerHTML = "";
         exportAllBtn.disabled = true;
         lastReportRowsByLayer = [];
@@ -1073,12 +1075,10 @@ async function runReport() {
             "PLSS";
 
         expandedTargets.push({
-            title: `AOI Source (${toolLabel})`,
-            url: String(aoiSourceLayerUrl).replace(/\/+$/, ""),
-            __pinnedAoi: true,
-            __objectId: aoiSourceObjectId,
-            __objectIdField: aoiSourceObjectIdField || (activeSelectionLayer?.objectIdField) || "OBJECTID"
-        });
+                    title: `AOI Source (${toolLabel})`,
+                    url: String(aoiSourceLayerUrl).replace(/\/+$/, ""),
+                    __pinnedAoiFeature: aoiSourceFeature || null
+                });
         }
 
 
@@ -1160,6 +1160,63 @@ async function runReport() {
                     : "intersects";
 
             const isPinnedAoi = !!t.__pinnedAoi;
+
+            // ✅ AOI Source card: render from cached feature (no service re-query)
+            if (t.__pinnedAoiFeature) {
+                const f = t.__pinnedAoiFeature;
+                const feats = f ? [f] : [];
+                const r = {
+                    title: t.title,
+                    url: t.url,
+                    count: feats.length,
+                    features: feats,
+                    layer: null,
+                    exportQuery: null
+                };
+
+                const rows = flattenAttributes(r.features);
+
+                lastReportRowsByLayer.push({
+                    title: r.title,
+                    url: r.url,
+                    count: r.count,
+                    rows,
+                    _layer: null,
+                    _exportQuery: null,
+                    fullRows: rows // ✅ allow FULL export to export this one cached row
+                });
+
+                const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
+                const tableHtml = feats.length
+                    ? makeTable(feats, maxFields, r.count)
+                    : `<div class="small">No sample rows.</div>`;
+
+                cards.push(`
+          <div class="result-card">
+            <div class="result-head">
+              <div class="result-title">${escapeHtml(r.title)}</div>
+                <div class="badge">
+                count: <b>${r.count}</b>
+                </div>
+            </div>
+                <div class="small mono">
+                <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
+                </div>
+            <div style="margin-top:8px;">
+              ${tableHtml}
+              <div class="row" style="margin-top:8px;">
+                <button class="btn subtle" data-export="${escapeHtml(r.title)}">
+                Export FULL CSV
+                </button>
+              </div>
+            </div>
+          </div>
+        `);
+
+                setStatus(`running report… (${i + 1}/${expandedTargets.length})`);
+                continue; // ✅ skip normal querySingleLayer path
+            }
+
 
             const r = await querySingleLayer(
             t.url,
@@ -1577,7 +1634,7 @@ async function runReport() {
 
 async function getFullFeatureGeometryFromLayer(layer, graphic) {
     if (!layer || !graphic) {
-        return { geometry: graphic?.geometry || null, objectId: null, objectIdField: null };
+        return { geometry: graphic?.geometry || null, objectId: null, objectIdField: null, feature: graphic || null };
     }
 
     await layer.load();
@@ -1601,14 +1658,16 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         const fs = await layer.queryFeatures(q);
         const feat = fs?.features?.[0];
 
-        return {
-            geometry: feat?.geometry || graphic?.geometry || null,
-            objectId: feat?.attributes?.[oidField] ?? oid,
-            objectIdField: oidField
-        };
+    return {
+                geometry: feat?.geometry || graphic?.geometry || null,
+                objectId: feat?.attributes?.[oidField] ?? oid,
+                objectIdField: oidField,
+                feature: feat || graphic || null
+            };
+    
     } catch (e) {
         console.warn("Full-geometry query failed; falling back to hit geometry", e);
-        return { geometry: graphic?.geometry || null, objectId: oid, objectIdField: oidField };
+        return { geometry: graphic?.geometry || null, objectId: oid, objectIdField: oidField, feature: graphic || null };
     }
 }
 
@@ -1649,6 +1708,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
 
      // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
     const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
+    aoiSourceFeature = full?.feature || graphic || null; // ✅ cache clicked feature for AOI Source card
     const fullGeom = full?.geometry || null;
     if (!fullGeom) return;
 
@@ -1757,6 +1817,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                 aoiSourceLayerUrl = null;
                 aoiSourceObjectId = null;
                 aoiSourceObjectIdField = null;
+                aoiSourceFeature = null; // ✅ drawn AOI has no source feature
                 setGeometryFromSelection(geom);
                 setStatus("drawn polygon ready (run report)");
             }
