@@ -998,72 +998,74 @@ async function autoZoomToLayerMinVisible(layer) {
     }
 
 
-    async function runReport() {
-        const reportGeom = getReportGeometry();
-        if (!reportGeom) return;
+async function runReport() {
+    const reportGeom = getReportGeometry();
+    if (!reportGeom) return;
 
-        setBusy(true);
-        setStatus("running report…");
-        resultsEl.innerHTML = "";
-        exportAllBtn.disabled = true;
-        lastReportRowsByLayer = [];
+    setBusy(true);
+    setStatus("running report…");
+    resultsEl.innerHTML = "";
+    exportAllBtn.disabled = true;
+    lastReportRowsByLayer = [];
 
-// Start with report layers only
-const combinedCfgs = [
-    ...(config.reportLayers || [])
-];
+    try {
+        // Start with report layers only
+        const combinedCfgs = [
+            ...(config.reportLayers || [])
+        ];
 
-// ✅ Ensure exactly ONE State Boundaries is included (prefer our captured URL)
-if (plssStateLayerUrl) {
-    combinedCfgs.push({
-        title: "PLSS: State Boundaries",
-        url: plssStateLayerUrl
-    });
-}
+        // ✅ Ensure exactly ONE State Boundaries is included (prefer our captured URL)
+        if (plssStateLayerUrl) {
+            combinedCfgs.push({
+                title: "PLSS: State Boundaries",
+                url: plssStateLayerUrl
+            });
+        }
 
-// ✅ Add ONLY the PLSS layer implied by the AOI source:
-// - select-mode AOI: include the selection layer that was clicked
-// - draw-mode AOI: include PLSS Intersected ("Parcel")
-if (aoiSource === "select") {
-    if (aoiSourceLayerUrl) {
-        combinedCfgs.push({
-            title: aoiSourceLayerTitle || "AOI Source (PLSS)",
-            url: aoiSourceLayerUrl
-        });
-    }
-} else if (aoiSource === "draw") {
-    if (plssParcelLayerUrl) {
-        combinedCfgs.push({
-            title: "PLSS: Intersected", // UI rename to "Parcel" later
-            url: plssParcelLayerUrl
-        });
-    }
-}
+        // ✅ Add ONLY the PLSS layer implied by the AOI source:
+        // - select-mode AOI: include the selection layer that was clicked
+        // - draw-mode AOI: include PLSS Intersected ("Parcel")
+        if (aoiSource === "select") {
+        if (aoiSourceLayerUrl) {
+            combinedCfgs.push({
+                title: aoiSourceLayerTitle || "AOI Source (PLSS)",
+                url: aoiSourceLayerUrl
+            });
+        }
+        } else if (aoiSource === "draw") {
+            if (plssParcelLayerUrl) {
+                combinedCfgs.push({
+                    title: "PLSS: Intersected", // UI rename to "Parcel" later
+                    url: plssParcelLayerUrl
+                });
+            }
+        }       
 
-// De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
-const byUrl = new Map(); // urlKey -> { title, url }
+        // De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
+        const byUrl = new Map(); // urlKey -> { title, url }
 
-for (const l of combinedCfgs) {
-  const urlKey = String(l?.url || "").replace(/\/+$/, "");
-  if (!urlKey) continue;
+        for (const l of combinedCfgs) {
+        const urlKey = String(l?.url || "").replace(/\/+$/, "");
+        if (!urlKey) continue;
 
-  // Keep the last occurrence for a given URL
-  byUrl.set(urlKey, { title: l.title, url: urlKey });
-}
+        // Keep the last occurrence for a given URL
+        byUrl.set(urlKey, { title: l.title, url: urlKey });
+        }
 
-const reportCfgs = Array.from(byUrl.values());
+        const reportCfgs = Array.from(byUrl.values());
+        const expandedTargets = [];
 
-// Expand service roots into sublayers
-for (const cfg of reportCfgs) {
-    const url = String(cfg.url || "");
+        // Expand service roots into sublayers
+        for (const cfg of reportCfgs) {
+            const url = String(cfg.url || "");
 
-    // ✅ Never expand the PLSS selection MapServer root into the report.
-    // We only ever want explicit PLSS sublayers: (AOI source OR Parcel) + State.
-    if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
-        // If someone accidentally added a PLSS MapServer root to reportLayers,
-        // skip it here so it can't flood the report with Township/Section/Intersected again.
-        continue;
-    }
+            // ✅ Never expand the PLSS selection MapServer root into the report.
+            // We only ever want explicit PLSS sublayers: (AOI source OR Parcel) + State.
+            if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
+                // If someone accidentally added a PLSS MapServer root to reportLayers,
+                // skip it here so it can't flood the report with Township/Section/Intersected again.
+                continue;
+            }
 
     if (isFeatureServerRoot(url)) {
         try {
@@ -1209,8 +1211,15 @@ for (const cfg of reportCfgs) {
         exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
         setStatus("done");
         renderVisualSummary();
+
+    } catch (e) {
+        console.error(e);
+        setStatus("report failed (see console)");
+    } finally {
         setBusy(false);
     }
+}
+
 
         function wireExportButtons() {
             resultsEl.querySelectorAll("button[data-export]").forEach(btn => {
