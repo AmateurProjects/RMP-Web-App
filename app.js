@@ -1022,25 +1022,6 @@ async function runReport() {
             });
         }
 
-        // ✅ Add ONLY the PLSS layer implied by the AOI source:
-        // - select-mode AOI: include the selection layer that was clicked
-        // - draw-mode AOI: include PLSS Intersected ("Parcel")
-        if (aoiSource === "select") {
-        if (aoiSourceLayerUrl) {
-            combinedCfgs.push({
-                title: aoiSourceLayerTitle || "AOI Source (PLSS)",
-                url: aoiSourceLayerUrl
-            });
-        }
-        } else if (aoiSource === "draw") {
-            if (plssParcelLayerUrl) {
-                combinedCfgs.push({
-                    title: "PLSS: Intersected", // UI rename to "Parcel" later
-                    url: plssParcelLayerUrl
-                });
-            }
-        }       
-
         // De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
         const byUrl = new Map(); // urlKey -> { title, url }
 
@@ -1054,6 +1035,32 @@ async function runReport() {
 
         const reportCfgs = Array.from(byUrl.values());
         const expandedTargets = [];
+
+        // ============================================================
+        // ✅ PINNED AOI SOURCE TARGET (always show 1-row table)
+        // This bypasses dedupe/expansion/skipping and cannot disappear.
+        // ============================================================
+        if (aoiSource === "select" && aoiSourceLayerUrl) {
+        // We need an objectId. If it’s missing, this is a bug upstream.
+        if (aoiSourceObjectId == null) {
+            console.warn("AOI source objectId is null; AOI source table will not be 1-row exact.");
+        }
+
+        const toolLabel =
+            (aoiSourcePlssTool === "township") ? "Township" :
+            (aoiSourcePlssTool === "section") ? "Section" :
+            (aoiSourcePlssTool === "intersected") ? "Intersected" :
+            "PLSS";
+
+        expandedTargets.push({
+            title: `AOI Source (${toolLabel})`,
+            url: String(aoiSourceLayerUrl).replace(/\/+$/, ""),
+            __pinnedAoi: true,
+            __objectId: aoiSourceObjectId,
+            __objectIdField: aoiSourceObjectIdField || (activeSelectionLayer?.objectIdField) || "OBJECTID"
+        });
+        }
+
 
         // Expand service roots into sublayers
         for (const cfg of reportCfgs) {
@@ -1132,19 +1139,16 @@ async function runReport() {
                     ? "within"
                     : "intersects";
 
-            const isAoiSourcePlss =
-                (aoiSource === "select") &&
-                aoiSourceLayerUrl &&
-                String(t.url).replace(/\/+$/, "") === String(aoiSourceLayerUrl).replace(/\/+$/, "");
+            const isPinnedAoi = !!t.__pinnedAoi;
 
             const r = await querySingleLayer(
-                t.url,
-                t.title,
-                reportGeom,
-                spatialRel,
-                isAoiSourcePlss
-                    ? { objectId: aoiSourceObjectId, objectIdField: aoiSourceObjectIdField }
-                    : {}
+            t.url,
+            t.title,
+            reportGeom,           // ignored in objectId path
+            spatialRel,
+            isPinnedAoi
+                ? { objectId: t.__objectId, objectIdField: t.__objectIdField }
+                : {}
             );
             const rows = flattenAttributes(r.features);
 
@@ -1632,11 +1636,17 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
      aoiSourceLayerTitle = activeSelectionLayer?.title || null;
      aoiSourceLayerUrl = activeSelectionLayer?.url || null;
      
-        aoiSourceObjectIdField = full?.objectIdField || activeSelectionLayer?.objectIdField || "OBJECTID";
-        aoiSourceObjectId = (full?.objectId != null)
-            ? full.objectId
-            : (graphic?.attributes?.[aoiSourceObjectIdField] ?? null);
+    aoiSourceObjectIdField = full?.objectIdField || activeSelectionLayer?.objectIdField || "OBJECTID";
+    aoiSourceObjectId = (full?.objectId != null)
+           ? full.objectId
+           : (graphic?.attributes?.[aoiSourceObjectIdField] ?? null);
 
+    console.log("AOI source captured:", {
+        layerTitle: aoiSourceLayerTitle,
+        layerUrl: aoiSourceLayerUrl,
+        objectIdField: aoiSourceObjectIdField,
+        objectId: aoiSourceObjectId
+    });
 
 
     // Keep PLSS tool context in-sync even if user didn’t click the toolbar button
