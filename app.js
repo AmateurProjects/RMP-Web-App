@@ -1651,7 +1651,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         const q = layer.createQuery();
         q.objectIds = [oid];
         q.returnGeometry = true;
-        q.outFields = [oidField];           // ensure OID comes back
+        q.outFields = ["*"];                // ✅ fetch all attributes (not just OID)
         q.outSpatialReference = view?.spatialReference;
         q.maxAllowableOffset = 0;
 
