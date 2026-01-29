@@ -1044,6 +1044,15 @@ async function runReport() {
             });
         }
 
+        // ✅ When AOI is DRAWN, include PLSS Parcel (Intersected) intersects
+        if (aoiSource === "draw" && plssParcelLayerUrl) {
+        combinedCfgs.push({
+            title: "PLSS: Parcel",
+            url: String(plssParcelLayerUrl).replace(/\/+$/, "")
+        });
+        }
+
+
         // De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
         const byUrl = new Map(); // urlKey -> { title, url }
 
