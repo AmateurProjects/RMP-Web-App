@@ -1805,10 +1805,11 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
 
         // Sketch draws directly into AOI layer
         sketch = new Sketch({
-            view,
-            layer: aoiLayer,
-            availableCreateTools: ["polygon"],
-            creationMode: "single"
+        view,
+        layer: aoiLayer,
+        availableCreateTools: ["polygon"],
+        creationMode: "single",
+        updateOnGraphicClick: false
         });
 
         // Apply AOI symbol to Sketch (uses the AOI preset renderer symbol)
