@@ -1931,7 +1931,8 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
             const lyr = selectionLayers[idxToEnable]?.layer;
             await autoZoomToLayerMinVisible(lyr);
 
-            setStatus(`PLSS select: ${which} (click a polygon)`);
+            const whichLabel = (which === "intersected") ? "parcel" : which;
+            setStatus(`PLSS select: ${whichLabel} (click a polygon)`);
         } else {
             setPlssToolActive(which);
             setStatus("PLSS select: layer not found in selection layers");
