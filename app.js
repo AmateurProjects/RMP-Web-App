@@ -1812,6 +1812,9 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         updateOnGraphicClick: false
         });
 
+        // Hard-disable editing UI for existing AOI graphics
+        sketch.viewModel.updateOnGraphicClick = false;
+        
         // Apply AOI symbol to Sketch (uses the AOI preset renderer symbol)
         const aoiRenderer = getPresetRenderer("aoi", null);
         if (aoiRenderer && aoiRenderer.symbol) {
