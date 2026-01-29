@@ -962,19 +962,39 @@ async function autoZoomToLayerMinVisible(layer) {
 
         // ✅ Special case: AOI-source layer should return the exact clicked feature (1 row)
         if (objectId != null) {
-            q.objectIds = [objectId];
-            q.returnGeometry = false;
-            const fs = await layer.queryFeatures(q);
-            const feats = fs?.features ?? [];
-            return {
-                title: layerTitle,
-                url: layerUrl,
-                count: feats.length,
-                features: feats,
-                layer,
-                exportQuery: q
-            };
+        // Ensure layer is loaded so objectIdField is correct
+        await layer.load();
+
+        const trueOidField = layer.objectIdField || objectIdField || "OBJECTID";
+
+        // Coerce OID to number if it looks numeric (ArcGIS OIDs are typically numeric)
+        const oidNum = Number(objectId);
+        const oidIsNumeric = Number.isFinite(oidNum);
+
+        // Use WHERE instead of objectIds (more robust across services)
+        q.where = oidIsNumeric
+            ? `${trueOidField} = ${oidNum}`
+            : `${trueOidField} = '${String(objectId).replace(/'/g, "''")}'`;
+
+        q.returnGeometry = false;
+        q.outFields = ["*"];
+
+        const fs = await layer.queryFeatures(q);
+        const feats = fs?.features ?? [];
+
+        // Optional: debug if it ever happens again
+        // console.log("AOI-source query", { layerUrl, trueOidField, objectId, oidNum, featsLen: feats.length });
+
+        return {
+            title: layerTitle,
+            url: layerUrl,
+            count: feats.length,
+            features: feats,
+            layer,
+            exportQuery: q
+        };
         }
+
 
         // Default: geometry intersect behavior for normal report layers
         q.geometry = geom;
@@ -1559,6 +1579,8 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
     if (!layer || !graphic) {
         return { geometry: graphic?.geometry || null, objectId: null, objectIdField: null };
     }
+
+    await layer.load();
 
     const oidField = layer.objectIdField || "OBJECTID";
     const oid = graphic?.attributes?.[oidField];
