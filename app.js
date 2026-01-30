@@ -306,10 +306,8 @@ async function autoZoomToLayerMinVisible(layer) {
 
             let title = String(l.name || "");
 
-            // Normalize PLSS naming
-            if (title.toLowerCase() === "intersected") {
-                title = "Parcel";
-            }
+            // Normalize PLSS naming (handles "Intersected" and "PLSS Intersected", etc.)
+            title = title.replace(/intersected/ig, "Parcel");
 
             out.push({
                 title,
@@ -481,9 +479,8 @@ async function autoZoomToLayerMinVisible(layer) {
 
             let title = l?.name ? String(l.name) : `Layer ${l.id}`;
 
-            if (title.toLowerCase() === "intersected") {
-                title = "Parcel";
-            }
+            // Normalize PLSS naming (handles "Intersected" and "PLSS Intersected", etc.)
+            title = title.replace(/intersected/ig, "Parcel");
 
             out.push({
                 title,
@@ -1838,7 +1835,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         const t = normalize(aoiSourceLayerTitle);
         if (t.includes("township")) aoiSourcePlssTool = "township";
         else if (t.includes("section")) aoiSourcePlssTool = "section";
-        else if (t.includes("intersected")) aoiSourcePlssTool = "intersected";
+        else if (t.includes("intersected") || t.includes("parcel")) aoiSourcePlssTool = "intersected";
     }
      setStatus("polygon selected (ready to run)");
      return;
@@ -1943,7 +1940,8 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                 const subs = await expandMapServerToSublayers(url, { polygonOnly: true });
 
                 subs.forEach(sl => {
-                    const subTitle = String(sl.title || "");
+                    let subTitle = String(sl.title || "");
+                    subTitle = subTitle.replace(/intersected/ig, "Parcel");
 
                     // ✅ Item 4: remove "State Boundaries" from Selection (but keep for Report)
                     if (subTitle.toLowerCase() === "state boundaries") {
@@ -2003,7 +2001,11 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
     // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
     const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
     const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
-    const intersectedIdx = findSelectionLayerIndexByNameIncludes("intersected"); // "PLSS Intersected"
+    const intersectedIdx =
+    (findSelectionLayerIndexByNameIncludes("parcel") >= 0)
+        ? findSelectionLayerIndexByNameIncludes("parcel")
+        : findSelectionLayerIndexByNameIncludes("intersected");
+
     plssParcelLayerUrl = (intersectedIdx >= 0) ? (selectionLayers[intersectedIdx]?.cfg?.url || null) : null;
 
 
