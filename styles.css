@@ -215,6 +215,12 @@ th{
 .toggle-row input { transform: scale(1.05); }
 .toggle-name { flex:1; }
 
+.table-hint{
+  margin-top: 6px;
+  opacity: .8;
+}
+
+
 /* ====== Layer swatches (Selection vs Report) ====== */
 .layer-swatch{
   width: 12px;

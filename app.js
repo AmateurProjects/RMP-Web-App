@@ -928,7 +928,15 @@ async function autoZoomToLayerMinVisible(layer) {
         const picked = sampleWithoutReplacement(features, 4);
 
         const attrs0 = picked[0].attributes || {};
-        const keys = Object.keys(attrs0).slice(0, maxFields);
+        const keysAll = Object.keys(attrs0);
+
+        // ✅ Show ALL columns so horizontal scrolling actually reveals more fields
+        const keys = keysAll;
+
+        // ✅ “Default view” target: ~5 columns visible in the panel before scrolling
+        const defaultVisibleCols = 5;
+        const colPx = 140; // keep aligned with your CSS td max-width
+        const minTableWidth = Math.max(520, keys.length * colPx);
 
         const th = keys.map(k => `<th title="${escapeHtml(k)}">${escapeHtml(k)}</th>`).join("");
 
@@ -938,7 +946,7 @@ async function autoZoomToLayerMinVisible(layer) {
                 const raw = (a[k] == null) ? "" : String(a[k]);
 
                 // truncate values longer than the *column name*
-                const maxLen = Math.max(4, String(k).length); // keep sane minimum
+                const maxLen = Math.max(4, String(k).length);
                 let shown = raw;
 
                 if (raw.length > maxLen) {
@@ -953,7 +961,7 @@ async function autoZoomToLayerMinVisible(layer) {
             return `<tr>${tds}</tr>`;
         }).join("");
 
-        // Add an ellipsis row if there are more rows than we’re showing
+        // “more rows” message stays the same
         let moreRowHtml = "";
         const total = Number(totalCount || 0);
         const shown = picked.length;
@@ -964,15 +972,22 @@ async function autoZoomToLayerMinVisible(layer) {
             moreRowHtml = `<tr><td colspan="${keys.length}" class="small" style="opacity:.8;">${escapeHtml(msg)}</td></tr>`;
         }
 
+        // ✅ Hint about horizontal scrolling + “first 5 columns by default”
+        const colHint = (keys.length > defaultVisibleCols)
+            ? `<div class="small table-hint">Showing ${defaultVisibleCols} of ${keys.length} columns by default — scroll → for more.</div>`
+            : "";
+
         return `
         <div class="table-wrap">
-            <table class="result-table">
+            <table class="result-table" style="min-width:${minTableWidth}px">
             <thead><tr>${th}</tr></thead>
             <tbody>${rows}${moreRowHtml}</tbody>
             </table>
         </div>
+        ${colHint}
         `;
     }
+
 
     function downloadText(filename, text) {
         const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
