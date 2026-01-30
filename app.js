@@ -220,6 +220,13 @@ require([
         cb.checked = !!checked;
     }
 
+    function setSelectionSpinner(idx, isOn) {
+    const spin = document.getElementById(`sellayer_spin_${idx}`);
+    if (!spin) return;
+    spin.classList.toggle("hidden", !isOn);
+    }
+
+
     function isLayerOnMap(layer) {
         if (!map || !layer) return false;
         return map.layers.includes(layer);
@@ -228,15 +235,26 @@ require([
     function enableSelectionLayer(idx) {
         const entry = selectionLayers[idx];
         if (!entry) return;
+
+        // ✅ show spinner immediately for button-driven toggles
+        setSelectionSpinner(idx, true);
+
         if (!isLayerOnMap(entry.layer)) map.add(entry.layer);
         entry.layer.visible = true;
         updateSelectionToggleCheckbox(idx, true);
         ensureAoiOnTop(map);
+
+        // ✅ wire real updating tracking (will hide when not updating)
+        const spin = document.getElementById(`sellayer_spin_${idx}`);
+        wireLayerUpdatingSpinner(entry.layer, spin);
     }
 
     function disableSelectionLayer(idx) {
         const entry = selectionLayers[idx];
         if (!entry) return;
+
+        // ✅ hide spinner immediately for button-driven toggles
+        setSelectionSpinner(idx, false);
 
         // Remove from map (your desired behavior vs hide)
         if (isLayerOnMap(entry.layer)) map.remove(entry.layer);
@@ -246,7 +264,6 @@ require([
 
         updateSelectionToggleCheckbox(idx, false);
 
-        // If we just disabled the active selection layer, clear active pointers
         if (activeSelectionLayer === entry.layer) {
             activeSelectionLayer = null;
             activeSelectionLayerView = null;
