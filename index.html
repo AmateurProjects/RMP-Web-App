@@ -25,13 +25,6 @@
       <div class="subtitle">Select a polygon or draw one, then run intersects against configured layers.</div>
     </div>
 
-    <!-- Tabs -->
-    <div class="tabs">
-      <button class="tab-btn active" id="tabReportBtn" type="button">Report</button>
-      <button class="tab-btn" id="tabVisualBtn" type="button">Visual Report</button>
-      <button class="tab-btn" id="tabServicesBtn" type="button">Services</button>
-    </div>
-
     <!-- Tab Panels -->
     <section id="tabReportPanel" class="tab-panel active">
 
@@ -87,6 +80,16 @@
         <span id="busyIndicator" class="spinner hidden" aria-label="busy"></span>
       </div>
     </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button id="tabReportBtn" class="tab-btn active" type="button">Tables</button>
+      <button id="tabVisualBtn" class="tab-btn" type="button">Map</button>
+      <button id="tabServicesBtn" class="tab-btn" type="button">Data Check</button>
+      <!-- Placeholder for future work -->
+      <button id="tabFinalReportBtn" class="tab-btn" type="button" disabled title="Coming soon">Report</button>
+    </div>
+
 
     <div class="card">
       <div class="row space-between">

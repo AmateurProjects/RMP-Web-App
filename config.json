@@ -89,26 +89,26 @@
   },
   "selectionLayers": [
     {
-      "title": "BLM Natl PLSS CadNSDI (MapServer)",
+      "title": "BLM Natl PLSS CadNSDI",
       "url": "https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer",
       "visible": true
     }
   ],
   "reportLayers": [
     {
-      "title": "BLM Natl Visual Resource Inventory Classes (Polygon)",
+      "title": "BLM Natl Visual Resource Inventory Classes",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0"
     },
     {
-      "title": "USFWS Critical Habitat (all sublayers)",
+      "title": "USFWS Critical Habitat",
       "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/USFWS_Critical_Habitat/FeatureServer"
     },
     {
-      "title": "BLM Natl Grazing Allotment Polygons (Layer 1)",
+      "title": "BLM Natl Grazing Allotment Polygons",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Allotment_Polygons/FeatureServer/1"
     },
     {
-      "title": "BLM Natl MLRS LUA ROW (Layer 0)",
+      "title": "BLM Natl MLRS LUA ROW",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_ROW/FeatureServer/0"
     },
     {
@@ -132,8 +132,36 @@
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_WLD_WSA/MapServer/1"
     },
     {
-      "title": "BLM Wild Horse & Burro Areas",
-      "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_WHB_Geocortex/MapServer"
+      "title": "BLM Locatable Mineral Allocations",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/Locatables_RUDD_ProofOfConcept/FeatureServer"
+    },
+    {
+      "title": "BLM Timber Allocations",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/Timber_RUDD_ProofOfConcept/FeatureServer"
+    },
+    {
+      "title": "USFWS Regions",
+      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/FWS_Legacy_Regional_Boundaries/FeatureServer/0"
+    },
+    {
+      "title": "USGS Ungulate Migration",
+      "url": "https://services.arcgis.com/U7I2hMhPtOeGx0fs/arcgis/rest/services/Ungulate_Migration/FeatureServer"
+    },
+    {
+      "title": "BLM Grazing Pasture",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Pasture_Polygons/FeatureServer"
+    },
+    {
+      "title": "BLM Oil and Gas Leases (MLRS)",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Leases/FeatureServer"
+    },
+    {
+      "title": "BLM Wild Horse and Burro Heard Areas",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Wild_Horse_and_Burro_Heard_Area_Polygons/FeatureServer/4"
+    },
+    {
+      "title": "BLM Wild Horse and Burro Heard Management Areas",
+      "url": "hhttps://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Wild_Horse_and_Burro_Heard_Mgmt_Area_Polygons/FeatureServer/5"
     }
   ],
   "report": {

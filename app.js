@@ -40,6 +40,7 @@ require([
     const tabReportBtn = document.getElementById("tabReportBtn");
     const tabVisualBtn = document.getElementById("tabVisualBtn");
     const tabServicesBtn = document.getElementById("tabServicesBtn");
+    const tabFinalReportBtn = document.getElementById("tabFinalReportBtn");
 
     const tabReportPanel = document.getElementById("tabReportPanel");
     const tabVisualPanel = document.getElementById("tabVisualPanel");
