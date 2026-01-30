@@ -562,18 +562,29 @@ async function autoZoomToLayerMinVisible(layer) {
 
         cb.addEventListener("change", async () => {
             const isOnMap = map.layers.includes(e.layer);
+            const spin = document.getElementById(`sellayer_spin_${i}`);
 
             if (cb.checked) {
+                // ✅ show spinner immediately while layer is added/initializes
+                if (spin) spin.classList.remove("hidden");
+
                 // turning ON — add to map if not present
                 if (!isOnMap) map.add(e.layer);
                 e.layer.visible = true;
                 ensureAoiOnTop(map);
 
+                // wire real updating spinner once the layerView exists
+                wireLayerUpdatingSpinner(e.layer, spin);
+
                 // If nothing is active, make this the active selection layer
                 if (!activeSelectionLayer) {
                     await setActiveSelectionLayerByIndex(i);
                 }
+
             } else {
+                // ✅ hide spinner immediately when turning OFF
+                if (spin) spin.classList.add("hidden");
+
                 // turning OFF — remove from map so it *actually disappears*
                 if (isOnMap) map.remove(e.layer);
 
@@ -594,10 +605,6 @@ async function autoZoomToLayerMinVisible(layer) {
                 }
             }
         });
-
-        // spinner wiring (shows while layer view is updating)
-        const spin = document.getElementById(`sellayer_spin_${i}`);
-        wireLayerUpdatingSpinner(e.layer, spin);
     });
 
         // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
