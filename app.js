@@ -142,6 +142,14 @@ require([
         if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
     }
 
+    function plssToolLabel(which) {
+        return (which === "intersected") ? "Parcel" :
+            (which === "township") ? "Township" :
+            (which === "section") ? "Section" :
+            "PLSS";
+    }
+
+
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, (c) => ({
             "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;"
@@ -1093,6 +1101,8 @@ async function autoZoomToLayerMinVisible(layer) {
 async function runReport() {
     const reportGeom = getReportGeometry();
     if (!reportGeom) return;
+    
+    const toolLabel = plssToolLabel(aoiSourcePlssTool);
 
     setBusy(true);
     setStatus("running report…");
@@ -1150,7 +1160,7 @@ async function runReport() {
         const toolLabel =
             (aoiSourcePlssTool === "township") ? "Township" :
             (aoiSourcePlssTool === "section") ? "Section" :
-            (aoiSourcePlssTool === "intersected") ? "Intersected" :
+            (aoiSourcePlssTool === "intersected") ? "Parcel" :
             "PLSS";
 
         expandedTargets.push({
