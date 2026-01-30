@@ -726,7 +726,9 @@ async function autoZoomToLayerMinVisible(layer) {
 
                         const created = subs.map(sl => new FeatureLayer({
                             url: sl.url,
-                            title: `${l.title}: ${sl.title}`,
+                            title: sl.title
+                            ? `${l.title} — ${sl.title}`
+                            : l.title
                             outFields: ["*"],
                             visible: true,
                             renderer: getPresetRenderer("report", cfgMatch) || undefined
