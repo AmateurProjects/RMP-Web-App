@@ -403,3 +403,20 @@ th{
   word-break: break-word;   /* wrap long field names */
 }
 
+.tabs.tabs-mid{
+  margin: 10px 0 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0,0,0,.08);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+#resultsCard{
+  margin-bottom: 0;
+}
+
+.tabs.tabs-mid{
+  margin: 6px 0 10px; /* slightly tighter than default */
+}
+
+#resultsCard.is-empty { display:none; }
+

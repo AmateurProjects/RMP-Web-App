@@ -25,16 +25,27 @@
       <div class="subtitle">Select a polygon or draw one, then run intersects against configured layers.</div>
     </div>
 
-    <!-- Tabs -->
-    <div class="tabs">
+
+    <!-- Tab Panels -->
+    <!-- Results (always visible) -->
+    <div class="card" id="resultsCard">
+      <div class="row space-between">
+        <div class="label">Results</div>
+        <button id="exportAllBtn" class="btn subtle" type="button" disabled>Export all CSV</button>
+      </div>
+      <div id="results"></div>
+    </div>
+
+    <!-- Tabs (moved here: between Results and AOI) -->
+    <div class="tabs tabs-mid">
       <button id="tabReportBtn" class="tab-btn active" type="button">Tables</button>
       <button id="tabVisualBtn" class="tab-btn" type="button">Map</button>
       <button id="tabServicesBtn" class="tab-btn" type="button">Data Check</button>
       <!-- Placeholder for future work -->
       <button id="tabFinalReportBtn" class="tab-btn" type="button" disabled title="Coming soon">Report</button>
     </div>
-
-    <!-- Tab Panels -->
+  
+    
     <section id="tabReportPanel" class="tab-panel active">
 
     <div class="card">
@@ -90,13 +101,7 @@
       </div>
     </div>
 
-    <div class="card">
-      <div class="row space-between">
-        <div class="label">Results</div>
-          <button id="exportAllBtn" class="btn subtle" type="button" disabled>Export all CSV</button>
-      </div>
-      <div id="results"></div>
-    </div>
+
 
     <div class="card small">
       <div class="label">Layers</div>
