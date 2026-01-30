@@ -103,6 +103,28 @@ require([
     // key -> FeatureLayer OR FeatureLayer[] (for FeatureServer/MapServer roots that expand into multiple drawable layers)
 
 
+
+    // ---------- report-layer toggle cancellation tokens ----------
+    const reportToggleToken = new Map(); // key -> number
+
+    function bumpReportToken(key) {
+        const next = (reportToggleToken.get(key) || 0) + 1;
+        reportToggleToken.set(key, next);
+        return next;
+    }
+
+    function getReportToken(key) {
+        return reportToggleToken.get(key) || 0;
+    }
+
+    function isTokenCurrent(key, token) {
+        return getReportToken(key) === token;
+    }
+
+
+
+
+
     // ---------- Helpers ----------
 
     // Tabs
@@ -599,20 +621,63 @@ async function autoZoomToLayerMinVisible(layer) {
             // Normalize URL key so get/set/delete always match (trailing slash is the usual culprit)
             const key = String(l.url || "").replace(/\/+$/, "");
 
-        cb.addEventListener("change", async () => {
-            const key = String(l.url || "").replace(/\/+$/, "");
+            cb.addEventListener("change", async () => {
+                const key = String(l.url || "").replace(/\/+$/, "");
+                const spin = document.getElementById(`rptlayer_spin_${i}`);
+                let myToken = 0;
 
-            // Spinner element for this row
-            const spin = document.getElementById(`rptlayer_spin_${i}`);
+                // =========================
+                // OFF: cancel immediately
+                // =========================
+                if (!cb.checked) {
+                    // Bump token so any in-flight ON work becomes stale
+                    bumpReportToken(key);
 
-            if (cb.checked) {
-                // turning ON
+                    // Hide spinner immediately (Item 9 requirement)
+                    if (spin) spin.classList.add("hidden");
+
+                    // Remove from map + cleanup cache (your existing behavior)
+                    const lyr = reportLayerViews.get(key);
+
+                    if (Array.isArray(lyr)) {
+                        lyr.forEach(x => { try { map.remove(x); } catch (e) {} });
+                        reportLayerViews.delete(key);
+                        return;
+                    }
+
+                    if (lyr) {
+                        try { map.remove(lyr); } catch (e) {}
+                        reportLayerViews.delete(key);
+                    } else {
+                        // defensive cleanup by URL match
+                        const toRemove = map.layers
+                            .toArray()
+                            .find(x => x?.type === "feature" && String(x?.url || "").replace(/\/+$/, "") === key);
+
+                        if (toRemove) map.remove(toRemove);
+                        reportLayerViews.delete(key);
+                    }
+
+                    return;
+                }
+
+                // =========================
+                // ON: start new token
+                // =========================
+                myToken = bumpReportToken(key);
+
                 try {
                     if (spin) spin.classList.remove("hidden");
 
-                    // ROOT = expand to polygon sublayers and add them all
+                    // If user toggled quickly, abort
+                    if (!cb.checked || !isTokenCurrent(key, myToken)) return;
+
+                    // ROOT FeatureServer: expand to polygon sublayers and add them all
                     if (isFeatureServerRoot(l.url)) {
                         const subs = await expandFeatureServerToPolygonSublayers(l.url);
+
+                        // Abort if user toggled OFF during expansion
+                        if (!cb.checked || !isTokenCurrent(key, myToken)) return;
 
                         const cfgMatch = layerCfgByUrl.get(key)?.cfg || layerCfgByUrl.get(l.url)?.cfg;
 
@@ -624,21 +689,31 @@ async function autoZoomToLayerMinVisible(layer) {
                             renderer: getPresetRenderer("report", cfgMatch) || undefined
                         }));
 
+                        // Add layers only if still current
+                        if (!cb.checked || !isTokenCurrent(key, myToken)) return;
+
                         created.forEach(lyr => map.add(lyr));
                         reportLayerViews.set(key, created);
 
-                        // optional: wire spinner to the first layer (good enough)
+                        // If user toggled OFF right after add, clean up immediately
+                        if (!cb.checked || !isTokenCurrent(key, myToken)) {
+                            created.forEach(x => { try { map.remove(x); } catch (e) {} });
+                            reportLayerViews.delete(key);
+                            return;
+                        }
+
+                        // Optional: wire spinner to the first layer (best-effort)
                         if (created.length && spin) wireLayerUpdatingSpinner(created[0], spin);
 
                         ensureAoiOnTop(map);
                         return;
                     }
 
-                    // (Optional later) handle MapServer roots similarly if you ever add one as a root in report list
-                    // else: normal single FeatureLayer URL
+                    // Normal single-layer URL
                     let lyr = reportLayerViews.get(key);
+
                     if (Array.isArray(lyr)) {
-                        // shouldn't happen for non-root, but be defensive
+                        // Defensive: should not happen for non-root, but handle
                         lyr.forEach(x => map.add(x));
                         return;
                     }
@@ -654,46 +729,41 @@ async function autoZoomToLayerMinVisible(layer) {
                             renderer: getPresetRenderer("report", cfgMatch) || undefined
                         });
 
+                        // Abort before adding if stale
+                        if (!cb.checked || !isTokenCurrent(key, myToken)) return;
+
                         map.add(lyr);
                         reportLayerViews.set(key, lyr);
+
+                        // If stale after add, clean up
+                        if (!cb.checked || !isTokenCurrent(key, myToken)) {
+                            try { map.remove(lyr); } catch (e) {}
+                            reportLayerViews.delete(key);
+                            return;
+                        }
 
                         if (spin) wireLayerUpdatingSpinner(lyr, spin);
                         ensureAoiOnTop(map);
                     } else {
                         lyr.visible = true;
                     }
+
                 } catch (e) {
                     console.error(e);
                     setStatus("failed to enable report layer (see console)");
                     cb.checked = false;
-                } finally {
+
+                    // Ensure spinner is not stuck on error
                     if (spin) spin.classList.add("hidden");
+
+                } finally {
+                    // Only the latest ON request is allowed to hide spinner.
+                    // If user unchecked, OFF already hid it immediately.
+                    if (spin && cb.checked && isTokenCurrent(key, myToken)) {
+                        spin.classList.add("hidden");
+                    }
                 }
-
-            } else {
-                // turning OFF — remove from map
-                const lyr = reportLayerViews.get(key);
-
-                if (Array.isArray(lyr)) {
-                    lyr.forEach(x => { try { map.remove(x); } catch (e) {} });
-                    reportLayerViews.delete(key);
-                    return;
-                }
-
-                if (lyr) {
-                    map.remove(lyr);
-                    reportLayerViews.delete(key);
-                } else {
-                    // defensive cleanup by URL match
-                    const toRemove = map.layers
-                        .toArray()
-                        .find(x => x?.type === "feature" && String(x?.url || "").replace(/\/+$/, "") === key);
-
-                    if (toRemove) map.remove(toRemove);
-                    reportLayerViews.delete(key);
-                }
-            }
-        });
+            });
         });
     }
 
