@@ -8,8 +8,9 @@ require([
     "esri/widgets/Sketch",
     "esri/widgets/BasemapToggle",
     "esri/Graphic",
-    "esri/geometry/geometryEngine"
-], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic, geometryEngine) {
+    "esri/geometry/geometryEngine",
+    "esri/layers/TileLayer"
+], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic, geometryEngine, TileLayer) {
 
 
 
@@ -1899,6 +1900,18 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         layerCfgByUrl = buildLayerCfgIndex(config);
 
         map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
+
+        // --- Always-on basemap overlay: BLM SMA (BLM Only) ---
+        const smaBlmOnly = new TileLayer({
+        url: "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer",
+        title: "SMA (BLM only)",
+        opacity: 0.35,      // tweak to taste
+        visible: true
+        });
+
+        // Add as an operational layer at the bottom so it behaves like a basemap overlay
+        map.add(smaBlmOnly, 0);
+
 
         view = new MapView({
             container: "viewDiv",
