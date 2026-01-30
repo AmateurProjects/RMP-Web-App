@@ -304,8 +304,15 @@ async function autoZoomToLayerMinVisible(layer) {
                 }
             }
 
+            let title = String(l.name || "");
+
+            // Normalize PLSS naming
+            if (title.toLowerCase() === "intersected") {
+                title = "Parcel";
+            }
+
             out.push({
-                title: `${l.name}`,
+                title,
                 url: layerUrl
             });
         }
@@ -472,8 +479,14 @@ async function autoZoomToLayerMinVisible(layer) {
                 continue;
             }
 
+            let title = l?.name ? String(l.name) : `Layer ${l.id}`;
+
+            if (title.toLowerCase() === "intersected") {
+                title = "Parcel";
+            }
+
             out.push({
-                title: l?.name ? String(l.name) : `Layer ${l.id}`,
+                title,
                 url: layerUrl
             });
         }
