@@ -729,7 +729,7 @@ async function autoZoomToLayerMinVisible(layer) {
                             url: sl.url,
                             title: sl.title
                             ? `${l.title} — ${sl.title}`
-                            : l.title
+                            : l.title,
                             outFields: ["*"],
                             visible: true,
                             renderer: getPresetRenderer("report", cfgMatch) || undefined
