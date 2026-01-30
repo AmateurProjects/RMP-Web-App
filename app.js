@@ -998,7 +998,7 @@ async function autoZoomToLayerMinVisible(layer) {
 
         // ✅ Hint about horizontal scrolling + “first 5 columns by default”
         const colHint = (keys.length > defaultVisibleCols)
-            ? `<div class="small table-hint">Showing ${defaultVisibleCols} of ${keys.length} columns by default — scroll → for more.</div>`
+            ? `<div class="small table-hint">Table has ${keys.length} columns — scroll → for more.</div>`
             : "";
 
         return `
