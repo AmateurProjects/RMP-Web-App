@@ -21,13 +21,76 @@
       <div class="banner banner-warn">
         Pre-alpha: active development — outputs may change and results may be incomplete.
       </div>
-
-      <div class="subtitle">Select a polygon or draw one, then run intersects against configured layers.</div>
+      <!-- NOTE: subtitle moved out of header -->
     </div>
 
+    <!-- AOI / Intersect controls (moved directly under header) -->
+    <div class="card">
+      <!-- Subtitle moved here (top of AOI card) -->
+      <div class="subtitle">Select a polygon or draw one, then run intersects against configured layers.</div>
 
-    <!-- Tab Panels -->
-    <!-- Results (always visible) -->
+      <div class="row" style="margin-top:10px;">
+        <label class="label">Area of Interest</label>
+        <select id="modeSelect">
+          <option value="select">Select from layer</option>
+          <option value="draw">Draw polygon</option>
+        </select>
+      </div>
+
+      <div id="selectModeControls">
+        <div class="row">
+          <label class="label">PLSS select</label>
+
+          <div id="plssSelectTools" class="toolgroup" role="group" aria-label="PLSS selection layer">
+            <button id="plssTownshipBtn" class="toolbtn" type="button" aria-pressed="true" title="Township (largest)">
+              <span class="box box-lg" aria-hidden="true"></span>
+              <span class="tooltext">Township</span>
+            </button>
+
+            <button id="plssSectionBtn" class="toolbtn" type="button" aria-pressed="false" title="Section (medium)">
+              <span class="box box-md" aria-hidden="true"></span>
+              <span class="tooltext">Section</span>
+            </button>
+
+            <button id="plssIntersectedBtn" class="toolbtn" type="button" aria-pressed="false" title="PLSS Parcel (small)">
+              <span class="box box-sm" aria-hidden="true"></span>
+              <span class="tooltext">Parcel</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="hint">Click a polygon on the map to select the AOI.</div>
+      </div>
+
+      <div id="drawModeControls" class="hidden">
+        <div class="row">
+          <button id="drawBtn" class="btn" type="button">Draw polygon</button>
+          <button id="stopDrawBtn" class="btn subtle" type="button">Stop</button>
+        </div>
+        <div class="hint">Draw a polygon; the most recent sketch is used.</div>
+      </div>
+
+      <div class="row">
+        <button id="runBtn" class="btn primary" disabled>Run report</button>
+        <button id="clearBtn" class="btn subtle">Clear</button>
+      </div>
+
+      <div id="status" class="status">
+        <span id="statusText">Status: ready</span>
+        <span id="busyIndicator" class="spinner hidden" aria-label="busy"></span>
+      </div>
+    </div>
+
+    <!-- Tabs (moved under AOI; always visible) -->
+    <div class="tabs tabs-mid">
+      <button id="tabReportBtn" class="tab-btn active" type="button">Tables</button>
+      <button id="tabVisualBtn" class="tab-btn" type="button">Map</button>
+      <button id="tabServicesBtn" class="tab-btn" type="button">Data Check</button>
+      <!-- Placeholder for future work -->
+      <button id="tabFinalReportBtn" class="tab-btn" type="button" disabled title="Coming soon">Report</button>
+    </div>
+
+    <!-- Results (moved under tabs; still always visible) -->
     <div class="card" id="resultsCard">
       <div class="row space-between">
         <div class="label">Results</div>
@@ -36,26 +99,8 @@
       <div id="results"></div>
     </div>
 
-    <!-- Tabs (moved here: between Results and AOI) -->
-    <div class="tabs tabs-mid">
-      <button id="tabReportBtn" class="tab-btn active" type="button">Tables</button>
-      <button id="tabVisualBtn" class="tab-btn" type="button">Map</button>
-      <button id="tabServicesBtn" class="tab-btn" type="button">Data Check</button>
-      <!-- Placeholder for future work -->
-      <button id="tabFinalReportBtn" class="tab-btn" type="button" disabled title="Coming soon">Report</button>
-    </div>
-  
-    
+    <!-- Tab Panels -->
     <section id="tabReportPanel" class="tab-panel active">
-
-    <div class="card">
-      <div class="row">
-        <label class="label">Area of Interest</label>
-        <select id="modeSelect">
-          <option value="select">Select from layer</option>
-          <option value="draw">Draw polygon</option>
-        </select>
-      </div>
 
     <div id="selectModeControls">
       <div class="row">
