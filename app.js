@@ -51,7 +51,8 @@ require([
     const generateVisualBtn = document.getElementById("generateVisualBtn");
     const visualReportStatusEl = document.getElementById("visualReportStatus");
     const visualReportMapWrapEl = document.getElementById("visualReportMapWrap");
-    const visualReportImgEl = document.getElementById("visualReportImg");
+    // const visualReportImgEl = document.getElementById("visualReportImg"); // no longer used
+    const visualReportOutputsEl = document.getElementById("visualReportOutputs");
     const visualReportSummaryEl = document.getElementById("visualReportSummary");
     const downloadMapBtn = document.getElementById("downloadMapBtn");
     const printVisualBtn = document.getElementById("printVisualBtn");
@@ -1546,6 +1547,123 @@ async function runReport() {
         return lines;
     }
 
+// ---------- Coverage stats (AOI acres + % covered by layer) ----------
+const SQM_PER_ACRE = 4046.8564224;
+
+function formatNumber(n, digits = 2) {
+    const x = Number(n);
+    if (!isFinite(x)) return "";
+    return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+async function queryAllFeaturesPagedWithGeometry(layer, baseQuery, pageSize, maxExportFeatures) {
+    const all = [];
+    let offset = 0;
+
+    while (true) {
+        const q = baseQuery.clone();
+        q.num = pageSize;
+        q.start = offset;
+        q.returnGeometry = true;              // ✅ geometry required for area
+        q.outFields = [];                    // we only need geometry
+        q.outSpatialReference = view?.spatialReference;
+
+        const fs = await layer.queryFeatures(q);
+        const feats = (fs && fs.features) ? fs.features : [];
+
+        all.push(...feats);
+
+        if (feats.length < pageSize) break;
+        offset += pageSize;
+
+        if (maxExportFeatures && all.length >= maxExportFeatures) break;
+    }
+
+    return all;
+}
+
+function unionGeomsChunked(geoms) {
+    // geometryEngine.union can choke on huge arrays; do it in chunks.
+    const CHUNK = 25;
+    let acc = null;
+
+    for (let i = 0; i < geoms.length; i += CHUNK) {
+        const chunk = geoms.slice(i, i + CHUNK).filter(Boolean);
+        if (!chunk.length) continue;
+
+        const u = geometryEngine.union(chunk);
+        if (!acc) acc = u;
+        else acc = geometryEngine.union([acc, u]);
+    }
+
+    return acc;
+}
+
+async function computeLayerCoverageStats(item, aoiGeom) {
+    // Returns: { acresCovered, pctAoiCovered }
+    if (!item || !item._layer || !item._exportQuery || !aoiGeom) return null;
+
+    // AOI area (sqm)
+    let aoiAreaSqm = 0;
+    try {
+        aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters"));
+    } catch (e) {
+        aoiAreaSqm = 0;
+    }
+    if (!aoiAreaSqm) return { acresCovered: 0, pctAoiCovered: 0 };
+
+    const pageSize = config.report?.pageSize ?? 1000;
+    const maxExport = config.report?.maxExportFeatures ?? 50000;
+
+    // Page through intersecting features WITH geometry
+    const feats = await queryAllFeaturesPagedWithGeometry(item._layer, item._exportQuery, pageSize, maxExport);
+
+    // Intersect each feature with AOI and collect intersection geometries
+    const interGeoms = [];
+    for (const f of feats) {
+        const g = f?.geometry;
+        if (!g) continue;
+
+        try {
+            const inter = geometryEngine.intersect(aoiGeom, g);
+            if (!inter) continue;
+
+            // Drop pure edge-touch (0 area) intersections
+            const area = geometryEngine.geodesicArea(inter, "square-meters");
+            if (area <= 0) continue;
+
+            interGeoms.push(inter);
+        } catch (e) {
+            // ignore bad geometries
+        }
+    }
+
+    if (!interGeoms.length) return { acresCovered: 0, pctAoiCovered: 0 };
+
+    // Union intersections to avoid double-counting overlap
+    let unionGeom = null;
+    try {
+        unionGeom = unionGeomsChunked(interGeoms);
+    } catch (e) {
+        unionGeom = null;
+    }
+
+    let coveredSqm = 0;
+    try {
+        coveredSqm = unionGeom
+            ? Math.max(0, geometryEngine.geodesicArea(unionGeom, "square-meters"))
+            : 0;
+    } catch (e) {
+        coveredSqm = 0;
+    }
+
+    const acresCovered = coveredSqm / SQM_PER_ACRE;
+    const pctAoiCovered = Math.min(100, Math.max(0, (coveredSqm / aoiAreaSqm) * 100));
+
+    return { acresCovered, pctAoiCovered };
+}
+
+
     function wrapText(ctx, text, maxWidth) {
         const words = String(text || "").split(/\s+/).filter(Boolean);
         if (!words.length) return [""];
@@ -1670,109 +1788,174 @@ async function runReport() {
         `;
     }
 
-    async function generateVisualReport() {
-        if (!view) return;
+async function generateVisualReport() {
+    if (!view) return;
 
-        if (!selectionGeom) {
-            setVisualStatus("Select or draw an AOI first.");
+    if (!selectionGeom) {
+        setVisualStatus("Select or draw an AOI first.");
+        return;
+    }
+
+    if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+        setVisualStatus("Run the report first (Tables tab) so we know which layers intersect.");
+        return;
+    }
+
+    setBusy(true);
+    setVisualStatus("Generating maps for intersecting layers…");
+
+    if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
+    if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = "";
+    if (downloadMapBtn) downloadMapBtn.disabled = true;
+    if (printVisualBtn) printVisualBtn.disabled = true;
+
+    try {
+        // Only layers with real intersect hits AND usable query objects
+        const targets = lastReportRowsByLayer
+            .filter(x => (x?.count || 0) > 0)
+            .filter(x => x?._layer && x?._exportQuery); // excludes pinned AOI source etc.
+
+        if (!targets.length) {
+            setVisualStatus("No intersecting layers to map (all counts are 0).");
+            if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
             return;
         }
 
-        setBusy(true);
-        setVisualStatus("Generating map…");
-        if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
-        if (downloadMapBtn) downloadMapBtn.disabled = true;
-        if (printVisualBtn) printVisualBtn.disabled = true;
+        // Zoom to AOI with padding once (we’ll keep the view there)
+        const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+        const width = config?.visualReport?.screenshotWidth ?? 1400;
 
-        try {
-            // Zoom to AOI with padding
-            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
-            const width = config?.visualReport?.screenshotWidth ?? 1400;
-
-            // Use AOI extent if available; fallback to goTo geometry directly
-            const ext = selectionGeom?.extent;
-            if (ext && ext.expand) {
-                await view.goTo(ext.expand(paddingFactor), { animate: true, duration: 450 });
-            } else {
-                await view.goTo(selectionGeom, { animate: true, duration: 450 });
-            }
-
-            // Ensure AOI draws on top (if you implemented AOI reorder helper)
-            // If you have ensureAoiOnTop(map) in your codebase, keep this:
-            try { ensureAoiOnTop(view.map); } catch (e) {}
-
-            // Screenshot the current view
-            const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
-            const dataUrl = ss?.dataUrl;
-
-            if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
-
-            // ✅ Item 6: bake summary stats into the PNG
-            const combinedUrl = await buildVisualPngWithSummary(dataUrl);
-
-            if (visualReportImgEl) visualReportImgEl.src = combinedUrl;
-            if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
-
-            // Enable download
-            if (downloadMapBtn) {
-                downloadMapBtn.disabled = false;
-                downloadMapBtn.onclick = () => {
-                    const a = document.createElement("a");
-                    a.href = combinedUrl;
-                    a.download = "AOI_map_with_summary.png";
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                };
-            }
-
-            // Enable print (simple print window with image + summary)
-            if (printVisualBtn) {
-                printVisualBtn.disabled = false;
-                printVisualBtn.onclick = () => {
-                    const summaryHtml = visualReportSummaryEl ? visualReportSummaryEl.innerHTML : "";
-                    const w = window.open("", "_blank");
-                    if (!w) return;
-
-                    w.document.write(`
-                    <!doctype html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8" />
-                        <meta name="viewport" content="width=device-width,initial-scale=1" />
-                        <title>Visual Report</title>
-                        <style>
-                        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-                        h1 { font-size: 18px; margin: 0 0 10px 0; }
-                        img { width: 100%; height: auto; border: 1px solid #ddd; border-radius: 12px; }
-                        .small { font-size: 12px; color: #444; }
-                        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-                        .section { margin-top: 14px; }
-                        </style>
-                    </head>
-                    <body>
-                        <h1>Visual Report</h1>
-                        <div class="section">
-                        <img src="${combinedUrl}" alt="AOI map" />
-                        </div>
-                        <div class="section">${summaryHtml}</div>
-                        <script>window.onload = () => window.print();</script>
-                    </body>
-                    </html>
-                    `);
-                    w.document.close();
-                };
-            }
-
-            setVisualStatus("Done.");
-        } catch (e) {
-            console.error(e);
-            setVisualStatus("Failed to generate map (see console).");
-        } finally {
-            renderVisualSummary();
-            setBusy(false);
+        const ext = selectionGeom?.extent;
+        if (ext && ext.expand) {
+            await view.goTo(ext.expand(paddingFactor), { animate: true, duration: 450 });
+        } else {
+            await view.goTo(selectionGeom, { animate: true, duration: 450 });
         }
+
+        // Snapshot current layer visibility so we can restore after each screenshot
+        const allLayers = view.map.layers.toArray();
+
+        const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+
+        // Helper to hide everything except AOI + basemap overlay + a temp target layer
+        function setVisibilityForScreenshot(tempLayer) {
+            for (const l of allLayers) {
+                // Keep AOI layer visible
+                if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+
+                // Keep SMA overlay visible (your TileLayer at bottom) if present
+                // (We don’t have the variable here; keep TileLayers visible by default.)
+                if (l?.type === "tile") { l.visible = true; continue; }
+
+                // Hide everything else (selection layers, other report layers, etc.)
+                l.visible = false;
+            }
+
+            if (tempLayer) tempLayer.visible = true;
+            ensureAoiOnTop(view.map);
+        }
+
+        function restoreVisibility() {
+            visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) {} });
+            ensureAoiOnTop(view.map);
+        }
+
+        // AOI area in acres (used for context)
+        let aoiAcres = 0;
+        try {
+            const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
+            aoiAcres = aoiSqm / SQM_PER_ACRE;
+        } catch (e) {
+            aoiAcres = 0;
+        }
+
+        const outCards = [];
+
+        for (let i = 0; i < targets.length; i++) {
+            const item = targets[i];
+
+            setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
+
+            // Create a temporary layer for this URL, regardless of toggle state
+            const temp = new FeatureLayer({
+                url: item.url,
+                title: item.title,
+                outFields: ["*"],
+                visible: true,
+                renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
+            });
+
+            // Add temp, hide everything else, screenshot, then remove temp
+            view.map.add(temp);
+            try {
+                setVisibilityForScreenshot(temp);
+
+                // Wait for layer to draw at least once
+                try { await temp.when(); } catch (e) {}
+                try {
+                    const lv = await view.whenLayerView(temp);
+                    // wait for initial draw if it’s actively updating
+                    if (lv?.updating) {
+                        await new Promise(resolve => {
+                            const h = lv.watch("updating", (u) => {
+                                if (!u) { h.remove(); resolve(); }
+                            });
+                            // safety timeout (don’t hang forever)
+                            window.setTimeout(() => { try { h.remove(); } catch(e) {} resolve(); }, 6000);
+                        });
+                    }
+                } catch (e) {}
+
+                const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
+                const dataUrl = ss?.dataUrl;
+                if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+                // Compute coverage stats (acres + % AOI covered)
+                const cov = await computeLayerCoverageStats(item, selectionGeom);
+
+                // Render a card for this layer
+                const acresCovered = cov ? cov.acresCovered : 0;
+                const pctCovered = cov ? cov.pctAoiCovered : 0;
+
+                outCards.push(`
+                  <div class="visual-output-card">
+                    <div class="visual-output-title">${escapeHtml(item.title)}</div>
+                    <img class="visual-output-img" src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}" />
+                    <div class="visual-output-meta">
+                      <table>
+                        <tr><td>AOI area</td><td><span class="mono">${formatNumber(aoiAcres, 2)}</span> acres</td></tr>
+                        <tr><td>Intersecting features</td><td><span class="mono">${escapeHtml(String(item.count || 0))}</span></td></tr>
+                        <tr><td>AOI covered by layer</td><td><span class="mono">${formatNumber(acresCovered, 2)}</span> acres</td></tr>
+                        <tr><td>% AOI covered</td><td><span class="mono">${formatNumber(pctCovered, 2)}</span>%</td></tr>
+                      </table>
+                    </div>
+                  </div>
+                `);
+
+            } finally {
+                // Remove temp layer and restore visibility
+                try { view.map.remove(temp); } catch (e) {}
+                restoreVisibility();
+            }
+        }
+
+        if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = outCards.join("");
+        if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
+
+        // Keep your existing summary panel behavior
+        renderVisualSummary();
+
+        setVisualStatus("Done.");
+    } catch (e) {
+        console.error(e);
+        setVisualStatus("Failed to generate maps (see console).");
+    } finally {
+        setBusy(false);
     }
+}
+
+
+
 
 async function getFullFeatureGeometryFromLayer(layer, graphic) {
     if (!layer || !graphic) {
