@@ -37,6 +37,7 @@ require([
     const statusTextEl = document.getElementById("statusText");
     const busyIndicatorEl = document.getElementById("busyIndicator");
 
+    const resultsCardEl = document.getElementById("resultsCard");
     const resultsEl = document.getElementById("results");
     const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
     const reportLayerTogglesEl = document.getElementById("reportLayerToggles");
@@ -207,21 +208,21 @@ require([
 
     // Tabs
     function setActiveTab(tabName) {
-        const isReport = (tabName === "report");
-        const isVisual = (tabName === "visual");
-        const isServices = (tabName === "services");
+    const isReport = (tabName === "report");
+    const isVisual = (tabName === "visual");
+    const isServices = (tabName === "services");
 
-        if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
-        if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
-        if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
+    if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
+    if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
+    if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
 
-        if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
-        if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
-        if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
+    if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
+    if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
+    if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
 
-        // ✅ Hide Tables-tab results when on Map tab
-        if (resultsEl) resultsEl.classList.toggle("hidden", isVisual);
-        if (resultsHiddenNoteEl) resultsHiddenNoteEl.classList.toggle("hidden", !isVisual);
+    // ✅ Hide Results + Export ALL on Map tab
+    if (resultsCardEl) resultsCardEl.classList.toggle("hidden", isVisual);
+    if (exportAllBtn) exportAllBtn.classList.toggle("hidden", isVisual);
     }
 
     function plssToolLabel(which) {
