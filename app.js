@@ -29,6 +29,10 @@ require([
     const clearBtn = document.getElementById("clearBtn");
     const exportAllBtn = document.getElementById("exportAllBtn");
 
+    const cancelRunBtn = document.getElementById("cancelRunBtn");
+    const cancelVisualBtn = document.getElementById("cancelVisualBtn");
+    const viewBlockerEl = document.getElementById("viewBlocker");
+
     const statusEl = document.getElementById("status");
     const statusTextEl = document.getElementById("statusText");
     const busyIndicatorEl = document.getElementById("busyIndicator");
@@ -125,6 +129,77 @@ require([
     }
 
 
+    // ---------- Operation lock + cancel (Report / Visual) ----------
+    let reportOpToken = 0;
+    let visualOpToken = 0;
+
+    const navDefaults = { captured: false, values: {} };
+    const navProps = [
+    "mouseWheelEnabled",
+    "dragPanEnabled",
+    "browserTouchPanEnabled",
+    "keyboardEnabled",
+    "doubleClickZoomEnabled"
+    ];
+
+    function lockMapInteraction(isLocked) {
+    // UI overlay that blocks pointer events
+    if (viewBlockerEl) viewBlockerEl.classList.toggle("hidden", !isLocked);
+
+    // Also disable navigation toggles (belt + suspenders)
+    try {
+        if (!view?.navigation) return;
+
+        const nav = view.navigation;
+
+        if (!navDefaults.captured) {
+        navDefaults.captured = true;
+        navProps.forEach(p => { if (p in nav) navDefaults.values[p] = nav[p]; });
+        }
+
+        if (isLocked) {
+        navProps.forEach(p => { if (p in nav) nav[p] = false; });
+        } else {
+        navProps.forEach(p => {
+            if (p in nav && p in navDefaults.values) nav[p] = navDefaults.values[p];
+        });
+        }
+    } catch (e) {
+        // ignore
+    }
+    }
+
+    function startReportOp() {
+    const my = ++reportOpToken;
+    lockMapInteraction(true);
+    if (cancelRunBtn) cancelRunBtn.classList.remove("hidden");
+    return my;
+    }
+
+    function endReportOp(myToken) {
+    // Only unlock if this is the most recent op (prevents weird edge cases)
+    if (myToken === reportOpToken) {
+        lockMapInteraction(false);
+        if (cancelRunBtn) cancelRunBtn.classList.add("hidden");
+    }
+    }
+
+    function startVisualOp() {
+    const my = ++visualOpToken;
+    lockMapInteraction(true);
+    if (cancelVisualBtn) cancelVisualBtn.classList.remove("hidden");
+    return my;
+    }
+
+    function endVisualOp(myToken) {
+    if (myToken === visualOpToken) {
+        lockMapInteraction(false);
+        if (cancelVisualBtn) cancelVisualBtn.classList.add("hidden");
+    }
+    }
+
+    function isReportCanceled(myToken) { return myToken !== reportOpToken; }
+    function isVisualCanceled(myToken) { return myToken !== visualOpToken; }
 
 
 
@@ -1185,8 +1260,10 @@ async function autoZoomToLayerMinVisible(layer) {
 
 
 async function runReport() {
+    const myOp = startReportOp();
+
     const reportGeom = getReportGeometry();
-    if (!reportGeom) return;
+    if (!reportGeom) { endReportOp(myOp); return; }
     
     const toolLabel = plssToolLabel(aoiSourcePlssTool);
 
@@ -1308,6 +1385,11 @@ async function runReport() {
 
         const cards = [];
         for (let i = 0; i < expandedTargets.length; i++) {
+            if (isReportCanceled(myOp)) {
+            setStatus("canceled");
+            break;
+            }
+
             const t = expandedTargets[i];
 
             if (t.error) {
@@ -1473,6 +1555,7 @@ async function runReport() {
         setStatus("report failed (see console)");
     } finally {
         setBusy(false);
+        endReportOp(myOp);
     }
 }
 
@@ -1821,7 +1904,9 @@ async function computeLayerCoverageStats(item, aoiGeom) {
     }
 
 async function generateVisualReport() {
-    if (!view) return;
+    const myOp = startVisualOp();
+
+    if (!view) { endVisualOp(myOp); return; }
 
     if (!selectionGeom) {
         setVisualStatus("Select or draw an AOI first.");
@@ -1904,6 +1989,11 @@ async function generateVisualReport() {
         const outCards = [];
 
         for (let i = 0; i < targets.length; i++) {
+            if (isVisualCanceled(myOp)) {
+            setVisualStatus("canceled");
+            break;
+            }
+
             const item = targets[i];
 
             setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
@@ -1983,6 +2073,7 @@ async function generateVisualReport() {
         setVisualStatus("Failed to generate maps (see console).");
     } finally {
         setBusy(false);
+        endVisualOp(myOp);
     }
 }
 
@@ -2374,6 +2465,27 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         }
 
         if (runBtn) runBtn.addEventListener("click", runReport);
+
+        if (cancelRunBtn) {
+            cancelRunBtn.addEventListener("click", () => {
+                // bump token to cancel; unlock immediately
+                reportOpToken++;
+                lockMapInteraction(false);
+                cancelRunBtn.classList.add("hidden");
+                setStatus("cancel requested…");
+            });
+            }
+
+        if (cancelVisualBtn) {
+        cancelVisualBtn.addEventListener("click", () => {
+            visualOpToken++;
+            lockMapInteraction(false);
+            cancelVisualBtn.classList.add("hidden");
+            setVisualStatus("cancel requested…");
+        });
+        }
+
+
         if (clearBtn) clearBtn.addEventListener("click", clearAll);
 
 

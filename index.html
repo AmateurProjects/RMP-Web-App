@@ -12,7 +12,8 @@
 </head>
 <body>
   <div id="viewDiv"></div>
-
+  <div id="viewBlocker" class="view-blocker hidden" aria-hidden="true"></div>
+  
   <aside id="panel">
     <div class="panel-header">
       <div class="title">Intersect Report</div>
@@ -72,7 +73,8 @@
 
       <div class="row">
         <button id="runBtn" class="btn primary" disabled>Run report</button>
-        <button id="clearBtn" class="btn subtle">Clear</button>
+        <button id="cancelRunBtn" class="btn subtle hidden" type="button">Cancel</button>
+        <button id="clearBtn" class="btn subtle" type="button">Clear</button>
       </div>
 
       <div id="status" class="status">
@@ -117,10 +119,13 @@
 <!-- NEW: Visual Report Tab -->
 <section id="tabVisualPanel" class="tab-panel">
   <div class="card">
-    <div class="row space-between">
-      <div class="label">Visual Report</div>
+  <div class="row space-between">
+    <div class="label">Visual Report</div>
+    <div class="row" style="margin:0;">
       <button id="generateVisualBtn" class="btn primary" type="button">Generate</button>
+      <button id="cancelVisualBtn" class="btn subtle hidden" type="button">Cancel</button>
     </div>
+  </div>
 
     <div class="hint">
       Creates a simple report view: AOI map + summary statistics. (Run the report first for best results.)

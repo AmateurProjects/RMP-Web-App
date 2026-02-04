@@ -463,3 +463,17 @@ th{
 
 #resultsCard.is-empty { display:none; }
 
+/* ====== Lock map interactions during long operations ====== */
+.view-blocker{
+  position: fixed;
+  inset: 0;
+  z-index: 5;          /* below the panel (which is absolute + later in DOM) */
+  background: rgba(0,0,0,0); /* transparent; we just want to intercept events */
+  cursor: wait;
+  pointer-events: all; /* IMPORTANT: blocks pan/zoom/click */
+}
+
+/* keep panel above blocker */
+#panel{
+  z-index: 10;
+}
