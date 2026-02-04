@@ -218,6 +218,10 @@ require([
         if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
         if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
         if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
+
+        // ✅ Hide Tables-tab results when on Map tab
+        if (resultsEl) resultsEl.classList.toggle("hidden", isVisual);
+        if (resultsHiddenNoteEl) resultsHiddenNoteEl.classList.toggle("hidden", !isVisual);
     }
 
     function plssToolLabel(which) {
@@ -1970,9 +1974,13 @@ async function generateVisualReport() {
         const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
         const width = config?.visualReport?.screenshotWidth ?? 1400;
 
+        // 🔒 Compute and lock a single extent for ALL screenshots
+        let fixedExtent = null;
         const ext = selectionGeom?.extent;
+
         if (ext && ext.expand) {
-            await view.goTo(ext.expand(paddingFactor), { animate: true, duration: 450 });
+            fixedExtent = ext.expand(paddingFactor);
+            await view.goTo(fixedExtent, { animate: true, duration: 450 });
         } else {
             await view.goTo(selectionGeom, { animate: true, duration: 450 });
         }
@@ -2035,6 +2043,10 @@ async function generateVisualReport() {
                 renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
             });
 
+            // 🔒 Prevent scale-based rendering rules from forcing view scale changes
+            temp.minScale = 0;
+            temp.maxScale = 0;
+
             // Add temp, hide everything else, screenshot, then remove temp
             view.map.add(temp);
             try {
@@ -2043,17 +2055,9 @@ async function generateVisualReport() {
                 // Wait for layer to load
                 try { await temp.when(); } catch (e) {}
 
-                // ✅ Ensure we are within the layer's visible scale range (minScale/maxScale)
-                try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
-
                 // ✅ Wait until layerView is not suspended AND not updating (best effort)
                 try {
                     const lv = await view.whenLayerView(temp);
-
-                    // If out-of-scale, lv.suspended is commonly true. Nudge again once.
-                    if (lv?.suspended) {
-                        try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
-                    }
 
                     // Wait for suspended -> false OR timeout
                     if (lv?.suspended) {
@@ -2075,6 +2079,11 @@ async function generateVisualReport() {
                         });
                     }
                 } catch (e) {}
+
+                // 🔒 Re-apply locked extent to guarantee identical framing
+                if (fixedExtent) {
+                    await view.goTo(fixedExtent, { animate: false });
+                }
 
                 const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
                 const dataUrl = ss?.dataUrl;
@@ -2275,9 +2284,13 @@ async function generateFinalReport() {
         const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
         const width = config?.visualReport?.screenshotWidth ?? 1400;
 
+        // 🔒 Compute and lock a single extent for ALL screenshots
+        let fixedExtent = null;
         const ext = selectionGeom?.extent;
+
         if (ext && ext.expand) {
-            await view.goTo(ext.expand(paddingFactor), { animate: true, duration: 450 });
+            fixedExtent = ext.expand(paddingFactor);
+            await view.goTo(fixedExtent, { animate: true, duration: 450 });
         } else {
             await view.goTo(selectionGeom, { animate: true, duration: 450 });
         }
@@ -2334,6 +2347,10 @@ async function generateFinalReport() {
                     renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
                 });
 
+                // 🔒 Prevent scale-based rendering rules from forcing view scale changes
+                temp.minScale = 0;
+                temp.maxScale = 0;
+
                 // Add temp, hide everything else, screenshot, then remove temp
                 view.map.add(temp);
                 try {
@@ -2342,17 +2359,9 @@ async function generateFinalReport() {
                     // Wait for layer to load
                     try { await temp.when(); } catch (e) {}
 
-                    // ✅ Ensure we are within the layer's visible scale range (minScale/maxScale)
-                    try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
-
                     // ✅ Wait until layerView is not suspended AND not updating (best effort)
                     try {
                         const lv = await view.whenLayerView(temp);
-
-                        // If out-of-scale, lv.suspended is commonly true. Nudge again once.
-                        if (lv?.suspended) {
-                            try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
-                        }
 
                         // Wait for suspended -> false OR timeout
                         if (lv?.suspended) {
@@ -2376,6 +2385,11 @@ async function generateFinalReport() {
                     } catch (e) {}
 
                     if (isVisualCanceled(myOp)) break;
+
+                    // 🔒 Re-apply locked extent to guarantee identical framing
+                    if (fixedExtent) {
+                        await view.goTo(fixedExtent, { animate: false });
+                    }
 
                     const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
                     const dataUrl = ss?.dataUrl;
