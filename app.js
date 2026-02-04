@@ -1448,8 +1448,6 @@ async function runReport() {
                     ? "within"
                     : "intersects";
 
-            const isPinnedAoi = !!t.__pinnedAoi;
-
             // ✅ AOI Source card: render from cached feature (no service re-query)
             if (t.__pinnedAoiFeature) {
                 const f = t.__pinnedAoiFeature;
@@ -1493,11 +1491,13 @@ async function runReport() {
                 </div>
             <div style="margin-top:8px;">
               ${tableHtml}
-              <div class="row" style="margin-top:8px;">
-                <button class="btn subtle" data-export="${escapeHtml(r.title)}">
-                Export FULL CSV
-                </button>
-              </div>
+                ${(r.count > 0) ? `
+                <div class="row" style="margin-top:8px;">
+                    <button class="btn subtle" data-export="${escapeHtml(r.title)}">
+                    Export FULL CSV
+                    </button>
+                </div>
+                ` : ``}
             </div>
           </div>
         `);
@@ -1512,9 +1512,6 @@ async function runReport() {
             t.title,
             reportGeom,           // ignored in objectId path
             spatialRel,
-            isPinnedAoi
-                ? { objectId: t.__objectId, objectIdField: t.__objectIdField }
-                : {}
             );
             const rows = flattenAttributes(r.features);
 
@@ -1552,14 +1549,16 @@ async function runReport() {
                 <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
                 </div>
             <div style="margin-top:8px;">
-              ${tableHtml}
-              <div class="row" style="margin-top:8px;">
+            ${tableHtml}
+            ${(r.count > 0) ? `
+                <div class="row" style="margin-top:8px;">
                 <button class="btn subtle" data-export="${escapeHtml(r.title)}">
-                Export FULL CSV
+                    Export FULL CSV
                 </button>
-              </div>
+                </div>
+            ` : ``}
             </div>
-          </div>
+
         `);
             } catch (e) {
                 cards.push(`
