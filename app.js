@@ -1478,7 +1478,7 @@ async function runReport() {
                     ? makeTable(feats, maxFields, r.count)
                     : `<div class="small">No sample rows.</div>`;
 
-                cards.push(`
+        cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
@@ -1532,7 +1532,7 @@ async function runReport() {
                     ? makeTable(r.features, maxFields, r.count)
                     : `<div class="small">No sample rows.</div>`;
 
-                cards.push(`
+        cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
@@ -1546,19 +1546,20 @@ async function runReport() {
                 </div>
             </div>
                 <div class="small mono">
-                <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
+                    <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
                 </div>
+            
             <div style="margin-top:8px;">
             ${tableHtml}
             ${(r.count > 0) ? `
                 <div class="row" style="margin-top:8px;">
                 <button class="btn subtle" data-export="${escapeHtml(r.title)}">
-                    Export FULL CSV
+                Export FULL CSV
                 </button>
                 </div>
             ` : ``}
             </div>
-
+        </div>
         `);
             } catch (e) {
                 cards.push(`
