@@ -362,16 +362,41 @@ async function autoZoomToLayerMinVisible(layer) {
 
     // timed JSON fetch for "UP/DOWN" checks
     async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
-    const controller = new AbortController();
-    const t = window.setTimeout(() => controller.abort(), timeoutMs);
+        const controller = new AbortController();
+        const t = window.setTimeout(() => controller.abort(), timeoutMs);
 
-    try {
-        const res = await fetch(url, { credentials: "omit", signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-    } finally {
-        window.clearTimeout(t);
-    }
+        try {
+            // ✅ avoid stale cached pjson making DOWN services look UP
+            const res = await fetch(url, {
+                credentials: "omit",
+                signal: controller.signal,
+                cache: "no-store"
+            });
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            // Read as text first so we can give a better error if it isn't JSON
+            const txt = await res.text();
+
+            let json = null;
+            try {
+                json = JSON.parse(txt);
+            } catch (e) {
+                // Common if server returns an HTML error page with HTTP 200
+                throw new Error("Non-JSON response (possible HTML error page)");
+            }
+
+            // ✅ ArcGIS often returns HTTP 200 with an error payload
+            if (json && json.error) {
+                const code = json.error.code != null ? json.error.code : "";
+                const msg = json.error.message || "ArcGIS error";
+                throw new Error(`ArcGIS error ${code}: ${msg}`);
+            }
+
+            return json;
+        } finally {
+            window.clearTimeout(t);
+        }
     }
 
     // read basic description from service/layer pjson
@@ -881,12 +906,19 @@ async function autoZoomToLayerMinVisible(layer) {
         let errText = "";
 
         try {
-        const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
-        status = "UP";
-        desc = pickServiceDescription(pjson);
+            const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+
+            // ✅ basic “looks like ArcGIS REST” sanity
+            // (many valid pjson payloads include currentVersion)
+            if (pjson == null || (pjson.currentVersion == null && pjson.layers == null && pjson.type == null)) {
+                throw new Error("Unexpected JSON (missing expected ArcGIS REST fields)");
+            }
+
+            status = "UP";
+            desc = pickServiceDescription(pjson);
         } catch (e) {
-        status = "DOWN";
-        errText = String(e?.message || e);
+            status = "DOWN";
+            errText = String(e?.message || e);
         }
 
         const pillClass = (status === "UP") ? "pill pill-up" : "pill pill-down";
