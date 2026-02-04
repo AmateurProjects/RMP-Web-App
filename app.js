@@ -904,7 +904,7 @@ async function autoZoomToLayerMinVisible(layer) {
         let status = "DOWN";
         let desc = "";
         let errText = "";
-
+ 
         try {
             const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
 
