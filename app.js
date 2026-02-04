@@ -2334,11 +2334,6 @@ async function generateFinalReport() {
                     renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
                 });
 
-                view.map.add(temp);
-
-                try {
-                    setVisibilityForScreenshot(temp);
-
                 // Add temp, hide everything else, screenshot, then remove temp
                 view.map.add(temp);
                 try {
@@ -2394,24 +2389,24 @@ async function generateFinalReport() {
                     const layerUrlLink = escapeHtml(item.url);
 
                     sectionsHtml += `
-                      <div class="section">
+                    <div class="section">
                         <h2>${escapeHtml(item.title)}</h2>
                         <div class="sub">
-                          Service: <a href="${layerUrlLink}" target="_blank" rel="noopener">${layerUrlLink}</a>
+                        Service: <a href="${layerUrlLink}" target="_blank" rel="noopener">${layerUrlLink}</a>
                         </div>
 
                         <div class="map">
-                          <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
+                        <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
                         </div>
 
                         <table class="metaTbl">
-                          <tr><td>AOI area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
-                          <tr><td>Intersecting features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
-                          <tr><td>AOI covered by layer</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
-                          <tr><td>% AOI covered</td><td><b>${formatNumber(pctCovered, 2)}</b>%</td></tr>
+                        <tr><td>AOI area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
+                        <tr><td>Intersecting features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
+                        <tr><td>AOI covered by layer</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
+                        <tr><td>% AOI covered</td><td><b>${formatNumber(pctCovered, 2)}</b>%</td></tr>
                         </table>
-                      </div>
-                      <div class="pagebreak"></div>
+                    </div>
+                    <div class="pagebreak"></div>
                     `;
                 } finally {
                     try { view.map.remove(temp); } catch (e) {}
