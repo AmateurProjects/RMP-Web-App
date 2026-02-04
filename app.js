@@ -364,6 +364,34 @@ async function autoZoomToLayerMinVisible(layer) {
     }
 }
 
+async function ensureLayerVisibleAtScale(layer) {
+    if (!view || !layer) return;
+
+    const minScale = Number(layer.minScale || 0);
+    const maxScale = Number(layer.maxScale || 0);
+
+    // ArcGIS scale logic:
+    // - If view.scale is GREATER than minScale (zoomed out too far), layer may not draw.
+    // - If view.scale is LESS than maxScale (zoomed in too far), layer may not draw.
+    let targetScale = null;
+
+    if (minScale > 0 && isFinite(minScale) && view.scale > minScale) {
+        // zoom IN a bit past minScale
+        targetScale = Math.max(1, Math.floor(minScale * 0.90));
+    } else if (maxScale > 0 && isFinite(maxScale) && view.scale < maxScale) {
+        // zoom OUT a bit past maxScale
+        targetScale = Math.ceil(maxScale * 1.10);
+    }
+
+    if (targetScale && isFinite(targetScale) && targetScale > 0) {
+        // Keep center fixed so extent stays "basically" locked (scale-only nudge)
+        await view.goTo(
+            { center: view.center, scale: targetScale },
+            { animate: true, duration: 250 }
+        );
+    }
+}
+
 
     function isFeatureServerRoot(url) {
         // ends with /FeatureServer (no trailing /0 etc.)
@@ -2012,18 +2040,38 @@ async function generateVisualReport() {
             try {
                 setVisibilityForScreenshot(temp);
 
-                // Wait for layer to draw at least once
+                // Wait for layer to load
                 try { await temp.when(); } catch (e) {}
+
+                // ✅ Ensure we are within the layer's visible scale range (minScale/maxScale)
+                try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
+
+                // ✅ Wait until layerView is not suspended AND not updating (best effort)
                 try {
                     const lv = await view.whenLayerView(temp);
-                    // wait for initial draw if it’s actively updating
+
+                    // If out-of-scale, lv.suspended is commonly true. Nudge again once.
+                    if (lv?.suspended) {
+                        try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
+                    }
+
+                    // Wait for suspended -> false OR timeout
+                    if (lv?.suspended) {
+                        await new Promise(resolve => {
+                            const h = lv.watch("suspended", (s) => {
+                                if (!s) { h.remove(); resolve(); }
+                            });
+                            window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 4000);
+                        });
+                    }
+
+                    // Wait for updating -> false OR timeout
                     if (lv?.updating) {
                         await new Promise(resolve => {
                             const h = lv.watch("updating", (u) => {
                                 if (!u) { h.remove(); resolve(); }
                             });
-                            // safety timeout (don’t hang forever)
-                            window.setTimeout(() => { try { h.remove(); } catch(e) {} resolve(); }, 6000);
+                            window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 6000);
                         });
                     }
                 } catch (e) {}
@@ -2077,6 +2125,320 @@ async function generateVisualReport() {
     }
 }
 
+
+// ---------- Final Report (printable HTML in new tab) ----------
+function openHtmlInNewTab(htmlString) {
+    const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    // Cleanup the blob URL later (give the new tab time to load)
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return win;
+}
+
+function formatDateTimeForReport(d = new Date()) {
+    try {
+        return d.toLocaleString();
+    } catch (e) {
+        return d.toString();
+    }
+}
+
+function getAoiSummaryForReport(aoiAcres) {
+    const src = aoiSource === "draw" ? "Drawn AOI" : "Selected AOI";
+    const tool = aoiSource === "select" ? plssToolLabel(aoiSourcePlssTool) : "";
+    const srcDetail = (aoiSource === "select" && tool) ? ` (${tool})` : "";
+    const layer = aoiSourceLayerTitle ? ` • Source layer: ${aoiSourceLayerTitle}` : "";
+    return `${src}${srcDetail} • AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
+}
+
+function buildFinalReportHtmlDoc({ title, createdAt, aoiSummary, totalsHtml, sectionsHtml }) {
+    const safeTitle = escapeHtml(title || "Final Report");
+
+    // Minimal, clean print CSS (no external deps)
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${safeTitle}</title>
+  <style>
+    :root{
+      --fg:#111;
+      --muted:#666;
+      --border:#e6e6e6;
+      --bg:#fff;
+    }
+    html,body{ margin:0; padding:0; background:var(--bg); color:var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+    .wrap{ max-width: 980px; margin: 0 auto; padding: 28px 22px 60px; }
+    h1{ font-size: 22px; margin: 0 0 6px; }
+    .meta{ font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+    .aoi{ font-size: 13px; padding: 10px 12px; border:1px solid var(--border); border-radius: 10px; background:#fafafa; }
+    .totals{ margin-top: 12px; }
+    .totals .row{ display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
+    .pill{ border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size: 12px; background:#fff; }
+    .section{ margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .section h2{ margin:0 0 8px; font-size: 16px; }
+    .section .sub{ font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .map{ width:100%; border:1px solid var(--border); border-radius: 12px; overflow:hidden; background:#fff; }
+    .map img{ display:block; width:100%; height:auto; }
+    table.metaTbl{ width:100%; border-collapse: collapse; margin-top:10px; font-size: 12px; }
+    table.metaTbl td{ padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    table.metaTbl td:first-child{ color: var(--muted); width: 220px; }
+    .actions{ margin-top: 14px; display:flex; gap:10px; flex-wrap: wrap; }
+    .btn{
+      display:inline-block; border:1px solid var(--border); background:#fff; border-radius: 10px;
+      padding:8px 10px; font-size:12px; text-decoration:none; color:var(--fg);
+    }
+    .btn:hover{ background:#f4f4f4; }
+    .hint{ font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+    /* Print */
+    @media print{
+      .actions, .hint{ display:none !important; }
+      .wrap{ max-width: none; padding: 0.5in; }
+      .section{ break-inside: avoid; }
+      .pagebreak{ break-after: page; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>${safeTitle}</h1>
+    <div class="meta">Created: ${escapeHtml(createdAt || "")}</div>
+
+    <div class="aoi">${escapeHtml(aoiSummary || "")}</div>
+
+    <div class="actions">
+      <a class="btn" href="javascript:window.print()">Print / Save as PDF</a>
+    </div>
+    <div class="hint">Tip: Use your browser print dialog → “Save as PDF” later, when you’re ready.</div>
+
+    <div class="totals">
+      ${totalsHtml || ""}
+    </div>
+
+    ${sectionsHtml || ""}
+  </div>
+</body>
+</html>`;
+}
+
+async function generateFinalReport() {
+    if (!view) return;
+
+    if (!selectionGeom) {
+        setStatus("Select or draw an AOI first.");
+        return;
+    }
+
+    if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+        setStatus("Run the report first (Tables tab) so we know which layers intersect.");
+        return;
+    }
+
+    // Lock the view so users can't change extent mid-capture
+    const myOp = startVisualOp(); // reuse existing lock + overlay behavior
+
+    setBusy(true);
+    setStatus("building final report…");
+
+    try {
+        // Only layers with real hits and usable query objects (skip pinned AOI source card)
+        const targets = lastReportRowsByLayer
+            .filter(x => (x?.count || 0) > 0)
+            .filter(x => x?._layer && x?._exportQuery);
+
+        // AOI area in acres
+        let aoiAcres = 0;
+        try {
+            const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
+            aoiAcres = aoiSqm / SQM_PER_ACRE;
+        } catch (e) {
+            aoiAcres = 0;
+        }
+
+        // Totals summary (counts)
+        const totalLayers = lastReportRowsByLayer.length;
+        const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
+        const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+
+        const totalsHtml = `
+          <div class="row">
+            <div class="pill">Layers queried: <b>${escapeHtml(String(totalLayers))}</b></div>
+            <div class="pill">Layers with hits: <b>${escapeHtml(String(layersWithHits))}</b></div>
+            <div class="pill">Total intersecting features: <b>${escapeHtml(String(totalHits))}</b></div>
+          </div>
+        `;
+
+        // Zoom to AOI once
+        const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+        const width = config?.visualReport?.screenshotWidth ?? 1400;
+
+        const ext = selectionGeom?.extent;
+        if (ext && ext.expand) {
+            await view.goTo(ext.expand(paddingFactor), { animate: true, duration: 450 });
+        } else {
+            await view.goTo(selectionGeom, { animate: true, duration: 450 });
+        }
+
+        // Snapshot vis so we can restore after each screenshot
+        const allLayers = view.map.layers.toArray();
+        const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+
+        function setVisibilityForScreenshot(tempLayer) {
+            for (const l of allLayers) {
+                // Keep AOI visible
+                if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                // Keep tile overlays (SMA) visible
+                if (l?.type === "tile") { l.visible = true; continue; }
+                // Hide everything else
+                l.visible = false;
+            }
+            if (tempLayer) tempLayer.visible = true;
+            ensureAoiOnTop(view.map);
+        }
+
+        function restoreVisibility() {
+            visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) {} });
+            ensureAoiOnTop(view.map);
+        }
+
+        // Build per-layer sections
+        let sectionsHtml = "";
+
+        if (!targets.length) {
+            sectionsHtml = `
+              <div class="section">
+                <h2>No intersecting layers</h2>
+                <div class="sub">(All layer counts are 0.)</div>
+              </div>
+            `;
+        } else {
+            for (let i = 0; i < targets.length; i++) {
+                // Cancel support (reuses visual cancel)
+                if (isVisualCanceled(myOp)) {
+                    setStatus("final report canceled");
+                    break;
+                }
+
+                const item = targets[i];
+                setStatus(`building final report… (${i + 1}/${targets.length})`);
+
+                // Temp layer (so it renders regardless of user toggles)
+                const temp = new FeatureLayer({
+                    url: item.url,
+                    title: item.title,
+                    outFields: ["*"],
+                    visible: true,
+                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
+                });
+
+                view.map.add(temp);
+
+                try {
+                    setVisibilityForScreenshot(temp);
+
+                // Add temp, hide everything else, screenshot, then remove temp
+                view.map.add(temp);
+                try {
+                    setVisibilityForScreenshot(temp);
+
+                    // Wait for layer to load
+                    try { await temp.when(); } catch (e) {}
+
+                    // ✅ Ensure we are within the layer's visible scale range (minScale/maxScale)
+                    try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
+
+                    // ✅ Wait until layerView is not suspended AND not updating (best effort)
+                    try {
+                        const lv = await view.whenLayerView(temp);
+
+                        // If out-of-scale, lv.suspended is commonly true. Nudge again once.
+                        if (lv?.suspended) {
+                            try { await ensureLayerVisibleAtScale(temp); } catch (e) {}
+                        }
+
+                        // Wait for suspended -> false OR timeout
+                        if (lv?.suspended) {
+                            await new Promise(resolve => {
+                                const h = lv.watch("suspended", (s) => {
+                                    if (!s) { h.remove(); resolve(); }
+                                });
+                                window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 4000);
+                            });
+                        }
+
+                        // Wait for updating -> false OR timeout
+                        if (lv?.updating) {
+                            await new Promise(resolve => {
+                                const h = lv.watch("updating", (u) => {
+                                    if (!u) { h.remove(); resolve(); }
+                                });
+                                window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 6000);
+                            });
+                        }
+                    } catch (e) {}
+
+                    if (isVisualCanceled(myOp)) break;
+
+                    const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
+                    const dataUrl = ss?.dataUrl;
+                    if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+                    // Coverage stats
+                    const cov = await computeLayerCoverageStats(item, selectionGeom);
+                    const acresCovered = cov ? cov.acresCovered : 0;
+                    const pctCovered = cov ? cov.pctAoiCovered : 0;
+
+                    const layerUrlLink = escapeHtml(item.url);
+
+                    sectionsHtml += `
+                      <div class="section">
+                        <h2>${escapeHtml(item.title)}</h2>
+                        <div class="sub">
+                          Service: <a href="${layerUrlLink}" target="_blank" rel="noopener">${layerUrlLink}</a>
+                        </div>
+
+                        <div class="map">
+                          <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
+                        </div>
+
+                        <table class="metaTbl">
+                          <tr><td>AOI area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
+                          <tr><td>Intersecting features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
+                          <tr><td>AOI covered by layer</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
+                          <tr><td>% AOI covered</td><td><b>${formatNumber(pctCovered, 2)}</b>%</td></tr>
+                        </table>
+                      </div>
+                      <div class="pagebreak"></div>
+                    `;
+                } finally {
+                    try { view.map.remove(temp); } catch (e) {}
+                    restoreVisibility();
+                }
+            }
+        }
+
+        const htmlDoc = buildFinalReportHtmlDoc({
+            title: "RMP Viewer — Final Report",
+            createdAt: formatDateTimeForReport(new Date()),
+            aoiSummary: getAoiSummaryForReport(aoiAcres),
+            totalsHtml,
+            sectionsHtml
+        });
+
+        openHtmlInNewTab(htmlDoc);
+
+        setStatus("final report opened in new tab");
+    } catch (e) {
+        console.error(e);
+        setStatus("final report failed (see console)");
+    } finally {
+        setBusy(false);
+        endVisualOp(myOp); // unlock map
+    }
+}
 
 
 
@@ -2439,6 +2801,8 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
             setActiveTab("services");
             await refreshServicesTab();
         });
+
+        if (tabFinalReportBtn) tabFinalReportBtn.addEventListener("click", generateFinalReport);
 
         if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
         if (generateVisualBtn) generateVisualBtn.addEventListener("click", generateVisualReport);
