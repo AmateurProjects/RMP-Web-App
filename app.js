@@ -650,12 +650,12 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
     if (!lv) return;
 
     // Wait for view to stop moving
-    await waitForViewStationary(1500);
+    await waitForViewStationary(2000); // ✅ Increased from 1500ms
 
     // If the layerView is suspended, give it a moment to resume
     if (lv.suspended) {
         await new Promise(resolve => {
-            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 1500);
+            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 2000);
             const h = lv.watch("suspended", (s) => {
                 if (!s) {
                     window.clearTimeout(t);
@@ -666,61 +666,35 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
         });
     }
 
-    // Force a fetch/refresh
-    if (typeof lv.refresh === "function") lv.refresh();
-
-    // Wait for updating to finish
-    await new Promise(resolve => {
-        const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
-        const h = lv.watch("updating", (u) => {
-            if (!u) {
-                window.clearTimeout(t);
-                try { h.remove(); } catch (e) { }
-                resolve();
-            }
-        });
-        if (!lv.updating) {
-            window.clearTimeout(t);
-            try { h.remove(); } catch (e) { }
-            resolve();
-        }
-    });
-
-    await new Promise(r => setTimeout(r, 200));
-
-    // ✅ REUSE the same layerView reference
-    if (lv?.updating || lv?.suspended) {
+    // ✅ TRIPLE REFRESH - aggressive approach for stubborn tiles
+    for (let i = 0; i < 3; i++) {
         if (typeof lv.refresh === "function") lv.refresh();
-    }
-
-    try { view.requestRender(); } catch (e) { }
-
-    // ✅ Final refresh + scale nudge with proper delays
-    try {
-        await new Promise(r => requestAnimationFrame(r));
         
-        // ✅ Await the refresh
-        if (lv && typeof lv.refresh === "function") {
-            lv.refresh();
-            
-            // ✅ Wait for refresh to complete
-            await new Promise(resolve => {
-                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 2000);
-                const h = lv.watch("updating", (u) => {
-                    if (!u) {
-                        window.clearTimeout(t);
-                        try { h.remove(); } catch (e) { }
-                        resolve();
-                    }
-                });
-                if (!lv.updating) {
+        // Wait for updating to finish
+        await new Promise(resolve => {
+            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
+            const h = lv.watch("updating", (u) => {
+                if (!u) {
                     window.clearTimeout(t);
                     try { h.remove(); } catch (e) { }
                     resolve();
                 }
             });
-        }
+            if (!lv.updating) {
+                window.clearTimeout(t);
+                try { h.remove(); } catch (e) { }
+                resolve();
+            }
+        });
+        
+        await new Promise(r => setTimeout(r, 300)); // ✅ Longer delay between refreshes
+    }
 
+    try { view.requestRender(); } catch (e) { }
+
+    // ✅ Scale nudge dance - zoom in/out to force tile reload
+    try {
+        await new Promise(r => requestAnim
         try { view.requestRender(); } catch (e) { }
 
         // ✅ Scale nudge with delays between steps
