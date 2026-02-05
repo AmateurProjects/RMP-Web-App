@@ -250,7 +250,16 @@ require([
     // ✅ Hide Results + Export ALL on Map tab
     if (resultsCardEl) resultsCardEl.classList.toggle("hidden", isVisual);
     if (exportAllBtn) exportAllBtn.classList.toggle("hidden", isVisual);
-    }
+
+        // ✅ Force MapView to re-measure + redraw after layout changes
+        if (view) {
+            requestAnimationFrame(() => {
+            try { view.resize(); } catch (e) {}
+            try { view.requestRender(); } catch (e) {}
+            });
+        }
+      }
+    
 
     function plssToolLabel(which) {
         return (which === "intersected") ? "Parcel" :
