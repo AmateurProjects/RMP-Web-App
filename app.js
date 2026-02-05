@@ -13,7 +13,6 @@ require([
 ], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic, geometryEngine, TileLayer) {
 
 
-
     // ---------- DOM ----------
     const modeSelect = document.getElementById("modeSelect");
     // PLSS selection tools (Township / Section / Intersected)
@@ -108,7 +107,7 @@ require([
 
     let lastReportRowsByLayer = []; // for export-all
     let reportLayerViews = new Map();
-    
+
     // Track layerView "updating" watch handles so we can remove them (prevents leaks)
     const spinnerWatchByLayerUid = new Map(); // layer.uid -> watchHandle
 
@@ -133,11 +132,7 @@ require([
         if (uid) spinnerWatchByLayerUid.delete(uid);
     }
 
-
-
     // key -> FeatureLayer OR FeatureLayer[] (for FeatureServer/MapServer roots that expand into multiple drawable layers)
-
-
 
     // ---------- report-layer toggle cancellation tokens ----------
     const reportToggleToken = new Map(); // key -> number
@@ -163,67 +158,67 @@ require([
 
     const navDefaults = { captured: false, values: {} };
     const navProps = [
-    "mouseWheelEnabled",
-    "dragPanEnabled",
-    "browserTouchPanEnabled",
-    "keyboardEnabled",
-    "doubleClickZoomEnabled"
+        "mouseWheelEnabled",
+        "dragPanEnabled",
+        "browserTouchPanEnabled",
+        "keyboardEnabled",
+        "doubleClickZoomEnabled"
     ];
 
     function lockMapInteraction(isLocked) {
-    // UI overlay that blocks pointer events
-    if (viewBlockerEl) viewBlockerEl.classList.toggle("hidden", !isLocked);
+        // UI overlay that blocks pointer events
+        if (viewBlockerEl) viewBlockerEl.classList.toggle("hidden", !isLocked);
 
-    // Also disable navigation toggles (belt + suspenders)
-    try {
-        if (!view?.navigation) return;
+        // Also disable navigation toggles (belt + suspenders)
+        try {
+            if (!view?.navigation) return;
 
-        const nav = view.navigation;
+            const nav = view.navigation;
 
-        if (!navDefaults.captured) {
-        navDefaults.captured = true;
-        navProps.forEach(p => { if (p in nav) navDefaults.values[p] = nav[p]; });
+            if (!navDefaults.captured) {
+                navDefaults.captured = true;
+                navProps.forEach(p => { if (p in nav) navDefaults.values[p] = nav[p]; });
+            }
+
+            if (isLocked) {
+                navProps.forEach(p => { if (p in nav) nav[p] = false; });
+            } else {
+                navProps.forEach(p => {
+                    if (p in nav && p in navDefaults.values) nav[p] = navDefaults.values[p];
+                });
+            }
+        } catch (e) {
+            // ignore
         }
-
-        if (isLocked) {
-        navProps.forEach(p => { if (p in nav) nav[p] = false; });
-        } else {
-        navProps.forEach(p => {
-            if (p in nav && p in navDefaults.values) nav[p] = navDefaults.values[p];
-        });
-        }
-    } catch (e) {
-        // ignore
-    }
     }
 
     function startReportOp() {
-    const my = ++reportOpToken;
-    lockMapInteraction(true);
-    if (cancelRunBtn) cancelRunBtn.classList.remove("hidden");
-    return my;
+        const my = ++reportOpToken;
+        lockMapInteraction(true);
+        if (cancelRunBtn) cancelRunBtn.classList.remove("hidden");
+        return my;
     }
 
     function endReportOp(myToken) {
-    // Only unlock if this is the most recent op (prevents weird edge cases)
-    if (myToken === reportOpToken) {
-        lockMapInteraction(false);
-        if (cancelRunBtn) cancelRunBtn.classList.add("hidden");
-    }
+        // Only unlock if this is the most recent op (prevents weird edge cases)
+        if (myToken === reportOpToken) {
+            lockMapInteraction(false);
+            if (cancelRunBtn) cancelRunBtn.classList.add("hidden");
+        }
     }
 
     function startVisualOp() {
-    const my = ++visualOpToken;
-    lockMapInteraction(true);
-    if (cancelVisualBtn) cancelVisualBtn.classList.remove("hidden");
-    return my;
+        const my = ++visualOpToken;
+        lockMapInteraction(true);
+        if (cancelVisualBtn) cancelVisualBtn.classList.remove("hidden");
+        return my;
     }
 
     function endVisualOp(myToken) {
-    if (myToken === visualOpToken) {
-        lockMapInteraction(false);
-        if (cancelVisualBtn) cancelVisualBtn.classList.add("hidden");
-    }
+        if (myToken === visualOpToken) {
+            lockMapInteraction(false);
+            if (cancelVisualBtn) cancelVisualBtn.classList.add("hidden");
+        }
     }
 
     function isReportCanceled(myToken) { return myToken !== reportOpToken; }
@@ -235,37 +230,37 @@ require([
 
     // Tabs
     function setActiveTab(tabName) {
-    const isReport = (tabName === "report");
-    const isVisual = (tabName === "visual");
-    const isServices = (tabName === "services");
+        const isReport = (tabName === "report");
+        const isVisual = (tabName === "visual");
+        const isServices = (tabName === "services");
 
-    if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
-    if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
-    if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
+        if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
+        if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
+        if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
 
-    if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
-    if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
-    if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
+        if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
+        if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
+        if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
 
-    // ✅ Hide Results + Export ALL on Map tab
-    if (resultsCardEl) resultsCardEl.classList.toggle("hidden", isVisual);
-    if (exportAllBtn) exportAllBtn.classList.toggle("hidden", isVisual);
+        // ✅ Hide Results + Export ALL on Map tab
+        if (resultsCardEl) resultsCardEl.classList.toggle("hidden", isVisual);
+        if (exportAllBtn) exportAllBtn.classList.toggle("hidden", isVisual);
 
         // ✅ Force MapView to re-measure + redraw after layout changes
         if (view) {
             requestAnimationFrame(() => {
-            try { view.resize(); } catch (e) {}
-            try { view.requestRender(); } catch (e) {}
+                try { view.resize(); } catch (e) { }
+                try { view.requestRender(); } catch (e) { }
             });
         }
-      }
-    
+    }
+
 
     function plssToolLabel(which) {
         return (which === "intersected") ? "Parcel" :
             (which === "township") ? "Township" :
-            (which === "section") ? "Section" :
-            "PLSS";
+                (which === "section") ? "Section" :
+                    "PLSS";
     }
 
 
@@ -275,7 +270,7 @@ require([
         }[c]));
     }
 
-    function normalize(s){ return String(s || "").toLowerCase(); }
+    function normalize(s) { return String(s || "").toLowerCase(); }
 
     function isPlssLayerTitleOrUrl(title, url) {
         const t = normalize(title);
@@ -340,9 +335,9 @@ require([
     }
 
     function setSelectionSpinner(idx, isOn) {
-    const spin = document.getElementById(`sellayer_spin_${idx}`);
-    if (!spin) return;
-    spin.classList.toggle("hidden", !isOn);
+        const spin = document.getElementById(`sellayer_spin_${idx}`);
+        if (!spin) return;
+        spin.classList.toggle("hidden", !isOn);
     }
 
 
@@ -392,49 +387,49 @@ require([
         }
     }
 
-async function autoZoomToLayerMinVisible(layer) {
-    if (!view || !layer) return;
+    async function autoZoomToLayerMinVisible(layer) {
+        if (!view || !layer) return;
 
-    const minScale = Number(layer.minScale || 0);
-    if (!minScale || !isFinite(minScale) || minScale <= 0) return;
+        const minScale = Number(layer.minScale || 0);
+        if (!minScale || !isFinite(minScale) || minScale <= 0) return;
 
-    // Nudge a bit more zoomed-in than minScale so the layer reliably renders.
-    // Smaller scale number = more zoomed in.
-    const nudgeFactor = 0.50; // 50% more zoomed in than minScale (tweak 0.90–0.95 if desired)
-    const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
+        // Nudge a bit more zoomed-in than minScale so the layer reliably renders.
+        // Smaller scale number = more zoomed in.
+        const nudgeFactor = 0.50; // 50% more zoomed in than minScale (tweak 0.90–0.95 if desired)
+        const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
 
-    if (view.scale > targetScale) {
-        await view.goTo({ scale: targetScale }, { animate: true, duration: 450 });
-    }
-}
-
-async function ensureLayerVisibleAtScale(layer) {
-    if (!view || !layer) return;
-
-    const minScale = Number(layer.minScale || 0);
-    const maxScale = Number(layer.maxScale || 0);
-
-    // ArcGIS scale logic:
-    // - If view.scale is GREATER than minScale (zoomed out too far), layer may not draw.
-    // - If view.scale is LESS than maxScale (zoomed in too far), layer may not draw.
-    let targetScale = null;
-
-    if (minScale > 0 && isFinite(minScale) && view.scale > minScale) {
-        // zoom IN a bit past minScale
-        targetScale = Math.max(1, Math.floor(minScale * 0.90));
-    } else if (maxScale > 0 && isFinite(maxScale) && view.scale < maxScale) {
-        // zoom OUT a bit past maxScale
-        targetScale = Math.ceil(maxScale * 1.10);
+        if (view.scale > targetScale) {
+            await view.goTo({ scale: targetScale }, { animate: true, duration: 450 });
+        }
     }
 
-    if (targetScale && isFinite(targetScale) && targetScale > 0) {
-        // Keep center fixed so extent stays "basically" locked (scale-only nudge)
-        await view.goTo(
-            { center: view.center, scale: targetScale },
-            { animate: true, duration: 250 }
-        );
+    async function ensureLayerVisibleAtScale(layer) {
+        if (!view || !layer) return;
+
+        const minScale = Number(layer.minScale || 0);
+        const maxScale = Number(layer.maxScale || 0);
+
+        // ArcGIS scale logic:
+        // - If view.scale is GREATER than minScale (zoomed out too far), layer may not draw.
+        // - If view.scale is LESS than maxScale (zoomed in too far), layer may not draw.
+        let targetScale = null;
+
+        if (minScale > 0 && isFinite(minScale) && view.scale > minScale) {
+            // zoom IN a bit past minScale
+            targetScale = Math.max(1, Math.floor(minScale * 0.90));
+        } else if (maxScale > 0 && isFinite(maxScale) && view.scale < maxScale) {
+            // zoom OUT a bit past maxScale
+            targetScale = Math.ceil(maxScale * 1.10);
+        }
+
+        if (targetScale && isFinite(targetScale) && targetScale > 0) {
+            // Keep center fixed so extent stays "basically" locked (scale-only nudge)
+            await view.goTo(
+                { center: view.center, scale: targetScale },
+                { animate: true, duration: 250 }
+            );
+        }
     }
-}
 
 
     function isFeatureServerRoot(url) {
@@ -548,19 +543,19 @@ async function ensureLayerVisibleAtScale(layer) {
 
     // read basic description from service/layer pjson
     function pickServiceDescription(pjson) {
-    // Different services expose different fields; we pick the first useful one.
-    const candidates = [
-        pjson?.serviceDescription,
-        pjson?.description,
-        pjson?.documentInfo?.Title,
-        pjson?.name
-    ].filter(Boolean);
+        // Different services expose different fields; we pick the first useful one.
+        const candidates = [
+            pjson?.serviceDescription,
+            pjson?.description,
+            pjson?.documentInfo?.Title,
+            pjson?.name
+        ].filter(Boolean);
 
-    return candidates.length ? String(candidates[0]) : "";
+        return candidates.length ? String(candidates[0]) : "";
     }
 
     function normalizePjsonUrl(u) {
-    return u.replace(/\/$/, "") + "?f=pjson";
+        return u.replace(/\/$/, "") + "?f=pjson";
     }
 
     function buildLayerCfgIndex(cfg) {
@@ -588,8 +583,8 @@ async function ensureLayerVisibleAtScale(layer) {
         const presetId =
             (cfgObj && cfgObj.symbologyPreset) ||
             (kind === "selection" ? defaults.selectionPreset :
-            kind === "report" ? defaults.reportPreset :
-            defaults.aoiPreset);
+                kind === "report" ? defaults.reportPreset :
+                    defaults.aoiPreset);
 
         const r = presetId ? presets[presetId] : null;
         return r || null;
@@ -601,25 +596,95 @@ async function ensureLayerVisibleAtScale(layer) {
         map.reorder(aoiLayer, map.layers.length - 1);
     }
 
-async function wireLayerUpdatingSpinner(layer, spinnerEl) {
-    if (!layer || !spinnerEl || !view) return null;
+    async function wireLayerUpdatingSpinner(layer, spinnerEl) {
+        if (!layer || !spinnerEl || !view) return null;
 
-    try {
-        await layer.when();
-        const lv = await view.whenLayerView(layer);
+        try {
+            await layer.when();
+            const lv = await view.whenLayerView(layer);
 
-        spinnerEl.classList.toggle("hidden", !lv.updating);
+            spinnerEl.classList.toggle("hidden", !lv.updating);
 
-        const handle = lv.watch("updating", (isUpdating) => {
-            spinnerEl.classList.toggle("hidden", !isUpdating);
+            const handle = lv.watch("updating", (isUpdating) => {
+                spinnerEl.classList.toggle("hidden", !isUpdating);
+            });
+
+            return handle;
+        } catch (e) {
+            spinnerEl.classList.add("hidden");
+            return null;
+        }
+    }
+
+    function waitForViewStationary(timeoutMs = 1200) {
+        if (!view) return Promise.resolve();
+        if (view.stationary) return Promise.resolve();
+
+        return new Promise(resolve => {
+            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
+            const h = view.watch("stationary", (s) => {
+                if (s) {
+                    window.clearTimeout(t);
+                    try { h.remove(); } catch (e) { }
+                    resolve();
+                }
+            });
+        });
+    }
+
+    async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
+        if (!view || !layer) return;
+
+        try { await layer.when(); } catch (e) { }
+
+        let lv = null;
+        try { lv = await view.whenLayerView(layer); } catch (e) { return; }
+        if (!lv) return;
+
+        // Wait for view to stop moving (important after goTo/scale changes)
+        await waitForViewStationary(1500);
+
+        // If the layerView is suspended, give it a moment to resume
+        if (lv.suspended) {
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 1500);
+                const h = lv.watch("suspended", (s) => {
+                    if (!s) {
+                        window.clearTimeout(t);
+                        try { h.remove(); } catch (e) { }
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        // Force a fetch/refresh
+        if (typeof lv.refresh === "function") lv.refresh();
+
+        // Wait for updating to finish (best effort)
+        await new Promise(resolve => {
+            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
+            const h = lv.watch("updating", (u) => {
+                if (!u) {
+                    window.clearTimeout(t);
+                    try { h.remove(); } catch (e) { }
+                    resolve();
+                }
+            });
+            // If it’s already not updating, resolve immediately
+            if (!lv.updating) {
+                window.clearTimeout(t);
+                try { h.remove(); } catch (e) { }
+                resolve();
+            }
         });
 
-        return handle;
-    } catch (e) {
-        spinnerEl.classList.add("hidden");
-        return null;
+        // Ask the view to repaint
+        try { view.requestRender(); } catch (e) { }
     }
-}
+
+
+
 
 
     function setAoiGeometry(geom) {
@@ -762,7 +827,7 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
         // ---- Selection layers (already on map): toggle visibility
         selectionLayerTogglesEl.innerHTML = (selectionLayers || []).map((e, i) => {
             const checked = e.layer.visible ? "checked" : "";
-        return `
+            return `
             <div class="toggle-row">
                 <input type="checkbox" id="sellayer_${i}" ${checked} />
                 <span class="layer-swatch layer-swatch-selection" aria-hidden="true" title="Selection layer"></span>
@@ -772,77 +837,78 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
         `;
         }).join("");
 
-    (selectionLayers || []).forEach((e, i) => {
-        const cb = document.getElementById(`sellayer_${i}`);
-        if (!cb) return;
+        (selectionLayers || []).forEach((e, i) => {
+            const cb = document.getElementById(`sellayer_${i}`);
+            if (!cb) return;
 
             cb.addEventListener("change", async () => {
-            const spin = document.getElementById(`sellayer_spin_${i}`);
+                const spin = document.getElementById(`sellayer_spin_${i}`);
 
-            if (cb.checked) {
-                if (spin) spin.classList.remove("hidden");
+                if (cb.checked) {
+                    if (spin) spin.classList.remove("hidden");
 
-                const isOnMapNow = map.layers.includes(e.layer);
-                if (!isOnMapNow) map.add(e.layer);
+                    const isOnMapNow = map.layers.includes(e.layer);
+                    if (!isOnMapNow) map.add(e.layer);
 
-                e.layer.visible = true;
-                ensureAoiOnTop(map);
+                    e.layer.visible = true;
+                    ensureAoiOnTop(map);
+                    await hardRefreshLayer(e.layer);
 
-                clearSpinnerWatch(e.layer);
-                wireLayerUpdatingSpinner(e.layer, spin).then((h) => setSpinnerWatch(e.layer, h));
+                    clearSpinnerWatch(e.layer);
+                    wireLayerUpdatingSpinner(e.layer, spin).then((h) => setSpinnerWatch(e.layer, h));
 
-                if (!activeSelectionLayer) {
-                await setActiveSelectionLayerByIndex(i);
-                }
+                    if (!activeSelectionLayer) {
+                        await setActiveSelectionLayerByIndex(i);
+                    }
 
-            } else {
-                if (spin) spin.classList.add("hidden");
-
-                clearSpinnerWatch(e.layer);
-
-                const isOnMapNow = map.layers.includes(e.layer);
-                if (isOnMapNow) map.remove(e.layer);
-
-                e.layer.visible = false;
-                updateSelectionToggleCheckbox(i, false);
-
-                if (activeSelectionLayer === e.layer) {
-                activeSelectionLayer = null;
-                activeSelectionLayerView = null;
-
-                const nextIdx = (selectionLayers || []).findIndex(x => map.layers.includes(x.layer));
-                if (nextIdx >= 0) {
-                    await setActiveSelectionLayerByIndex(nextIdx);
                 } else {
-                    setGeometryFromSelection(null);
-                    setStatus("no selection layers visible (turn one on)");
+                    if (spin) spin.classList.add("hidden");
+
+                    clearSpinnerWatch(e.layer);
+
+                    const isOnMapNow = map.layers.includes(e.layer);
+                    if (isOnMapNow) map.remove(e.layer);
+
+                    e.layer.visible = false;
+                    updateSelectionToggleCheckbox(i, false);
+
+                    if (activeSelectionLayer === e.layer) {
+                        activeSelectionLayer = null;
+                        activeSelectionLayerView = null;
+
+                        const nextIdx = (selectionLayers || []).findIndex(x => map.layers.includes(x.layer));
+                        if (nextIdx >= 0) {
+                            await setActiveSelectionLayerByIndex(nextIdx);
+                        } else {
+                            setGeometryFromSelection(null);
+                            setStatus("no selection layers visible (turn one on)");
+                        }
+                    }
                 }
-            }
-            }
+            });
         });
-    });
 
         // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
         // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
         // We will show it in the list but disable the checkbox to avoid confusion.
         reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
-        const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
-        const key = String(l.url || "").replace(/\/+$/, "");
-        const existing = reportLayerViews.get(key);
+            const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
+            const key = String(l.url || "").replace(/\/+$/, "");
+            const existing = reportLayerViews.get(key);
 
-        // If existing is an array (expanded root), consider it checked if any layer exists
-        const isChecked =
-            Array.isArray(existing) ? (existing.length > 0) :
-            existing ? !!existing.visible :
-            false;
+            // If existing is an array (expanded root), consider it checked if any layer exists
+            const isChecked =
+                Array.isArray(existing) ? (existing.length > 0) :
+                    existing ? !!existing.visible :
+                        false;
 
-        const checked = isChecked ? "checked" : "";
+            const checked = isChecked ? "checked" : "";
 
-        // ✅ Do NOT disable FeatureServer roots anymore (we will expand them to drawable polygon sublayers)
-        const disabled = ""; 
+            // ✅ Do NOT disable FeatureServer roots anymore (we will expand them to drawable polygon sublayers)
+            const disabled = "";
 
-        // Update note text
-        const note = isRoot ? ` <span class="small">(expands to polygon sublayers)</span>` : "";
+            // Update note text
+            const note = isRoot ? ` <span class="small">(expands to polygon sublayers)</span>` : "";
 
             return `
                 <div class="toggle-row">
@@ -854,7 +920,7 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
             `;
         }).join("");
 
-            (config.reportLayers || []).forEach((l, i) => {
+        (config.reportLayers || []).forEach((l, i) => {
             const cb = document.getElementById(`rptlayer_${i}`);
             if (!cb) return;
 
@@ -879,18 +945,18 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
 
                     if (Array.isArray(lyr)) {
                         lyr.forEach(x => {
-                            try { clearSpinnerWatch(x); } catch (e) {}
-                            try { map.remove(x); } catch (e) {}
+                            try { clearSpinnerWatch(x); } catch (e) { }
+                            try { map.remove(x); } catch (e) { }
                         });
                         reportLayerViews.delete(key);
                         return;
                     }
 
-                        if (lyr) {
-                            try { clearSpinnerWatch(lyr); } catch (e) {}
-                            try { map.remove(lyr); } catch (e) {}
-                            reportLayerViews.delete(key);
-                        } else {
+                    if (lyr) {
+                        try { clearSpinnerWatch(lyr); } catch (e) { }
+                        try { map.remove(lyr); } catch (e) { }
+                        reportLayerViews.delete(key);
+                    } else {
                         // defensive cleanup by URL match
                         const toRemove = map.layers
                             .toArray()
@@ -926,8 +992,8 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
                         const created = subs.map(sl => new FeatureLayer({
                             url: sl.url,
                             title: sl.title
-                            ? `${l.title} — ${sl.title}`
-                            : l.title,
+                                ? `${l.title} — ${sl.title}`
+                                : l.title,
                             outFields: ["*"],
                             visible: true,
                             renderer: getPresetRenderer("report", cfgMatch) || undefined
@@ -941,52 +1007,52 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
 
                         // If user toggled OFF right after add, clean up immediately
                         if (!cb.checked || !isTokenCurrent(key, myToken)) {
-                            created.forEach(x => { try { map.remove(x); } catch (e) {} });
+                            created.forEach(x => { try { map.remove(x); } catch (e) { } });
                             reportLayerViews.delete(key);
                             return;
                         }
 
-                // Keep spinner visible until ALL created layers finish updating (best-effort).
-                if (spin) spin.classList.remove("hidden");
+                        // Keep spinner visible until ALL created layers finish updating (best-effort).
+                        if (spin) spin.classList.remove("hidden");
 
-                try {
-                for (const lyr of created) {
-                    // Cancel guard
-                    if (!cb.checked || !isTokenCurrent(key, myToken)) return;
+                        try {
+                            for (const lyr of created) {
+                                // Cancel guard
+                                if (!cb.checked || !isTokenCurrent(key, myToken)) return;
 
-                    try {
-                    const lv = await view.whenLayerView(lyr);
+                                try {
+                                    const lv = await view.whenLayerView(lyr);
 
-                    // If suspended, wait briefly (optional best-effort)
-                    if (lv?.suspended) {
-                        await new Promise(resolve => {
-                        const h = lv.watch("suspended", (s) => {
-                            if (!s) { h.remove(); resolve(); }
-                        });
-                        window.setTimeout(() => { try { h.remove(); } catch(e){} resolve(); }, 4000);
-                        });
-                    }
+                                    // If suspended, wait briefly (optional best-effort)
+                                    if (lv?.suspended) {
+                                        await new Promise(resolve => {
+                                            const h = lv.watch("suspended", (s) => {
+                                                if (!s) { h.remove(); resolve(); }
+                                            });
+                                            window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
+                                        });
+                                    }
 
-                    // Wait for updating -> false OR timeout (best-effort)
-                    if (lv?.updating) {
-                        await new Promise(resolve => {
-                        const h = lv.watch("updating", (u) => {
-                            if (!u) { h.remove(); resolve(); }
-                        });
-                        window.setTimeout(() => { try { h.remove(); } catch(e){} resolve(); }, 8000);
-                        });
-                    }
-                    } catch (e) {
-                    // ignore per-layer issues so UI doesn't get stuck
-                    }
-                }
-                } finally {
-                // Hide spinner only if still current and still checked.
-                // OFF path already hides immediately.
-                if (spin && cb.checked && isTokenCurrent(key, myToken)) {
-                    spin.classList.add("hidden");
-                }
-                }
+                                    // Wait for updating -> false OR timeout (best-effort)
+                                    if (lv?.updating) {
+                                        await new Promise(resolve => {
+                                            const h = lv.watch("updating", (u) => {
+                                                if (!u) { h.remove(); resolve(); }
+                                            });
+                                            window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 8000);
+                                        });
+                                    }
+                                } catch (e) {
+                                    // ignore per-layer issues so UI doesn't get stuck
+                                }
+                            }
+                        } finally {
+                            // Hide spinner only if still current and still checked.
+                            // OFF path already hides immediately.
+                            if (spin && cb.checked && isTokenCurrent(key, myToken)) {
+                                spin.classList.add("hidden");
+                            }
+                        }
 
                         ensureAoiOnTop(map);
                         return;
@@ -1020,15 +1086,15 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
 
                         // If stale after add, clean up
                         if (!cb.checked || !isTokenCurrent(key, myToken)) {
-                            try { map.remove(lyr); } catch (e) {}
+                            try { map.remove(lyr); } catch (e) { }
                             reportLayerViews.delete(key);
                             return;
                         }
 
-                    if (spin) {
-                        clearSpinnerWatch(lyr);
-                        wireLayerUpdatingSpinner(lyr, spin).then((h) => setSpinnerWatch(lyr, h));
-                    }
+                        if (spin) {
+                            clearSpinnerWatch(lyr);
+                            wireLayerUpdatingSpinner(lyr, spin).then((h) => setSpinnerWatch(lyr, h));
+                        }
                         ensureAoiOnTop(map);
                     } else {
                         lyr.visible = true;
@@ -1042,12 +1108,12 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
                     // Ensure spinner is not stuck on error
                     if (spin) spin.classList.add("hidden");
 
-                    } finally {
+                } finally {
                     // NOTE: do NOT hide spinner here.
                     // Spinner is controlled by:
                     //  - OFF path: immediate hide (Item 9)
                     //  - wireLayerUpdatingSpinner(): layerView.updating watch (truth)
-                    }
+                }
             });
         });
     }
@@ -1078,75 +1144,75 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
 
     // ---------- Services tab ----------
     function getConfiguredServices() {
-    // Show the “services used by the app itself” from config
-    const seen = new Set();
-    const out = [];
+        // Show the “services used by the app itself” from config
+        const seen = new Set();
+        const out = [];
 
-    const add = (kind, title, url) => {
-        const key = `${kind}||${url}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        out.push({ kind, title, url });
-    };
+        const add = (kind, title, url) => {
+            const key = `${kind}||${url}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            out.push({ kind, title, url });
+        };
 
-    (config.selectionLayers || []).forEach(l => add("Selection", l.title, l.url));
-    (config.reportLayers || []).forEach(l => add("Report", l.title, l.url));
+        (config.selectionLayers || []).forEach(l => add("Selection", l.title, l.url));
+        (config.reportLayers || []).forEach(l => add("Report", l.title, l.url));
 
-    return out;
+        return out;
     }
 
     async function refreshServicesTab() {
-    if (!servicesListEl) return;
+        if (!servicesListEl) return;
 
-    const items = getConfiguredServices();
-    if (!items.length) {
-        servicesListEl.innerHTML = `<div class="small">No services configured.</div>`;
-        return;
-    }
-
-    servicesListEl.innerHTML = `<div class="small">Checking services…</div>`;
-
-    const timeoutMs = config?.services?.timeoutMs ?? 8000;
-
-    // Run checks sequentially (simple + predictable). We can add concurrency later if needed.
-    const cards = [];
-    for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        const pjsonUrl = normalizePjsonUrl(it.url);
-
-        let status = "DOWN";
-        let desc = "";
-        let errText = "";
- 
-        try {
-            const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
-
-            // ✅ basic “looks like ArcGIS REST” sanity
-            // (many valid pjson payloads include currentVersion)
-            if (pjson == null || (pjson.currentVersion == null && pjson.layers == null && pjson.type == null)) {
-                throw new Error("Unexpected JSON (missing expected ArcGIS REST fields)");
-            }
-
-            status = "UP";
-            desc = pickServiceDescription(pjson);
-        } catch (e) {
-            status = "DOWN";
-            errText = String(e?.message || e);
+        const items = getConfiguredServices();
+        if (!items.length) {
+            servicesListEl.innerHTML = `<div class="small">No services configured.</div>`;
+            return;
         }
 
-        const pillClass = (status === "UP") ? "pill pill-up" : "pill pill-down";
-        const descHtml = desc
-        ? `
+        servicesListEl.innerHTML = `<div class="small">Checking services…</div>`;
+
+        const timeoutMs = config?.services?.timeoutMs ?? 8000;
+
+        // Run checks sequentially (simple + predictable). We can add concurrency later if needed.
+        const cards = [];
+        for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            const pjsonUrl = normalizePjsonUrl(it.url);
+
+            let status = "DOWN";
+            let desc = "";
+            let errText = "";
+
+            try {
+                const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+
+                // ✅ basic “looks like ArcGIS REST” sanity
+                // (many valid pjson payloads include currentVersion)
+                if (pjson == null || (pjson.currentVersion == null && pjson.layers == null && pjson.type == null)) {
+                    throw new Error("Unexpected JSON (missing expected ArcGIS REST fields)");
+                }
+
+                status = "UP";
+                desc = pickServiceDescription(pjson);
+            } catch (e) {
+                status = "DOWN";
+                errText = String(e?.message || e);
+            }
+
+            const pillClass = (status === "UP") ? "pill pill-up" : "pill pill-down";
+            const descHtml = desc
+                ? `
         <div class="small service-desc" id="svc_desc_${i}">${escapeHtml(desc)}</div>
         <button class="service-desc-toggle" type="button" data-desc-toggle="${i}">Show more</button>
         `
-        : `<div class="small" style="margin-top:6px; opacity:.8;">(No description found in pjson)</div>`;
+                : `<div class="small" style="margin-top:6px; opacity:.8;">(No description found in pjson)</div>`;
 
-        const errHtml = (status === "DOWN")
-        ? `<div class="small mono" style="margin-top:6px;">${escapeHtml(errText)}</div>`
-        : "";
+            const errHtml = (status === "DOWN")
+                ? `<div class="small mono" style="margin-top:6px;">${escapeHtml(errText)}</div>`
+                : "";
 
-        cards.push(`
+            cards.push(`
         <div class="service-card">
             <div class="service-head">
             <div>
@@ -1162,20 +1228,20 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
             ${errHtml}
         </div>
         `);
-    }
+        }
 
-    servicesListEl.innerHTML = cards.join("");
+        servicesListEl.innerHTML = cards.join("");
 
-    // Wire description expand/collapse toggles
-    servicesListEl.querySelectorAll("button[data-desc-toggle]").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const idx = btn.getAttribute("data-desc-toggle");
-            const card = btn.closest(".service-card");
-            if (!card) return;
-            const isExpanded = card.classList.toggle("expanded");
-            btn.textContent = isExpanded ? "Show less" : "Show more";
+        // Wire description expand/collapse toggles
+        servicesListEl.querySelectorAll("button[data-desc-toggle]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const idx = btn.getAttribute("data-desc-toggle");
+                const card = btn.closest(".service-card");
+                if (!card) return;
+                const isExpanded = card.classList.toggle("expanded");
+                btn.textContent = isExpanded ? "Show less" : "Show more";
+            });
         });
-    });
 
     }
 
@@ -1186,14 +1252,14 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
 
 
     function sampleWithoutReplacement(arr, n) {
-    const a = (arr || []).slice();
-    if (a.length <= n) return a;
-    // Fisher–Yates shuffle partial
-    for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a.slice(0, n);
+        const a = (arr || []).slice();
+        if (a.length <= n) return a;
+        // Fisher–Yates shuffle partial
+        for (let i = a.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a.slice(0, n);
     }
 
     function makeTable(features, maxFields, totalCount) {
@@ -1341,37 +1407,37 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
 
         // ✅ Special case: AOI-source layer should return the exact clicked feature (1 row)
         if (objectId != null) {
-        // Ensure layer is loaded so objectIdField is correct
-        await layer.load();
+            // Ensure layer is loaded so objectIdField is correct
+            await layer.load();
 
-        const trueOidField = layer.objectIdField || objectIdField || "OBJECTID";
+            const trueOidField = layer.objectIdField || objectIdField || "OBJECTID";
 
-        // Coerce OID to number if it looks numeric (ArcGIS OIDs are typically numeric)
-        const oidNum = Number(objectId);
-        const oidIsNumeric = Number.isFinite(oidNum);
+            // Coerce OID to number if it looks numeric (ArcGIS OIDs are typically numeric)
+            const oidNum = Number(objectId);
+            const oidIsNumeric = Number.isFinite(oidNum);
 
-        // Use WHERE instead of objectIds (more robust across services)
-        q.where = oidIsNumeric
-            ? `${trueOidField} = ${oidNum}`
-            : `${trueOidField} = '${String(objectId).replace(/'/g, "''")}'`;
+            // Use WHERE instead of objectIds (more robust across services)
+            q.where = oidIsNumeric
+                ? `${trueOidField} = ${oidNum}`
+                : `${trueOidField} = '${String(objectId).replace(/'/g, "''")}'`;
 
-        q.returnGeometry = false;
-        q.outFields = ["*"];
+            q.returnGeometry = false;
+            q.outFields = ["*"];
 
-        const fs = await layer.queryFeatures(q);
-        const feats = fs?.features ?? [];
+            const fs = await layer.queryFeatures(q);
+            const feats = fs?.features ?? [];
 
-        // Optional: debug if it ever happens again
-        // console.log("AOI-source query", { layerUrl, trueOidField, objectId, oidNum, featsLen: feats.length });
+            // Optional: debug if it ever happens again
+            // console.log("AOI-source query", { layerUrl, trueOidField, objectId, oidNum, featsLen: feats.length });
 
-        return {
-            title: layerTitle,
-            url: layerUrl,
-            count: feats.length,
-            features: feats,
-            layer,
-            exportQuery: q
-        };
+            return {
+                title: layerTitle,
+                url: layerUrl,
+                count: feats.length,
+                features: feats,
+                layer,
+                exportQuery: q
+            };
         }
 
 
@@ -1397,141 +1463,141 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
     }
 
 
-async function runReport() {
-    const myOp = startReportOp();
+    async function runReport() {
+        const myOp = startReportOp();
 
-    const reportGeom = getReportGeometry();
-    if (!reportGeom) { endReportOp(myOp); return; }
-    
-    const toolLabel = plssToolLabel(aoiSourcePlssTool);
+        const reportGeom = getReportGeometry();
+        if (!reportGeom) { endReportOp(myOp); return; }
 
-    setBusy(true);
-    setStatus("running report…");
-    resultsEl.innerHTML = "";
-    exportAllBtn.disabled = true;
-    lastReportRowsByLayer = [];
+        const toolLabel = plssToolLabel(aoiSourcePlssTool);
 
-    try {
-        // Start with report layers only
-        const combinedCfgs = [
-            ...(config.reportLayers || [])
-        ];
+        setBusy(true);
+        setStatus("running report…");
+        resultsEl.innerHTML = "";
+        exportAllBtn.disabled = true;
+        lastReportRowsByLayer = [];
 
-        // ✅ Ensure exactly ONE State Boundaries is included (prefer our captured URL)
-        if (plssStateLayerUrl) {
-            combinedCfgs.push({
-                title: "PLSS: State Boundaries",
-                url: plssStateLayerUrl
-            });
-        }
+        try {
+            // Start with report layers only
+            const combinedCfgs = [
+                ...(config.reportLayers || [])
+            ];
 
-        // ✅ When AOI is DRAWN, include PLSS Parcel (Intersected) intersects
-        if (aoiSource === "draw" && plssParcelLayerUrl) {
-        combinedCfgs.push({
-            title: "PLSS: Parcel",
-            url: String(plssParcelLayerUrl).replace(/\/+$/, "")
-        });
-        }
+            // ✅ Ensure exactly ONE State Boundaries is included (prefer our captured URL)
+            if (plssStateLayerUrl) {
+                combinedCfgs.push({
+                    title: "PLSS: State Boundaries",
+                    url: plssStateLayerUrl
+                });
+            }
+
+            // ✅ When AOI is DRAWN, include PLSS Parcel (Intersected) intersects
+            if (aoiSource === "draw" && plssParcelLayerUrl) {
+                combinedCfgs.push({
+                    title: "PLSS: Parcel",
+                    url: String(plssParcelLayerUrl).replace(/\/+$/, "")
+                });
+            }
 
 
-        // De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
-        const byUrl = new Map(); // urlKey -> { title, url }
+            // De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
+            const byUrl = new Map(); // urlKey -> { title, url }
 
-        for (const l of combinedCfgs) {
-        const urlKey = String(l?.url || "").replace(/\/+$/, "");
-        if (!urlKey) continue;
+            for (const l of combinedCfgs) {
+                const urlKey = String(l?.url || "").replace(/\/+$/, "");
+                if (!urlKey) continue;
 
-        // Keep the last occurrence for a given URL
-        byUrl.set(urlKey, { title: l.title, url: urlKey });
-        }
+                // Keep the last occurrence for a given URL
+                byUrl.set(urlKey, { title: l.title, url: urlKey });
+            }
 
-        const reportCfgs = Array.from(byUrl.values());
-        const expandedTargets = [];
+            const reportCfgs = Array.from(byUrl.values());
+            const expandedTargets = [];
 
-        // ============================================================
-        // ✅ PINNED AOI SOURCE TARGET (always show 1-row table)
-        // This bypasses dedupe/expansion/skipping and cannot disappear.
-        // ============================================================
-        if (aoiSource === "select" && aoiSourceLayerUrl) {
-        // We need an objectId. If it’s missing, this is a bug upstream.
-        if (aoiSourceObjectId == null) {
-            console.warn("AOI source objectId is null; AOI source table will not be 1-row exact.");
-        }
+            // ============================================================
+            // ✅ PINNED AOI SOURCE TARGET (always show 1-row table)
+            // This bypasses dedupe/expansion/skipping and cannot disappear.
+            // ============================================================
+            if (aoiSource === "select" && aoiSourceLayerUrl) {
+                // We need an objectId. If it’s missing, this is a bug upstream.
+                if (aoiSourceObjectId == null) {
+                    console.warn("AOI source objectId is null; AOI source table will not be 1-row exact.");
+                }
 
-        const toolLabel =
-            (aoiSourcePlssTool === "township") ? "Township" :
-            (aoiSourcePlssTool === "section") ? "Section" :
-            (aoiSourcePlssTool === "intersected") ? "Parcel" :
-            "PLSS";
+                const toolLabel =
+                    (aoiSourcePlssTool === "township") ? "Township" :
+                        (aoiSourcePlssTool === "section") ? "Section" :
+                            (aoiSourcePlssTool === "intersected") ? "Parcel" :
+                                "PLSS";
 
-        expandedTargets.push({
+                expandedTargets.push({
                     title: `AOI Source (${toolLabel})`,
                     url: String(aoiSourceLayerUrl).replace(/\/+$/, ""),
                     __pinnedAoiFeature: aoiSourceFeature || null
                 });
-        }
-
-
-        // Expand service roots into sublayers
-        for (const cfg of reportCfgs) {
-            const url = String(cfg.url || "");
-
-            // ✅ Never expand the PLSS selection MapServer root into the report.
-            // We only ever want explicit PLSS sublayers: (AOI source OR Parcel) + State.
-            if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
-                // If someone accidentally added a PLSS MapServer root to reportLayers,
-                // skip it here so it can't flood the report with Township/Section/Intersected again.
-                continue;
             }
 
-    if (isFeatureServerRoot(url)) {
-        try {
-            const sublayers = await expandServiceToSublayers(url);
-            sublayers.forEach(sl => expandedTargets.push({
-                title: `${cfg.title}: ${sl.title}`,
-                url: sl.url
-            }));
-        } catch (e) {
-            expandedTargets.push({
-                title: `${cfg.title} (FAILED to expand)`,
-                url,
-                error: e
-            });
-        }
-        continue;
-    }
 
-    if (isMapServerRoot(url)) {
-        try {
-            const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
-            subs.forEach(sl => expandedTargets.push({
-                title: `${cfg.title}: ${sl.title}`,
-                url: sl.url
-            }));
-        } catch (e) {
-            expandedTargets.push({
-                title: `${cfg.title} (FAILED to expand)`,
-                url,
-                error: e
-            });
-        }
-        continue;
-    }
+            // Expand service roots into sublayers
+            for (const cfg of reportCfgs) {
+                const url = String(cfg.url || "");
 
-    expandedTargets.push({ title: cfg.title, url });
-}
+                // ✅ Never expand the PLSS selection MapServer root into the report.
+                // We only ever want explicit PLSS sublayers: (AOI source OR Parcel) + State.
+                if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
+                    // If someone accidentally added a PLSS MapServer root to reportLayers,
+                    // skip it here so it can't flood the report with Township/Section/Intersected again.
+                    continue;
+                }
 
-        const cards = [];
-        for (let i = 0; i < expandedTargets.length; i++) {
-            if (isReportCanceled(myOp)) {
-            setStatus("canceled");
-            break;
+                if (isFeatureServerRoot(url)) {
+                    try {
+                        const sublayers = await expandServiceToSublayers(url);
+                        sublayers.forEach(sl => expandedTargets.push({
+                            title: `${cfg.title}: ${sl.title}`,
+                            url: sl.url
+                        }));
+                    } catch (e) {
+                        expandedTargets.push({
+                            title: `${cfg.title} (FAILED to expand)`,
+                            url,
+                            error: e
+                        });
+                    }
+                    continue;
+                }
+
+                if (isMapServerRoot(url)) {
+                    try {
+                        const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
+                        subs.forEach(sl => expandedTargets.push({
+                            title: `${cfg.title}: ${sl.title}`,
+                            url: sl.url
+                        }));
+                    } catch (e) {
+                        expandedTargets.push({
+                            title: `${cfg.title} (FAILED to expand)`,
+                            url,
+                            error: e
+                        });
+                    }
+                    continue;
+                }
+
+                expandedTargets.push({ title: cfg.title, url });
             }
 
-            const t = expandedTargets[i];
+            const cards = [];
+            for (let i = 0; i < expandedTargets.length; i++) {
+                if (isReportCanceled(myOp)) {
+                    setStatus("canceled");
+                    break;
+                }
 
-            if (t.error) {
-                cards.push(`
+                const t = expandedTargets[i];
+
+                if (t.error) {
+                    cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
@@ -1540,51 +1606,51 @@ async function runReport() {
             <div class="small mono">${escapeHtml(String(t.error))}</div>
           </div>
         `);
-                continue;
-            }
+                    continue;
+                }
 
-            try {
-            const plss = isPlssLayerTitleOrUrl(t.title, t.url);
-            const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
+                try {
+                    const plss = isPlssLayerTitleOrUrl(t.title, t.url);
+                    const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
 
-            // Only tighten the relationship in the specific failing case:
-            // AOI chosen from Township/Section, and target layer is PLSS Intersected.
-            const spatialRel =
-                (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
-                    ? "within"
-                    : "intersects";
+                    // Only tighten the relationship in the specific failing case:
+                    // AOI chosen from Township/Section, and target layer is PLSS Intersected.
+                    const spatialRel =
+                        (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
+                            ? "within"
+                            : "intersects";
 
-            // ✅ AOI Source card: render from cached feature (no service re-query)
-            if (t.__pinnedAoiFeature) {
-                const f = t.__pinnedAoiFeature;
-                const feats = f ? [f] : [];
-                const r = {
-                    title: t.title,
-                    url: t.url,
-                    count: feats.length,
-                    features: feats,
-                    layer: null,
-                    exportQuery: null
-                };
+                    // ✅ AOI Source card: render from cached feature (no service re-query)
+                    if (t.__pinnedAoiFeature) {
+                        const f = t.__pinnedAoiFeature;
+                        const feats = f ? [f] : [];
+                        const r = {
+                            title: t.title,
+                            url: t.url,
+                            count: feats.length,
+                            features: feats,
+                            layer: null,
+                            exportQuery: null
+                        };
 
-                const rows = flattenAttributes(r.features);
+                        const rows = flattenAttributes(r.features);
 
-                lastReportRowsByLayer.push({
-                    title: r.title,
-                    url: r.url,
-                    count: r.count,
-                    rows,
-                    _layer: null,
-                    _exportQuery: null,
-                    fullRows: rows // ✅ allow FULL export to export this one cached row
-                });
+                        lastReportRowsByLayer.push({
+                            title: r.title,
+                            url: r.url,
+                            count: r.count,
+                            rows,
+                            _layer: null,
+                            _exportQuery: null,
+                            fullRows: rows // ✅ allow FULL export to export this one cached row
+                        });
 
-                const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
-                const tableHtml = feats.length
-                    ? makeTable(feats, maxFields, r.count)
-                    : `<div class="small">No sample rows.</div>`;
+                        const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
+                        const tableHtml = feats.length
+                            ? makeTable(feats, maxFields, r.count)
+                            : `<div class="small">No sample rows.</div>`;
 
-        cards.push(`
+                        cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
@@ -1608,47 +1674,46 @@ async function runReport() {
           </div>
         `);
 
-                setStatus(`running report… (${i + 1}/${expandedTargets.length})`);
-                continue; // ✅ skip normal querySingleLayer path
-            }
+                        setStatus(`running report… (${i + 1}/${expandedTargets.length})`);
+                        continue; // ✅ skip normal querySingleLayer path
+                    }
 
 
-            const r = await querySingleLayer(
-            t.url,
-            t.title,
-            reportGeom,           // ignored in objectId path
-            spatialRel,
-            );
-            const rows = flattenAttributes(r.features);
+                    const r = await querySingleLayer(
+                        t.url,
+                        t.title,
+                        reportGeom,           // ignored in objectId path
+                        spatialRel,
+                    );
+                    const rows = flattenAttributes(r.features);
 
-            // Store sample rows PLUS the objects we need for FULL export paging
-            lastReportRowsByLayer.push({
-                title: r.title,
-                url: r.url,
-                count: r.count,       // <-- store count for summary stats
-                rows,                 // sample rows shown in the UI table
-                _layer: r.layer,      // FeatureLayer instance used for querying
-                _exportQuery: r.exportQuery, // Query object (intersects geometry etc.)
-                fullRows: null        // will be filled on-demand when user exports FULL
-            });
+                    // Store sample rows PLUS the objects we need for FULL export paging
+                    lastReportRowsByLayer.push({
+                        title: r.title,
+                        url: r.url,
+                        count: r.count,       // <-- store count for summary stats
+                        rows,                 // sample rows shown in the UI table
+                        _layer: r.layer,      // FeatureLayer instance used for querying
+                        _exportQuery: r.exportQuery, // Query object (intersects geometry etc.)
+                        fullRows: null        // will be filled on-demand when user exports FULL
+                    });
 
 
-                const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
-                const tableHtml = (r.features && r.features.length)
-                    ? makeTable(r.features, maxFields, r.count)
-                    : `<div class="small">No sample rows.</div>`;
+                    const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
+                    const tableHtml = (r.features && r.features.length)
+                        ? makeTable(r.features, maxFields, r.count)
+                        : `<div class="small">No sample rows.</div>`;
 
-        cards.push(`
+                    cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
                 <div class="badge">
                 count: <b>${r.count}</b>
-                ${
-                    (config.report?.maxExportFeatures && r.count > config.report.maxExportFeatures)
-                    ? `<span class="small" style="margin-left:8px; opacity:.85;">(FULL export capped at ${config.report.maxExportFeatures})</span>`
-                    : ``
-                }
+                ${(config.report?.maxExportFeatures && r.count > config.report.maxExportFeatures)
+                            ? `<span class="small" style="margin-left:8px; opacity:.85;">(FULL export capped at ${config.report.maxExportFeatures})</span>`
+                            : ``
+                        }
                 </div>
             </div>
                 <div class="small mono">
@@ -1667,8 +1732,8 @@ async function runReport() {
             </div>
         </div>
         `);
-            } catch (e) {
-                cards.push(`
+                } catch (e) {
+                    cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
@@ -1677,88 +1742,88 @@ async function runReport() {
             <div class="small mono">${escapeHtml(String(e))}</div>
           </div>
         `);
+                }
+
+                setStatus(`running report… (${i + 1}/${expandedTargets.length})`);
             }
 
-            setStatus(`running report… (${i + 1}/${expandedTargets.length})`);
+            renderResults(cards.join(""));
+            wireExportButtons();
+            exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
+            setStatus("done");
+            renderVisualSummary();
+
+        } catch (e) {
+            console.error(e);
+            setStatus("report failed (see console)");
+        } finally {
+            setBusy(false);
+            endReportOp(myOp);
         }
-
-        renderResults(cards.join(""));
-        wireExportButtons();
-        exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
-        setStatus("done");
-        renderVisualSummary();
-
-    } catch (e) {
-        console.error(e);
-        setStatus("report failed (see console)");
-    } finally {
-        setBusy(false);
-        endReportOp(myOp);
     }
-}
 
 
-        function wireExportButtons() {
-            resultsEl.querySelectorAll("button[data-export]").forEach(btn => {
-                btn.addEventListener("click", async () => {
-                    const title = btn.getAttribute("data-export");
-                    const item = lastReportRowsByLayer.find(x => x.title === title);
-                    if (!item) return;
+    function wireExportButtons() {
+        resultsEl.querySelectorAll("button[data-export]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const title = btn.getAttribute("data-export");
+                const item = lastReportRowsByLayer.find(x => x.title === title);
+                if (!item) return;
 
-                    // If we already fetched full rows once, just export again
-                    if (item.fullRows && item.fullRows.length) {
-                        const csvCached = toCsv(item.fullRows);
-                        downloadText(safeFilename(title) + "_FULL.csv", csvCached || "");
-                        return;
+                // If we already fetched full rows once, just export again
+                if (item.fullRows && item.fullRows.length) {
+                    const csvCached = toCsv(item.fullRows);
+                    downloadText(safeFilename(title) + "_FULL.csv", csvCached || "");
+                    return;
+                }
+
+                // Defensive: make sure we have what we need
+                if (!item._layer || !item._exportQuery) {
+                    // fallback to sample if something is missing
+                    const csvSample = toCsv(item.rows);
+                    downloadText(safeFilename(title) + "_SAMPLE.csv", csvSample || "");
+                    return;
+                }
+
+                btn.disabled = true;
+
+                try {
+                    setStatus("exporting FULL CSV…");
+
+                    const pageSize = config.report?.pageSize ?? 1000;
+                    const maxExport = config.report?.maxExportFeatures ?? 50000;
+
+                    // Page through all intersecting features
+                    const fullFeatures = await queryAllFeaturesPaged(
+                        item._layer,
+                        item._exportQuery,
+                        pageSize,
+                        maxExport
+                    );
+
+                    // Convert to rows + cache
+                    item.fullRows = flattenAttributes(fullFeatures);
+
+                    const csvFull = toCsv(item.fullRows);
+                    downloadText(safeFilename(title) + "_FULL.csv", csvFull || "");
+
+                    // Optional: tell user if capped
+                    if (maxExport && fullFeatures.length >= maxExport) {
+                        setStatus(`exported FULL (capped at ${maxExport})`);
+                    } else {
+                        setStatus("exported FULL");
                     }
-
-                    // Defensive: make sure we have what we need
-                    if (!item._layer || !item._exportQuery) {
-                        // fallback to sample if something is missing
-                        const csvSample = toCsv(item.rows);
-                        downloadText(safeFilename(title) + "_SAMPLE.csv", csvSample || "");
-                        return;
-                    }
-
-                    btn.disabled = true;
-
-                    try {
-                        setStatus("exporting FULL CSV…");
-
-                        const pageSize = config.report?.pageSize ?? 1000;
-                        const maxExport = config.report?.maxExportFeatures ?? 50000;
-
-                        // Page through all intersecting features
-                        const fullFeatures = await queryAllFeaturesPaged(
-                            item._layer,
-                            item._exportQuery,
-                            pageSize,
-                            maxExport
-                        );
-
-                        // Convert to rows + cache
-                        item.fullRows = flattenAttributes(fullFeatures);
-
-                        const csvFull = toCsv(item.fullRows);
-                        downloadText(safeFilename(title) + "_FULL.csv", csvFull || "");
-
-                        // Optional: tell user if capped
-                        if (maxExport && fullFeatures.length >= maxExport) {
-                            setStatus(`exported FULL (capped at ${maxExport})`);
-                        } else {
-                            setStatus("exported FULL");
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        setStatus("export failed (see console)");
-                    } finally {
-                        btn.disabled = false;
-                        // If you prefer to restore prior status:
-                        // statusEl.textContent = oldStatus;
-                    }
-                });
+                } catch (e) {
+                    console.error(e);
+                    setStatus("export failed (see console)");
+                } finally {
+                    btn.disabled = false;
+                    // If you prefer to restore prior status:
+                    // statusEl.textContent = oldStatus;
+                }
             });
-        }
+        });
+    }
 
 
     function safeFilename(name) {
@@ -1800,153 +1865,153 @@ async function runReport() {
         return lines;
     }
 
-// ---------- Coverage stats (AOI acres + % covered by layer) ----------
-const SQM_PER_ACRE = 4046.8564224;
-const coverageCache = new Map(); // key: `${aoiKey}||${layerUrl}` -> { acresCovered, pctAoiCovered }
-let coverageAoiKey = "";         // changes whenever AOI changes
+    // ---------- Coverage stats (AOI acres + % covered by layer) ----------
+    const SQM_PER_ACRE = 4046.8564224;
+    const coverageCache = new Map(); // key: `${aoiKey}||${layerUrl}` -> { acresCovered, pctAoiCovered }
+    let coverageAoiKey = "";         // changes whenever AOI changes
 
-function getAoiKey(geom) {
-    // stable-enough signature: extent + rounded area
-    try {
-        const ex = geom?.extent;
-        const area = geometryEngine.geodesicArea(geom, "square-meters");
-        return [
-            ex?.xmin, ex?.ymin, ex?.xmax, ex?.ymax,
-            Math.round(area)
-        ].join("|");
-    } catch (e) {
-        return String(Date.now());
-    }
-}
-
-function resetCoverageCacheForAoi(geom) {
-    coverageCache.clear();
-    coverageAoiKey = getAoiKey(geom);
-}
-
-function formatNumber(n, digits = 2) {
-    const x = Number(n);
-    if (!isFinite(x)) return "";
-    return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-async function queryAllFeaturesPagedWithGeometry(layer, baseQuery, pageSize, maxExportFeatures) {
-    const all = [];
-    let offset = 0;
-
-    while (true) {
-        const q = baseQuery.clone();
-        q.num = pageSize;
-        q.start = offset;
-        q.returnGeometry = true;              // ✅ geometry required for area
-        q.outFields = [];                    // we only need geometry
-        q.outSpatialReference = view?.spatialReference;
-
-        const fs = await layer.queryFeatures(q);
-        const feats = (fs && fs.features) ? fs.features : [];
-
-        all.push(...feats);
-
-        if (feats.length < pageSize) break;
-        offset += pageSize;
-
-        if (maxExportFeatures && all.length >= maxExportFeatures) break;
-    }
-
-    return all;
-}
-
-function unionGeomsChunked(geoms) {
-    // geometryEngine.union can choke on huge arrays; do it in chunks.
-    const CHUNK = 25;
-    let acc = null;
-
-    for (let i = 0; i < geoms.length; i += CHUNK) {
-        const chunk = geoms.slice(i, i + CHUNK).filter(Boolean);
-        if (!chunk.length) continue;
-
-        const u = geometryEngine.union(chunk);
-        if (!acc) acc = u;
-        else acc = geometryEngine.union([acc, u]);
-    }
-
-    return acc;
-}
-
-async function computeLayerCoverageStats(item, aoiGeom) {
-    // Returns: { acresCovered, pctAoiCovered }
-    if (!item || !item._layer || !item._exportQuery || !aoiGeom) return null;
-
-    const layerUrlKey = String(item.url || "").replace(/\/+$/, "");
-    const aoiKey = coverageAoiKey || getAoiKey(aoiGeom);
-    const cacheKey = `${aoiKey}||${layerUrlKey}`;
-
-    if (coverageCache.has(cacheKey)) {
-        return coverageCache.get(cacheKey);
-    }
-
-
-    // AOI area (sqm)
-    let aoiAreaSqm = 0;
-    try {
-        aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters"));
-    } catch (e) {
-        aoiAreaSqm = 0;
-    }
-    if (!aoiAreaSqm) return { acresCovered: 0, pctAoiCovered: 0 };
-
-    const pageSize = config.report?.pageSize ?? 1000;
-    const maxExport = config.report?.maxExportFeatures ?? 50000;
-
-    // Page through intersecting features WITH geometry
-    const feats = await queryAllFeaturesPagedWithGeometry(item._layer, item._exportQuery, pageSize, maxExport);
-
-    // Intersect each feature with AOI and collect intersection geometries
-    const interGeoms = [];
-    for (const f of feats) {
-        const g = f?.geometry;
-        if (!g) continue;
-
+    function getAoiKey(geom) {
+        // stable-enough signature: extent + rounded area
         try {
-            const inter = geometryEngine.intersect(aoiGeom, g);
-            if (!inter) continue;
-
-            // Drop pure edge-touch (0 area) intersections
-            const area = geometryEngine.geodesicArea(inter, "square-meters");
-            if (area <= 0) continue;
-
-            interGeoms.push(inter);
+            const ex = geom?.extent;
+            const area = geometryEngine.geodesicArea(geom, "square-meters");
+            return [
+                ex?.xmin, ex?.ymin, ex?.xmax, ex?.ymax,
+                Math.round(area)
+            ].join("|");
         } catch (e) {
-            // ignore bad geometries
+            return String(Date.now());
         }
     }
 
-    if (!interGeoms.length) return { acresCovered: 0, pctAoiCovered: 0 };
-
-    // Union intersections to avoid double-counting overlap
-    let unionGeom = null;
-    try {
-        unionGeom = unionGeomsChunked(interGeoms);
-    } catch (e) {
-        unionGeom = null;
+    function resetCoverageCacheForAoi(geom) {
+        coverageCache.clear();
+        coverageAoiKey = getAoiKey(geom);
     }
 
-    let coveredSqm = 0;
-    try {
-        coveredSqm = unionGeom
-            ? Math.max(0, geometryEngine.geodesicArea(unionGeom, "square-meters"))
-            : 0;
-    } catch (e) {
-        coveredSqm = 0;
+    function formatNumber(n, digits = 2) {
+        const x = Number(n);
+        if (!isFinite(x)) return "";
+        return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
     }
 
-    const acresCovered = coveredSqm / SQM_PER_ACRE;
-    const pctAoiCovered = Math.min(100, Math.max(0, (coveredSqm / aoiAreaSqm) * 100));
+    async function queryAllFeaturesPagedWithGeometry(layer, baseQuery, pageSize, maxExportFeatures) {
+        const all = [];
+        let offset = 0;
 
-    const out = { acresCovered, pctAoiCovered };
-    coverageCache.set(cacheKey, out);
-    return out;
-}
+        while (true) {
+            const q = baseQuery.clone();
+            q.num = pageSize;
+            q.start = offset;
+            q.returnGeometry = true;              // ✅ geometry required for area
+            q.outFields = [];                    // we only need geometry
+            q.outSpatialReference = view?.spatialReference;
+
+            const fs = await layer.queryFeatures(q);
+            const feats = (fs && fs.features) ? fs.features : [];
+
+            all.push(...feats);
+
+            if (feats.length < pageSize) break;
+            offset += pageSize;
+
+            if (maxExportFeatures && all.length >= maxExportFeatures) break;
+        }
+
+        return all;
+    }
+
+    function unionGeomsChunked(geoms) {
+        // geometryEngine.union can choke on huge arrays; do it in chunks.
+        const CHUNK = 25;
+        let acc = null;
+
+        for (let i = 0; i < geoms.length; i += CHUNK) {
+            const chunk = geoms.slice(i, i + CHUNK).filter(Boolean);
+            if (!chunk.length) continue;
+
+            const u = geometryEngine.union(chunk);
+            if (!acc) acc = u;
+            else acc = geometryEngine.union([acc, u]);
+        }
+
+        return acc;
+    }
+
+    async function computeLayerCoverageStats(item, aoiGeom) {
+        // Returns: { acresCovered, pctAoiCovered }
+        if (!item || !item._layer || !item._exportQuery || !aoiGeom) return null;
+
+        const layerUrlKey = String(item.url || "").replace(/\/+$/, "");
+        const aoiKey = coverageAoiKey || getAoiKey(aoiGeom);
+        const cacheKey = `${aoiKey}||${layerUrlKey}`;
+
+        if (coverageCache.has(cacheKey)) {
+            return coverageCache.get(cacheKey);
+        }
+
+
+        // AOI area (sqm)
+        let aoiAreaSqm = 0;
+        try {
+            aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters"));
+        } catch (e) {
+            aoiAreaSqm = 0;
+        }
+        if (!aoiAreaSqm) return { acresCovered: 0, pctAoiCovered: 0 };
+
+        const pageSize = config.report?.pageSize ?? 1000;
+        const maxExport = config.report?.maxExportFeatures ?? 50000;
+
+        // Page through intersecting features WITH geometry
+        const feats = await queryAllFeaturesPagedWithGeometry(item._layer, item._exportQuery, pageSize, maxExport);
+
+        // Intersect each feature with AOI and collect intersection geometries
+        const interGeoms = [];
+        for (const f of feats) {
+            const g = f?.geometry;
+            if (!g) continue;
+
+            try {
+                const inter = geometryEngine.intersect(aoiGeom, g);
+                if (!inter) continue;
+
+                // Drop pure edge-touch (0 area) intersections
+                const area = geometryEngine.geodesicArea(inter, "square-meters");
+                if (area <= 0) continue;
+
+                interGeoms.push(inter);
+            } catch (e) {
+                // ignore bad geometries
+            }
+        }
+
+        if (!interGeoms.length) return { acresCovered: 0, pctAoiCovered: 0 };
+
+        // Union intersections to avoid double-counting overlap
+        let unionGeom = null;
+        try {
+            unionGeom = unionGeomsChunked(interGeoms);
+        } catch (e) {
+            unionGeom = null;
+        }
+
+        let coveredSqm = 0;
+        try {
+            coveredSqm = unionGeom
+                ? Math.max(0, geometryEngine.geodesicArea(unionGeom, "square-meters"))
+                : 0;
+        } catch (e) {
+            coveredSqm = 0;
+        }
+
+        const acresCovered = coveredSqm / SQM_PER_ACRE;
+        const pctAoiCovered = Math.min(100, Math.max(0, (coveredSqm / aoiAreaSqm) * 100));
+
+        const out = { acresCovered, pctAoiCovered };
+        coverageCache.set(cacheKey, out);
+        return out;
+    }
 
 
     function wrapText(ctx, text, maxWidth) {
@@ -2073,168 +2138,168 @@ async function computeLayerCoverageStats(item, aoiGeom) {
         `;
     }
 
-async function generateVisualReport() {
-    const myOp = startVisualOp();
+    async function generateVisualReport() {
+        const myOp = startVisualOp();
 
-    if (!view) { endVisualOp(myOp); return; }
+        if (!view) { endVisualOp(myOp); return; }
 
-    if (!selectionGeom) {
-        setVisualStatus("Select or draw an AOI first.");
-        return;
-    }
-
-    if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-        setVisualStatus("Run the report first (Tables tab) so we know which layers intersect.");
-        return;
-    }
-
-    setBusy(true);
-    setVisualStatus("Generating maps for intersecting layers…");
-
-    if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
-    if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = "";
-    if (downloadMapBtn) downloadMapBtn.disabled = true;
-    if (printVisualBtn) printVisualBtn.disabled = true;
-
-    try {
-        // Only layers with real intersect hits AND usable query objects
-        const targets = lastReportRowsByLayer
-            .filter(x => (x?.count || 0) > 0)
-            .filter(x => x?._layer && x?._exportQuery); // excludes pinned AOI source etc.
-
-        if (!targets.length) {
-            setVisualStatus("No intersecting layers to map (all counts are 0).");
-            if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
+        if (!selectionGeom) {
+            setVisualStatus("Select or draw an AOI first.");
             return;
         }
 
-        // Zoom to AOI with padding once (we’ll keep the view there)
-        const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
-        const width = config?.visualReport?.screenshotWidth ?? 1400;
-
-        // 🔒 Compute and lock a single extent for ALL screenshots
-        let fixedExtent = null;
-        const ext = selectionGeom?.extent;
-
-        if (ext && ext.expand) {
-            fixedExtent = ext.expand(paddingFactor);
-            await view.goTo(fixedExtent, { animate: true, duration: 450 });
-        } else {
-            await view.goTo(selectionGeom, { animate: true, duration: 450 });
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            setVisualStatus("Run the report first (Tables tab) so we know which layers intersect.");
+            return;
         }
 
-        // Snapshot current layer visibility so we can restore after each screenshot
-        const allLayers = view.map.layers.toArray();
+        setBusy(true);
+        setVisualStatus("Generating maps for intersecting layers…");
 
-        const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+        if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
+        if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = "";
+        if (downloadMapBtn) downloadMapBtn.disabled = true;
+        if (printVisualBtn) printVisualBtn.disabled = true;
 
-        // Helper to hide everything except AOI + basemap overlay + a temp target layer
-        function setVisibilityForScreenshot(tempLayer) {
-            for (const l of allLayers) {
-                // Keep AOI layer visible
-                if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-
-                // Keep SMA overlay visible (your TileLayer at bottom) if present
-                // (We don’t have the variable here; keep TileLayers visible by default.)
-                if (l?.type === "tile") { l.visible = true; continue; }
-
-                // Hide everything else (selection layers, other report layers, etc.)
-                l.visible = false;
-            }
-
-            if (tempLayer) tempLayer.visible = true;
-            ensureAoiOnTop(view.map);
-        }
-
-        function restoreVisibility() {
-            visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) {} });
-            ensureAoiOnTop(view.map);
-        }
-
-        // AOI area in acres (used for context)
-        let aoiAcres = 0;
         try {
-            const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
-            aoiAcres = aoiSqm / SQM_PER_ACRE;
-        } catch (e) {
-            aoiAcres = 0;
-        }
+            // Only layers with real intersect hits AND usable query objects
+            const targets = lastReportRowsByLayer
+                .filter(x => (x?.count || 0) > 0)
+                .filter(x => x?._layer && x?._exportQuery); // excludes pinned AOI source etc.
 
-        const outCards = [];
-
-        for (let i = 0; i < targets.length; i++) {
-            if (isVisualCanceled(myOp)) {
-            setVisualStatus("canceled");
-            break;
+            if (!targets.length) {
+                setVisualStatus("No intersecting layers to map (all counts are 0).");
+                if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
+                return;
             }
 
-            const item = targets[i];
+            // Zoom to AOI with padding once (we’ll keep the view there)
+            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+            const width = config?.visualReport?.screenshotWidth ?? 1400;
 
-            setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
+            // 🔒 Compute and lock a single extent for ALL screenshots
+            let fixedExtent = null;
+            const ext = selectionGeom?.extent;
 
-            // Create a temporary layer for this URL, regardless of toggle state
-            const temp = new FeatureLayer({
-                url: item.url,
-                title: item.title,
-                outFields: ["*"],
-                visible: true,
-                renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
-            });
+            if (ext && ext.expand) {
+                fixedExtent = ext.expand(paddingFactor);
+                await view.goTo(fixedExtent, { animate: true, duration: 450 });
+            } else {
+                await view.goTo(selectionGeom, { animate: true, duration: 450 });
+            }
 
-            // 🔒 Prevent scale-based rendering rules from forcing view scale changes
-            temp.minScale = 0;
-            temp.maxScale = 0;
+            // Snapshot current layer visibility so we can restore after each screenshot
+            const allLayers = view.map.layers.toArray();
 
-            // Add temp, hide everything else, screenshot, then remove temp
-            view.map.add(temp);
-            try {
-                setVisibilityForScreenshot(temp);
+            const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
 
-                // Wait for layer to load
-                try { await temp.when(); } catch (e) {}
+            // Helper to hide everything except AOI + basemap overlay + a temp target layer
+            function setVisibilityForScreenshot(tempLayer) {
+                for (const l of allLayers) {
+                    // Keep AOI layer visible
+                    if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
 
-                // ✅ Wait until layerView is not suspended AND not updating (best effort)
-                try {
-                    const lv = await view.whenLayerView(temp);
+                    // Keep SMA overlay visible (your TileLayer at bottom) if present
+                    // (We don’t have the variable here; keep TileLayers visible by default.)
+                    if (l?.type === "tile") { l.visible = true; continue; }
 
-                    // Wait for suspended -> false OR timeout
-                    if (lv?.suspended) {
-                        await new Promise(resolve => {
-                            const h = lv.watch("suspended", (s) => {
-                                if (!s) { h.remove(); resolve(); }
-                            });
-                            window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 4000);
-                        });
-                    }
-
-                    // Wait for updating -> false OR timeout
-                    if (lv?.updating) {
-                        await new Promise(resolve => {
-                            const h = lv.watch("updating", (u) => {
-                                if (!u) { h.remove(); resolve(); }
-                            });
-                            window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 6000);
-                        });
-                    }
-                } catch (e) {}
-
-                // 🔒 Re-apply locked extent to guarantee identical framing
-                if (fixedExtent) {
-                    await view.goTo(fixedExtent, { animate: false });
+                    // Hide everything else (selection layers, other report layers, etc.)
+                    l.visible = false;
                 }
 
-                const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
-                const dataUrl = ss?.dataUrl;
-                if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+                if (tempLayer) tempLayer.visible = true;
+                ensureAoiOnTop(view.map);
+            }
 
-                // Compute coverage stats (acres + % AOI covered)
-                const cov = await computeLayerCoverageStats(item, selectionGeom);
+            function restoreVisibility() {
+                visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+                ensureAoiOnTop(view.map);
+            }
 
-                // Render a card for this layer
-                const acresCovered = cov ? cov.acresCovered : 0;
-                const pctCovered = cov ? cov.pctAoiCovered : 0;
+            // AOI area in acres (used for context)
+            let aoiAcres = 0;
+            try {
+                const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
+                aoiAcres = aoiSqm / SQM_PER_ACRE;
+            } catch (e) {
+                aoiAcres = 0;
+            }
 
-                outCards.push(`
+            const outCards = [];
+
+            for (let i = 0; i < targets.length; i++) {
+                if (isVisualCanceled(myOp)) {
+                    setVisualStatus("canceled");
+                    break;
+                }
+
+                const item = targets[i];
+
+                setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
+
+                // Create a temporary layer for this URL, regardless of toggle state
+                const temp = new FeatureLayer({
+                    url: item.url,
+                    title: item.title,
+                    outFields: ["*"],
+                    visible: true,
+                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
+                });
+
+                // 🔒 Prevent scale-based rendering rules from forcing view scale changes
+                temp.minScale = 0;
+                temp.maxScale = 0;
+
+                // Add temp, hide everything else, screenshot, then remove temp
+                view.map.add(temp);
+                try {
+                    setVisibilityForScreenshot(temp);
+
+                    // Wait for layer to load
+                    try { await temp.when(); } catch (e) { }
+
+                    // ✅ Wait until layerView is not suspended AND not updating (best effort)
+                    try {
+                        const lv = await view.whenLayerView(temp);
+
+                        // Wait for suspended -> false OR timeout
+                        if (lv?.suspended) {
+                            await new Promise(resolve => {
+                                const h = lv.watch("suspended", (s) => {
+                                    if (!s) { h.remove(); resolve(); }
+                                });
+                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
+                            });
+                        }
+
+                        // Wait for updating -> false OR timeout
+                        if (lv?.updating) {
+                            await new Promise(resolve => {
+                                const h = lv.watch("updating", (u) => {
+                                    if (!u) { h.remove(); resolve(); }
+                                });
+                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 6000);
+                            });
+                        }
+                    } catch (e) { }
+
+                    // 🔒 Re-apply locked extent to guarantee identical framing
+                    if (fixedExtent) {
+                        await view.goTo(fixedExtent, { animate: false });
+                    }
+
+                    const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
+                    const dataUrl = ss?.dataUrl;
+                    if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+                    // Compute coverage stats (acres + % AOI covered)
+                    const cov = await computeLayerCoverageStats(item, selectionGeom);
+
+                    // Render a card for this layer
+                    const acresCovered = cov ? cov.acresCovered : 0;
+                    const pctCovered = cov ? cov.pctAoiCovered : 0;
+
+                    outCards.push(`
                   <div class="visual-output-card">
                     <div class="visual-output-title">${escapeHtml(item.title)}</div>
                     <img class="visual-output-img" src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}" />
@@ -2249,61 +2314,61 @@ async function generateVisualReport() {
                   </div>
                 `);
 
-            } finally {
-                // Remove temp layer and restore visibility
-                try { view.map.remove(temp); } catch (e) {}
-                restoreVisibility();
+                } finally {
+                    // Remove temp layer and restore visibility
+                    try { view.map.remove(temp); } catch (e) { }
+                    restoreVisibility();
+                }
             }
+
+            if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = outCards.join("");
+            if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
+
+            // Keep your existing summary panel behavior
+            renderVisualSummary();
+
+            setVisualStatus("Done.");
+        } catch (e) {
+            console.error(e);
+            setVisualStatus("Failed to generate maps (see console).");
+        } finally {
+            setBusy(false);
+            endVisualOp(myOp);
         }
-
-        if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = outCards.join("");
-        if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
-
-        // Keep your existing summary panel behavior
-        renderVisualSummary();
-
-        setVisualStatus("Done.");
-    } catch (e) {
-        console.error(e);
-        setVisualStatus("Failed to generate maps (see console).");
-    } finally {
-        setBusy(false);
-        endVisualOp(myOp);
     }
-}
 
 
-// ---------- Final Report (printable HTML in new tab) ----------
-function openHtmlInNewTab(htmlString) {
-    const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, "_blank", "noopener,noreferrer");
-    // Cleanup the blob URL later (give the new tab time to load)
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    return win;
-}
-
-function formatDateTimeForReport(d = new Date()) {
-    try {
-        return d.toLocaleString();
-    } catch (e) {
-        return d.toString();
+    // ---------- Final Report (printable HTML in new tab) ----------
+    function openHtmlInNewTab(htmlString) {
+        const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, "_blank", "noopener,noreferrer");
+        // Cleanup the blob URL later (give the new tab time to load)
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return win;
     }
-}
 
-function getAoiSummaryForReport(aoiAcres) {
-    const src = aoiSource === "draw" ? "Drawn AOI" : "Selected AOI";
-    const tool = aoiSource === "select" ? plssToolLabel(aoiSourcePlssTool) : "";
-    const srcDetail = (aoiSource === "select" && tool) ? ` (${tool})` : "";
-    const layer = aoiSourceLayerTitle ? ` • Source layer: ${aoiSourceLayerTitle}` : "";
-    return `${src}${srcDetail} • AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
-}
+    function formatDateTimeForReport(d = new Date()) {
+        try {
+            return d.toLocaleString();
+        } catch (e) {
+            return d.toString();
+        }
+    }
 
-function buildFinalReportHtmlDoc({ title, createdAt, aoiSummary, totalsHtml, sectionsHtml }) {
-    const safeTitle = escapeHtml(title || "Final Report");
+    function getAoiSummaryForReport(aoiAcres) {
+        const src = aoiSource === "draw" ? "Drawn AOI" : "Selected AOI";
+        const tool = aoiSource === "select" ? plssToolLabel(aoiSourcePlssTool) : "";
+        const srcDetail = (aoiSource === "select" && tool) ? ` (${tool})` : "";
+        const layer = aoiSourceLayerTitle ? ` • Source layer: ${aoiSourceLayerTitle}` : "";
+        return `${src}${srcDetail} • AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
+    }
 
-    // Minimal, clean print CSS (no external deps)
-    return `<!doctype html>
+    function buildFinalReportHtmlDoc({ title, createdAt, aoiSummary, totalsHtml, sectionsHtml }) {
+        const safeTitle = escapeHtml(title || "Final Report");
+
+        // Minimal, clean print CSS (no external deps)
+        return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
@@ -2369,48 +2434,48 @@ function buildFinalReportHtmlDoc({ title, createdAt, aoiSummary, totalsHtml, sec
   </div>
 </body>
 </html>`;
-}
-
-async function generateFinalReport() {
-    if (!view) return;
-
-    if (!selectionGeom) {
-        setStatus("Select or draw an AOI first.");
-        return;
     }
 
-    if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-        setStatus("Run the report first (Tables tab) so we know which layers intersect.");
-        return;
-    }
+    async function generateFinalReport() {
+        if (!view) return;
 
-    // Lock the view so users can't change extent mid-capture
-    const myOp = startVisualOp(); // reuse existing lock + overlay behavior
-
-    setBusy(true);
-    setStatus("building final report…");
-
-    try {
-        // Only layers with real hits and usable query objects (skip pinned AOI source card)
-        const targets = lastReportRowsByLayer
-            .filter(x => (x?.count || 0) > 0)
-            .filter(x => x?._layer && x?._exportQuery);
-
-        // AOI area in acres
-        let aoiAcres = 0;
-        try {
-            const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
-            aoiAcres = aoiSqm / SQM_PER_ACRE;
-        } catch (e) {
-            aoiAcres = 0;
+        if (!selectionGeom) {
+            setStatus("Select or draw an AOI first.");
+            return;
         }
 
-        // Totals summary (counts)
-        const totalLayers = lastReportRowsByLayer.length;
-        const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
-        const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            setStatus("Run the report first (Tables tab) so we know which layers intersect.");
+            return;
+        }
 
-        const totalsHtml = `
+        // Lock the view so users can't change extent mid-capture
+        const myOp = startVisualOp(); // reuse existing lock + overlay behavior
+
+        setBusy(true);
+        setStatus("building final report…");
+
+        try {
+            // Only layers with real hits and usable query objects (skip pinned AOI source card)
+            const targets = lastReportRowsByLayer
+                .filter(x => (x?.count || 0) > 0)
+                .filter(x => x?._layer && x?._exportQuery);
+
+            // AOI area in acres
+            let aoiAcres = 0;
+            try {
+                const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
+                aoiAcres = aoiSqm / SQM_PER_ACRE;
+            } catch (e) {
+                aoiAcres = 0;
+            }
+
+            // Totals summary (counts)
+            const totalLayers = lastReportRowsByLayer.length;
+            const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
+            const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+
+            const totalsHtml = `
           <div class="row">
             <div class="pill">Layers queried: <b>${escapeHtml(String(totalLayers))}</b></div>
             <div class="pill">Layers with hits: <b>${escapeHtml(String(layersWithHits))}</b></div>
@@ -2418,129 +2483,129 @@ async function generateFinalReport() {
           </div>
         `;
 
-        // Zoom to AOI once
-        const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
-        const width = config?.visualReport?.screenshotWidth ?? 1400;
+            // Zoom to AOI once
+            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+            const width = config?.visualReport?.screenshotWidth ?? 1400;
 
-        // 🔒 Compute and lock a single extent for ALL screenshots
-        let fixedExtent = null;
-        const ext = selectionGeom?.extent;
+            // 🔒 Compute and lock a single extent for ALL screenshots
+            let fixedExtent = null;
+            const ext = selectionGeom?.extent;
 
-        if (ext && ext.expand) {
-            fixedExtent = ext.expand(paddingFactor);
-            await view.goTo(fixedExtent, { animate: true, duration: 450 });
-        } else {
-            await view.goTo(selectionGeom, { animate: true, duration: 450 });
-        }
-
-        // Snapshot vis so we can restore after each screenshot
-        const allLayers = view.map.layers.toArray();
-        const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
-
-        function setVisibilityForScreenshot(tempLayer) {
-            for (const l of allLayers) {
-                // Keep AOI visible
-                if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                // Keep tile overlays (SMA) visible
-                if (l?.type === "tile") { l.visible = true; continue; }
-                // Hide everything else
-                l.visible = false;
+            if (ext && ext.expand) {
+                fixedExtent = ext.expand(paddingFactor);
+                await view.goTo(fixedExtent, { animate: true, duration: 450 });
+            } else {
+                await view.goTo(selectionGeom, { animate: true, duration: 450 });
             }
-            if (tempLayer) tempLayer.visible = true;
-            ensureAoiOnTop(view.map);
-        }
 
-        function restoreVisibility() {
-            visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) {} });
-            ensureAoiOnTop(view.map);
-        }
+            // Snapshot vis so we can restore after each screenshot
+            const allLayers = view.map.layers.toArray();
+            const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
 
-        // Build per-layer sections
-        let sectionsHtml = "";
+            function setVisibilityForScreenshot(tempLayer) {
+                for (const l of allLayers) {
+                    // Keep AOI visible
+                    if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                    // Keep tile overlays (SMA) visible
+                    if (l?.type === "tile") { l.visible = true; continue; }
+                    // Hide everything else
+                    l.visible = false;
+                }
+                if (tempLayer) tempLayer.visible = true;
+                ensureAoiOnTop(view.map);
+            }
 
-        if (!targets.length) {
-            sectionsHtml = `
+            function restoreVisibility() {
+                visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+                ensureAoiOnTop(view.map);
+            }
+
+            // Build per-layer sections
+            let sectionsHtml = "";
+
+            if (!targets.length) {
+                sectionsHtml = `
               <div class="section">
                 <h2>No intersecting layers</h2>
                 <div class="sub">(All layer counts are 0.)</div>
               </div>
             `;
-        } else {
-            for (let i = 0; i < targets.length; i++) {
-                // Cancel support (reuses visual cancel)
-                if (isVisualCanceled(myOp)) {
-                    setStatus("final report canceled");
-                    break;
-                }
-
-                const item = targets[i];
-                setStatus(`building final report… (${i + 1}/${targets.length})`);
-
-                // Temp layer (so it renders regardless of user toggles)
-                const temp = new FeatureLayer({
-                    url: item.url,
-                    title: item.title,
-                    outFields: ["*"],
-                    visible: true,
-                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
-                });
-
-                // 🔒 Prevent scale-based rendering rules from forcing view scale changes
-                temp.minScale = 0;
-                temp.maxScale = 0;
-
-                // Add temp, hide everything else, screenshot, then remove temp
-                view.map.add(temp);
-                try {
-                    setVisibilityForScreenshot(temp);
-
-                    // Wait for layer to load
-                    try { await temp.when(); } catch (e) {}
-
-                    // ✅ Wait until layerView is not suspended AND not updating (best effort)
-                    try {
-                        const lv = await view.whenLayerView(temp);
-
-                        // Wait for suspended -> false OR timeout
-                        if (lv?.suspended) {
-                            await new Promise(resolve => {
-                                const h = lv.watch("suspended", (s) => {
-                                    if (!s) { h.remove(); resolve(); }
-                                });
-                                window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 4000);
-                            });
-                        }
-
-                        // Wait for updating -> false OR timeout
-                        if (lv?.updating) {
-                            await new Promise(resolve => {
-                                const h = lv.watch("updating", (u) => {
-                                    if (!u) { h.remove(); resolve(); }
-                                });
-                                window.setTimeout(() => { try { h.remove(); } catch (e) {} resolve(); }, 6000);
-                            });
-                        }
-                    } catch (e) {}
-
-                    if (isVisualCanceled(myOp)) break;
-
-                    // 🔒 Re-apply locked extent to guarantee identical framing
-                    if (fixedExtent) {
-                        await view.goTo(fixedExtent, { animate: false });
+            } else {
+                for (let i = 0; i < targets.length; i++) {
+                    // Cancel support (reuses visual cancel)
+                    if (isVisualCanceled(myOp)) {
+                        setStatus("final report canceled");
+                        break;
                     }
 
-                    const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
-                    const dataUrl = ss?.dataUrl;
-                    if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+                    const item = targets[i];
+                    setStatus(`building final report… (${i + 1}/${targets.length})`);
 
-                    // Coverage stats
-                    const cov = await computeLayerCoverageStats(item, selectionGeom);
-                    const acresCovered = cov ? cov.acresCovered : 0;
-                    const pctCovered = cov ? cov.pctAoiCovered : 0;
+                    // Temp layer (so it renders regardless of user toggles)
+                    const temp = new FeatureLayer({
+                        url: item.url,
+                        title: item.title,
+                        outFields: ["*"],
+                        visible: true,
+                        renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
+                    });
 
-                    const layerUrlLink = escapeHtml(item.url);
+                    // 🔒 Prevent scale-based rendering rules from forcing view scale changes
+                    temp.minScale = 0;
+                    temp.maxScale = 0;
 
-                    sectionsHtml += `
+                    // Add temp, hide everything else, screenshot, then remove temp
+                    view.map.add(temp);
+                    try {
+                        setVisibilityForScreenshot(temp);
+
+                        // Wait for layer to load
+                        try { await temp.when(); } catch (e) { }
+
+                        // ✅ Wait until layerView is not suspended AND not updating (best effort)
+                        try {
+                            const lv = await view.whenLayerView(temp);
+
+                            // Wait for suspended -> false OR timeout
+                            if (lv?.suspended) {
+                                await new Promise(resolve => {
+                                    const h = lv.watch("suspended", (s) => {
+                                        if (!s) { h.remove(); resolve(); }
+                                    });
+                                    window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
+                                });
+                            }
+
+                            // Wait for updating -> false OR timeout
+                            if (lv?.updating) {
+                                await new Promise(resolve => {
+                                    const h = lv.watch("updating", (u) => {
+                                        if (!u) { h.remove(); resolve(); }
+                                    });
+                                    window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 6000);
+                                });
+                            }
+                        } catch (e) { }
+
+                        if (isVisualCanceled(myOp)) break;
+
+                        // 🔒 Re-apply locked extent to guarantee identical framing
+                        if (fixedExtent) {
+                            await view.goTo(fixedExtent, { animate: false });
+                        }
+
+                        const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
+                        const dataUrl = ss?.dataUrl;
+                        if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+                        // Coverage stats
+                        const cov = await computeLayerCoverageStats(item, selectionGeom);
+                        const acresCovered = cov ? cov.acresCovered : 0;
+                        const pctCovered = cov ? cov.pctAoiCovered : 0;
+
+                        const layerUrlLink = escapeHtml(item.url);
+
+                        sectionsHtml += `
                     <div class="section">
                         <h2>${escapeHtml(item.title)}</h2>
                         <div class="sub">
@@ -2560,73 +2625,73 @@ async function generateFinalReport() {
                     </div>
                     <div class="pagebreak"></div>
                     `;
-                } finally {
-                    try { view.map.remove(temp); } catch (e) {}
-                    restoreVisibility();
+                    } finally {
+                        try { view.map.remove(temp); } catch (e) { }
+                        restoreVisibility();
+                    }
                 }
             }
+
+            const htmlDoc = buildFinalReportHtmlDoc({
+                title: "RMP Viewer — Final Report",
+                createdAt: formatDateTimeForReport(new Date()),
+                aoiSummary: getAoiSummaryForReport(aoiAcres),
+                totalsHtml,
+                sectionsHtml
+            });
+
+            openHtmlInNewTab(htmlDoc);
+
+            setStatus("final report opened in new tab");
+        } catch (e) {
+            console.error(e);
+            setStatus("final report failed (see console)");
+        } finally {
+            setBusy(false);
+            endVisualOp(myOp); // unlock map
+        }
+    }
+
+
+
+    async function getFullFeatureGeometryFromLayer(layer, graphic) {
+        if (!layer || !graphic) {
+            return { geometry: graphic?.geometry || null, objectId: null, objectIdField: null, feature: graphic || null };
         }
 
-        const htmlDoc = buildFinalReportHtmlDoc({
-            title: "RMP Viewer — Final Report",
-            createdAt: formatDateTimeForReport(new Date()),
-            aoiSummary: getAoiSummaryForReport(aoiAcres),
-            totalsHtml,
-            sectionsHtml
-        });
+        await layer.load();
 
-        openHtmlInNewTab(htmlDoc);
+        const oidField = layer.objectIdField || "OBJECTID";
+        const oid = graphic?.attributes?.[oidField];
 
-        setStatus("final report opened in new tab");
-    } catch (e) {
-        console.error(e);
-        setStatus("final report failed (see console)");
-    } finally {
-        setBusy(false);
-        endVisualOp(myOp); // unlock map
-    }
-}
+        // If we can’t determine OID, fall back to whatever we have
+        if (oid == null) {
+            return { geometry: graphic?.geometry || null, objectId: null, objectIdField: oidField };
+        }
 
+        try {
+            const q = layer.createQuery();
+            q.objectIds = [oid];
+            q.returnGeometry = true;
+            q.outFields = ["*"];                // ✅ fetch all attributes (not just OID)
+            q.outSpatialReference = view?.spatialReference;
+            q.maxAllowableOffset = 0;
 
+            const fs = await layer.queryFeatures(q);
+            const feat = fs?.features?.[0];
 
-async function getFullFeatureGeometryFromLayer(layer, graphic) {
-    if (!layer || !graphic) {
-        return { geometry: graphic?.geometry || null, objectId: null, objectIdField: null, feature: graphic || null };
-    }
-
-    await layer.load();
-
-    const oidField = layer.objectIdField || "OBJECTID";
-    const oid = graphic?.attributes?.[oidField];
-
-    // If we can’t determine OID, fall back to whatever we have
-    if (oid == null) {
-        return { geometry: graphic?.geometry || null, objectId: null, objectIdField: oidField };
-    }
-
-    try {
-        const q = layer.createQuery();
-        q.objectIds = [oid];
-        q.returnGeometry = true;
-        q.outFields = ["*"];                // ✅ fetch all attributes (not just OID)
-        q.outSpatialReference = view?.spatialReference;
-        q.maxAllowableOffset = 0;
-
-        const fs = await layer.queryFeatures(q);
-        const feat = fs?.features?.[0];
-
-    return {
+            return {
                 geometry: feat?.geometry || graphic?.geometry || null,
                 objectId: feat?.attributes?.[oidField] ?? oid,
                 objectIdField: oidField,
                 feature: feat || graphic || null
             };
-    
-    } catch (e) {
-        console.warn("Full-geometry query failed; falling back to hit geometry", e);
-        return { geometry: graphic?.geometry || null, objectId: oid, objectIdField: oidField, feature: graphic || null };
+
+        } catch (e) {
+            console.warn("Full-geometry query failed; falling back to hit geometry", e);
+            return { geometry: graphic?.geometry || null, objectId: oid, objectIdField: oidField, feature: graphic || null };
+        }
     }
-}
 
     // ---------- Selection layer setup ----------
     async function setActiveSelectionLayerByIndex(idx) {
@@ -2659,47 +2724,47 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                     r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer
                 );
 
-            if (match) {
-                const graphic = match.graphic;
-                if (!graphic) return;
+                if (match) {
+                    const graphic = match.graphic;
+                    if (!graphic) return;
 
-            // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
-            const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
-            aoiSourceFeature = full?.feature || graphic || null; // ✅ cache clicked feature for AOI Source card
-            const fullGeom = full?.geometry || null;
-            if (!fullGeom) return;
+                    // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
+                    const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
+                    aoiSourceFeature = full?.feature || graphic || null; // ✅ cache clicked feature for AOI Source card
+                    const fullGeom = full?.geometry || null;
+                    if (!fullGeom) return;
 
-            setAoiGeometry(fullGeom);
-            setGeometryFromSelection(fullGeom);
-            resetCoverageCacheForAoi(fullGeom);
+                    setAoiGeometry(fullGeom);
+                    setGeometryFromSelection(fullGeom);
+                    resetCoverageCacheForAoi(fullGeom);
 
-            aoiSource = "select";
-            aoiSourceLayerTitle = activeSelectionLayer?.title || null;
-            aoiSourceLayerUrl = activeSelectionLayer?.url || null;
-            
-            aoiSourceObjectIdField = full?.objectIdField || activeSelectionLayer?.objectIdField || "OBJECTID";
-            aoiSourceObjectId = (full?.objectId != null)
-                ? full.objectId
-                : (graphic?.attributes?.[aoiSourceObjectIdField] ?? null);
+                    aoiSource = "select";
+                    aoiSourceLayerTitle = activeSelectionLayer?.title || null;
+                    aoiSourceLayerUrl = activeSelectionLayer?.url || null;
 
-            console.log("AOI source captured:", {
-                layerTitle: aoiSourceLayerTitle,
-                layerUrl: aoiSourceLayerUrl,
-                objectIdField: aoiSourceObjectIdField,
-                objectId: aoiSourceObjectId
-            });
+                    aoiSourceObjectIdField = full?.objectIdField || activeSelectionLayer?.objectIdField || "OBJECTID";
+                    aoiSourceObjectId = (full?.objectId != null)
+                        ? full.objectId
+                        : (graphic?.attributes?.[aoiSourceObjectIdField] ?? null);
+
+                    console.log("AOI source captured:", {
+                        layerTitle: aoiSourceLayerTitle,
+                        layerUrl: aoiSourceLayerUrl,
+                        objectIdField: aoiSourceObjectIdField,
+                        objectId: aoiSourceObjectId
+                    });
 
 
-    // Keep PLSS tool context in-sync even if user didn’t click the toolbar button
-    if (aoiSourceLayerTitle) {
-        const t = normalize(aoiSourceLayerTitle);
-        if (t.includes("township")) aoiSourcePlssTool = "township";
-        else if (t.includes("section")) aoiSourcePlssTool = "section";
-        else if (t.includes("intersected") || t.includes("parcel")) aoiSourcePlssTool = "intersected";
-    }
-     setStatus("polygon selected (ready to run)");
-     return;
- }
+                    // Keep PLSS tool context in-sync even if user didn’t click the toolbar button
+                    if (aoiSourceLayerTitle) {
+                        const t = normalize(aoiSourceLayerTitle);
+                        if (t.includes("township")) aoiSourcePlssTool = "township";
+                        else if (t.includes("section")) aoiSourcePlssTool = "section";
+                        else if (t.includes("intersected") || t.includes("parcel")) aoiSourcePlssTool = "intersected";
+                    }
+                    setStatus("polygon selected (ready to run)");
+                    return;
+                }
 
 
             } catch (e) {
@@ -2720,10 +2785,10 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
 
         // --- Always-on basemap overlay: BLM SMA (BLM Only) ---
         const smaBlmOnly = new TileLayer({
-        url: "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer",
-        title: "SMA (BLM only)",
-        opacity: 0.8,      // tweak to taste
-        visible: true
+            url: "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer",
+            title: "SMA (BLM only)",
+            opacity: 0.8,      // tweak to taste
+            visible: true
         });
 
         // Add as an operational layer at the bottom so it behaves like a basemap overlay
@@ -2767,16 +2832,16 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
 
         // Sketch draws directly into AOI layer
         sketch = new Sketch({
-        view,
-        layer: aoiLayer,
-        availableCreateTools: ["polygon"],
-        creationMode: "single",
-        updateOnGraphicClick: false
+            view,
+            layer: aoiLayer,
+            availableCreateTools: ["polygon"],
+            creationMode: "single",
+            updateOnGraphicClick: false
         });
 
         // Hard-disable editing UI for existing AOI graphics
         sketch.viewModel.updateOnGraphicClick = false;
-        
+
         // Apply AOI symbol to Sketch (uses the AOI preset renderer symbol)
         const aoiRenderer = getPresetRenderer("aoi", null);
         if (aoiRenderer && aoiRenderer.symbol) {
@@ -2871,89 +2936,91 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         await view.when();
         attachClickToSelect();
 
-    // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
-    const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
-    const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
-    const intersectedIdx =
-    (findSelectionLayerIndexByNameIncludes("parcel") >= 0)
-        ? findSelectionLayerIndexByNameIncludes("parcel")
-        : findSelectionLayerIndexByNameIncludes("intersected");
+        // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
+        const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
+        const sectionIdx = findSelectionLayerIndexByNameIncludes("section");
+        const intersectedIdx =
+            (findSelectionLayerIndexByNameIncludes("parcel") >= 0)
+                ? findSelectionLayerIndexByNameIncludes("parcel")
+                : findSelectionLayerIndexByNameIncludes("intersected");
 
-    plssParcelLayerUrl = (intersectedIdx >= 0) ? (selectionLayers[intersectedIdx]?.cfg?.url || null) : null;
+        plssParcelLayerUrl = (intersectedIdx >= 0) ? (selectionLayers[intersectedIdx]?.cfg?.url || null) : null;
 
 
 
-    // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
-    async function activatePlss(which, idxToEnable) {
-        // Force select mode (PLSS tools are select-only)
-        if (modeSelect && modeSelect.value !== "select") {
-            modeSelect.value = "select";
-            setMode("select");
+        // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
+        async function activatePlss(which, idxToEnable) {
+            // Force select mode (PLSS tools are select-only)
+            if (modeSelect && modeSelect.value !== "select") {
+                modeSelect.value = "select";
+                setMode("select");
+            }
+
+            // Enable chosen layer even if user unchecked it earlier
+            const trio = [townshipIdx, sectionIdx, intersectedIdx].filter(i => i >= 0);
+
+            // Disable the other two first
+            for (const idx of trio) {
+                if (idx !== idxToEnable) disableSelectionLayer(idx);
+            }
+
+            // Enable the chosen one
+            if (idxToEnable >= 0) enableSelectionLayer(idxToEnable);
+
+            // Set as active selection layer
+            if (idxToEnable >= 0) {
+                await setActiveSelectionLayerByIndex(idxToEnable);
+                aoiSourcePlssTool = which; // <-- ADD: remember which PLSS tool is driving AOI selection
+                setPlssToolActive(which);
+
+                // Auto-zoom to minimum visible zoom level (using layer.minScale)
+                const lyr = selectionLayers[idxToEnable]?.layer;
+                await autoZoomToLayerMinVisible(lyr);
+                await hardRefreshLayer(lyr);
+
+
+                // ✅ Kick the layerView to fully fetch/render (prevents “missing tiles until pan”)
+                try {
+                    if (lyr && view) {
+                        await lyr.when();
+                        const lv = await view.whenLayerView(lyr);
+
+                        // Force a refresh cycle (helps when visibility/scale changed via code)
+                        if (lv && typeof lv.refresh === "function") lv.refresh();
+
+                        // Force a render tick (helps when the view container/layout changed recently)
+                        requestAnimationFrame(() => {
+                            try { view.requestRender(); } catch (e) { }
+                        });
+                    }
+                } catch (e) {
+                    // ignore (best-effort)
+                }
+
+                const whichLabel = (which === "intersected") ? "parcel" : which;
+                setStatus(`PLSS select: ${whichLabel} (click a polygon)`);
+            } else {
+                setPlssToolActive(which);
+                setStatus("PLSS select: layer not found in selection layers");
+            }
         }
 
-        // Enable chosen layer even if user unchecked it earlier
-        const trio = [townshipIdx, sectionIdx, intersectedIdx].filter(i => i >= 0);
+        if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", () => activatePlss("township", townshipIdx));
+        if (plssSectionBtn) plssSectionBtn.addEventListener("click", () => activatePlss("section", sectionIdx));
+        if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", () => activatePlss("intersected", intersectedIdx));
 
-        // Disable the other two first
-        for (const idx of trio) {
-            if (idx !== idxToEnable) disableSelectionLayer(idx);
+        // Default to Township if present, otherwise Section, otherwise Intersected, otherwise first selection layer
+        if (townshipIdx >= 0) {
+            await activatePlss("township", townshipIdx);
+        } else if (sectionIdx >= 0) {
+            await activatePlss("section", sectionIdx);
+        } else if (intersectedIdx >= 0) {
+            await activatePlss("intersected", intersectedIdx);
+        } else if (selectionLayers.length) {
+            enableSelectionLayer(0);
+            await setActiveSelectionLayerByIndex(0);
+            setPlssToolActive("township"); // best-effort UI state
         }
-
-        // Enable the chosen one
-        if (idxToEnable >= 0) enableSelectionLayer(idxToEnable);
-
-        // Set as active selection layer
-        if (idxToEnable >= 0) {
-            await setActiveSelectionLayerByIndex(idxToEnable);
-            aoiSourcePlssTool = which; // <-- ADD: remember which PLSS tool is driving AOI selection
-            setPlssToolActive(which);
-
-        // Auto-zoom to minimum visible zoom level (using layer.minScale)
-        const lyr = selectionLayers[idxToEnable]?.layer;
-        await autoZoomToLayerMinVisible(lyr);
-
-        // ✅ Kick the layerView to fully fetch/render (prevents “missing tiles until pan”)
-        try {
-        if (lyr && view) {
-            await lyr.when();
-            const lv = await view.whenLayerView(lyr);
-
-            // Force a refresh cycle (helps when visibility/scale changed via code)
-            if (lv && typeof lv.refresh === "function") lv.refresh();
-
-            // Force a render tick (helps when the view container/layout changed recently)
-            requestAnimationFrame(() => {
-            try { view.requestRender(); } catch (e) {}
-            });
-        }
-        } catch (e) {
-        // ignore (best-effort)
-        }
-
-        const whichLabel = (which === "intersected") ? "parcel" : which;
-        setStatus(`PLSS select: ${whichLabel} (click a polygon)`);
-        } else {
-            setPlssToolActive(which);
-            setStatus("PLSS select: layer not found in selection layers");
-        }
-    }
-
-    if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", () => activatePlss("township", townshipIdx));
-    if (plssSectionBtn) plssSectionBtn.addEventListener("click", () => activatePlss("section", sectionIdx));
-    if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", () => activatePlss("intersected", intersectedIdx));
-
-    // Default to Township if present, otherwise Section, otherwise Intersected, otherwise first selection layer
-    if (townshipIdx >= 0) {
-        await activatePlss("township", townshipIdx);
-    } else if (sectionIdx >= 0) {
-        await activatePlss("section", sectionIdx);
-    } else if (intersectedIdx >= 0) {
-        await activatePlss("intersected", intersectedIdx);
-    } else if (selectionLayers.length) {
-        enableSelectionLayer(0);
-        await setActiveSelectionLayerByIndex(0);
-        setPlssToolActive("township"); // best-effort UI state
-    }
 
 
         // Tab wiring
@@ -3006,15 +3073,15 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                 cancelRunBtn.classList.add("hidden");
                 setStatus("cancel requested…");
             });
-            }
+        }
 
         if (cancelVisualBtn) {
-        cancelVisualBtn.addEventListener("click", () => {
-            visualOpToken++;
-            lockMapInteraction(false);
-            cancelVisualBtn.classList.add("hidden");
-            setVisualStatus("cancel requested…");
-        });
+            cancelVisualBtn.addEventListener("click", () => {
+                visualOpToken++;
+                lockMapInteraction(false);
+                cancelVisualBtn.classList.add("hidden");
+                setVisualStatus("cancel requested…");
+            });
         }
 
 
@@ -3075,7 +3142,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
 
         // Preload service status once (optional). Keeps Services tab fast.
         if (servicesListEl) {
-        refreshServicesTab().catch(() => {});
+            refreshServicesTab().catch(() => { });
         }
     }
 
