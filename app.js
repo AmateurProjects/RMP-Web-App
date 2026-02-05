@@ -679,6 +679,21 @@ require([
             }
         });
 
+        // If we had to wait (or if tiles are still trickling), do one more refresh after a beat.
+        // This helps with occasional “holes” that only fill after a user pan.
+        await new Promise(r => setTimeout(r, 200));
+
+        try {
+        // Re-read lv in case it changed (defensive)
+        const lv2 = await view.whenLayerView(layer);
+
+        // If it's still updating or was recently suspended, poke it again.
+        if (lv2?.updating || lv2?.suspended) {
+            if (typeof lv2.refresh === "function") lv2.refresh();
+        }
+        } catch (e) {}
+
+
         // Ask the view to repaint
         try { view.requestRender(); } catch (e) { }
     }
@@ -2976,6 +2991,7 @@ require([
                 // Auto-zoom to minimum visible zoom level (using layer.minScale)
                 const lyr = selectionLayers[idxToEnable]?.layer;
                 await autoZoomToLayerMinVisible(lyr);
+                await waitForViewStationary(1500);
                 await hardRefreshLayer(lyr);
 
 
