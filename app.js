@@ -373,8 +373,8 @@ require([
         // ✅ hide spinner immediately for button-driven toggles
         setSelectionSpinner(idx, false);
 
-        // Remove from map (your desired behavior vs hide)
-        if (isLayerOnMap(entry.layer)) map.remove(entry.layer);
+        // ✅ DO NOT remove from map; just hide (prevents LayerView churn / holes)
+        entry.layer.visible = false;
 
         // Also mark it invisible for safety (even though removed)
         entry.layer.visible = false;
@@ -881,9 +881,7 @@ require([
 
                     clearSpinnerWatch(e.layer);
 
-                    const isOnMapNow = map.layers.includes(e.layer);
-                    if (isOnMapNow) map.remove(e.layer);
-
+                    // ✅ Don’t remove; just hide
                     e.layer.visible = false;
                     updateSelectionToggleCheckbox(i, false);
 
@@ -2992,26 +2990,6 @@ require([
                 const lyr = selectionLayers[idxToEnable]?.layer;
                 await autoZoomToLayerMinVisible(lyr);
                 await waitForViewStationary(1500);
-                await hardRefreshLayer(lyr);
-
-
-                // ✅ Kick the layerView to fully fetch/render (prevents “missing tiles until pan”)
-                try {
-                    if (lyr && view) {
-                        await lyr.when();
-                        const lv = await view.whenLayerView(lyr);
-
-                        // Force a refresh cycle (helps when visibility/scale changed via code)
-                        if (lv && typeof lv.refresh === "function") lv.refresh();
-
-                        // Force a render tick (helps when the view container/layout changed recently)
-                        requestAnimationFrame(() => {
-                            try { view.requestRender(); } catch (e) { }
-                        });
-                    }
-                } catch (e) {
-                    // ignore (best-effort)
-                }
 
                 const whichLabel = (which === "intersected") ? "parcel" : which;
                 setStatus(`PLSS select: ${whichLabel} (click a polygon)`);
