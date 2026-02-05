@@ -2713,7 +2713,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
         const smaBlmOnly = new TileLayer({
         url: "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer",
         title: "SMA (BLM only)",
-        opacity: 0.35,      // tweak to taste
+        opacity: 0.8,      // tweak to taste
         visible: true
         });
 
