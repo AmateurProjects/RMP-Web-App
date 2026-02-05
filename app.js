@@ -107,7 +107,34 @@ require([
     let sketch = null;
 
     let lastReportRowsByLayer = []; // for export-all
-    let reportLayerViews = new Map(); 
+    let reportLayerViews = new Map();
+    
+    // Track layerView "updating" watch handles so we can remove them (prevents leaks)
+    const spinnerWatchByLayerUid = new Map(); // layer.uid -> watchHandle
+
+    function setSpinnerWatch(layer, handle) {
+        if (!layer) return;
+        const uid = layer.uid;
+        if (!uid) return;
+
+        // Remove old watch if present
+        const old = spinnerWatchByLayerUid.get(uid);
+        if (old && old.remove) old.remove();
+
+        if (handle) spinnerWatchByLayerUid.set(uid, handle);
+        else spinnerWatchByLayerUid.delete(uid);
+    }
+
+    function clearSpinnerWatch(layer) {
+        if (!layer) return;
+        const uid = layer.uid;
+        const h = uid ? spinnerWatchByLayerUid.get(uid) : null;
+        if (h && h.remove) h.remove();
+        if (uid) spinnerWatchByLayerUid.delete(uid);
+    }
+
+
+
     // key -> FeatureLayer OR FeatureLayer[] (for FeatureServer/MapServer roots that expand into multiple drawable layers)
 
 
@@ -318,6 +345,7 @@ require([
     function enableSelectionLayer(idx) {
         const entry = selectionLayers[idx];
         if (!entry) return;
+        clearSpinnerWatch(entry.layer);
 
         // ✅ show spinner immediately for button-driven toggles
         setSelectionSpinner(idx, true);
@@ -329,12 +357,14 @@ require([
 
         // ✅ wire real updating tracking (will hide when not updating)
         const spin = document.getElementById(`sellayer_spin_${idx}`);
-        wireLayerUpdatingSpinner(entry.layer, spin);
+        clearSpinnerWatch(entry.layer);
+        wireLayerUpdatingSpinner(entry.layer, spin).then((h) => setSpinnerWatch(entry.layer, h));
     }
 
     function disableSelectionLayer(idx) {
         const entry = selectionLayers[idx];
         if (!entry) return;
+        clearSpinnerWatch(entry.layer);
 
         // ✅ hide spinner immediately for button-driven toggles
         setSelectionSpinner(idx, false);
@@ -562,22 +592,25 @@ async function ensureLayerVisibleAtScale(layer) {
         map.reorder(aoiLayer, map.layers.length - 1);
     }
 
-    async function wireLayerUpdatingSpinner(layer, spinnerEl) {
-        if (!layer || !spinnerEl || !view) return;
+async function wireLayerUpdatingSpinner(layer, spinnerEl) {
+    if (!layer || !spinnerEl || !view) return null;
 
-        try {
-            await layer.when();
-            const lv = await view.whenLayerView(layer);
+    try {
+        await layer.when();
+        const lv = await view.whenLayerView(layer);
 
-            spinnerEl.classList.toggle("hidden", !lv.updating);
+        spinnerEl.classList.toggle("hidden", !lv.updating);
 
-            lv.watch("updating", (isUpdating) => {
-                spinnerEl.classList.toggle("hidden", !isUpdating);
-            });
-        } catch (e) {
-            spinnerEl.classList.add("hidden");
-        }
+        const handle = lv.watch("updating", (isUpdating) => {
+            spinnerEl.classList.toggle("hidden", !isUpdating);
+        });
+
+        return handle;
+    } catch (e) {
+        spinnerEl.classList.add("hidden");
+        return null;
     }
+}
 
 
     function setAoiGeometry(geom) {
@@ -661,6 +694,8 @@ async function ensureLayerVisibleAtScale(layer) {
 
         runBtn.disabled = true;
         setStatus("cleared");
+        coverageCache.clear();
+        coverageAoiKey = "";
         setBusy(false);
     }
 
@@ -726,8 +761,9 @@ async function ensureLayerVisibleAtScale(layer) {
                 e.layer.visible = true;
                 ensureAoiOnTop(map);
 
-                // wire real updating spinner once the layerView exists
-                wireLayerUpdatingSpinner(e.layer, spin);
+                // wire real updating spinner once the layerView exists (and prevent watch leaks)
+                clearSpinnerWatch(e.layer);
+                wireLayerUpdatingSpinner(e.layer, spin).then((h) => setSpinnerWatch(e.layer, h));
 
                 // If nothing is active, make this the active selection layer
                 if (!activeSelectionLayer) {
@@ -737,6 +773,8 @@ async function ensureLayerVisibleAtScale(layer) {
             } else {
                 // ✅ hide spinner immediately when turning OFF
                 if (spin) spin.classList.add("hidden");
+
+                clearSpinnerWatch(e.layer);
 
                 // turning OFF — remove from map so it *actually disappears*
                 if (isOnMap) map.remove(e.layer);
@@ -818,15 +856,19 @@ async function ensureLayerVisibleAtScale(layer) {
                     const lyr = reportLayerViews.get(key);
 
                     if (Array.isArray(lyr)) {
-                        lyr.forEach(x => { try { map.remove(x); } catch (e) {} });
+                        lyr.forEach(x => {
+                            try { clearSpinnerWatch(x); } catch (e) {}
+                            try { map.remove(x); } catch (e) {}
+                        });
                         reportLayerViews.delete(key);
                         return;
                     }
 
-                    if (lyr) {
-                        try { map.remove(lyr); } catch (e) {}
-                        reportLayerViews.delete(key);
-                    } else {
+                        if (lyr) {
+                            try { clearSpinnerWatch(lyr); } catch (e) {}
+                            try { map.remove(lyr); } catch (e) {}
+                            reportLayerViews.delete(key);
+                        } else {
                         // defensive cleanup by URL match
                         const toRemove = map.layers
                             .toArray()
@@ -882,8 +924,47 @@ async function ensureLayerVisibleAtScale(layer) {
                             return;
                         }
 
-                        // Optional: wire spinner to the first layer (best-effort)
-                        if (created.length && spin) wireLayerUpdatingSpinner(created[0], spin);
+                // Keep spinner visible until ALL created layers finish updating (best-effort).
+                if (spin) spin.classList.remove("hidden");
+
+                try {
+                for (const lyr of created) {
+                    // Cancel guard
+                    if (!cb.checked || !isTokenCurrent(key, myToken)) return;
+
+                    try {
+                    const lv = await view.whenLayerView(lyr);
+
+                    // If suspended, wait briefly (optional best-effort)
+                    if (lv?.suspended) {
+                        await new Promise(resolve => {
+                        const h = lv.watch("suspended", (s) => {
+                            if (!s) { h.remove(); resolve(); }
+                        });
+                        window.setTimeout(() => { try { h.remove(); } catch(e){} resolve(); }, 4000);
+                        });
+                    }
+
+                    // Wait for updating -> false OR timeout (best-effort)
+                    if (lv?.updating) {
+                        await new Promise(resolve => {
+                        const h = lv.watch("updating", (u) => {
+                            if (!u) { h.remove(); resolve(); }
+                        });
+                        window.setTimeout(() => { try { h.remove(); } catch(e){} resolve(); }, 8000);
+                        });
+                    }
+                    } catch (e) {
+                    // ignore per-layer issues so UI doesn't get stuck
+                    }
+                }
+                } finally {
+                // Hide spinner only if still current and still checked.
+                // OFF path already hides immediately.
+                if (spin && cb.checked && isTokenCurrent(key, myToken)) {
+                    spin.classList.add("hidden");
+                }
+                }
 
                         ensureAoiOnTop(map);
                         return;
@@ -922,7 +1003,10 @@ async function ensureLayerVisibleAtScale(layer) {
                             return;
                         }
 
-                        if (spin) wireLayerUpdatingSpinner(lyr, spin);
+                    if (spin) {
+                        clearSpinnerWatch(lyr);
+                        wireLayerUpdatingSpinner(lyr, spin).then((h) => setSpinnerWatch(lyr, h));
+                    }
                         ensureAoiOnTop(map);
                     } else {
                         lyr.visible = true;
@@ -936,13 +1020,12 @@ async function ensureLayerVisibleAtScale(layer) {
                     // Ensure spinner is not stuck on error
                     if (spin) spin.classList.add("hidden");
 
-                } finally {
-                    // Only the latest ON request is allowed to hide spinner.
-                    // If user unchecked, OFF already hid it immediately.
-                    if (spin && cb.checked && isTokenCurrent(key, myToken)) {
-                        spin.classList.add("hidden");
+                    } finally {
+                    // NOTE: do NOT hide spinner here.
+                    // Spinner is controlled by:
+                    //  - OFF path: immediate hide (Item 9)
+                    //  - wireLayerUpdatingSpinner(): layerView.updating watch (truth)
                     }
-                }
             });
         });
     }
@@ -1697,6 +1780,27 @@ async function runReport() {
 
 // ---------- Coverage stats (AOI acres + % covered by layer) ----------
 const SQM_PER_ACRE = 4046.8564224;
+const coverageCache = new Map(); // key: `${aoiKey}||${layerUrl}` -> { acresCovered, pctAoiCovered }
+let coverageAoiKey = "";         // changes whenever AOI changes
+
+function getAoiKey(geom) {
+    // stable-enough signature: extent + rounded area
+    try {
+        const ex = geom?.extent;
+        const area = geometryEngine.geodesicArea(geom, "square-meters");
+        return [
+            ex?.xmin, ex?.ymin, ex?.xmax, ex?.ymax,
+            Math.round(area)
+        ].join("|");
+    } catch (e) {
+        return String(Date.now());
+    }
+}
+
+function resetCoverageCacheForAoi(geom) {
+    coverageCache.clear();
+    coverageAoiKey = getAoiKey(geom);
+}
 
 function formatNumber(n, digits = 2) {
     const x = Number(n);
@@ -1750,6 +1854,15 @@ function unionGeomsChunked(geoms) {
 async function computeLayerCoverageStats(item, aoiGeom) {
     // Returns: { acresCovered, pctAoiCovered }
     if (!item || !item._layer || !item._exportQuery || !aoiGeom) return null;
+
+    const layerUrlKey = String(item.url || "").replace(/\/+$/, "");
+    const aoiKey = coverageAoiKey || getAoiKey(aoiGeom);
+    const cacheKey = `${aoiKey}||${layerUrlKey}`;
+
+    if (coverageCache.has(cacheKey)) {
+        return coverageCache.get(cacheKey);
+    }
+
 
     // AOI area (sqm)
     let aoiAreaSqm = 0;
@@ -1808,7 +1921,9 @@ async function computeLayerCoverageStats(item, aoiGeom) {
     const acresCovered = coveredSqm / SQM_PER_ACRE;
     const pctAoiCovered = Math.min(100, Math.max(0, (coveredSqm / aoiAreaSqm) * 100));
 
-    return { acresCovered, pctAoiCovered };
+    const out = { acresCovered, pctAoiCovered };
+    coverageCache.set(cacheKey, out);
+    return out;
 }
 
 
@@ -2522,33 +2637,35 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
                     r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer
                 );
 
- if (match) {
-     const graphic = match.graphic;
-     if (!graphic) return;
+            if (match) {
+                const graphic = match.graphic;
+                if (!graphic) return;
 
-     // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
-    const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
-    aoiSourceFeature = full?.feature || graphic || null; // ✅ cache clicked feature for AOI Source card
-    const fullGeom = full?.geometry || null;
-    if (!fullGeom) return;
+            // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
+            const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
+            aoiSourceFeature = full?.feature || graphic || null; // ✅ cache clicked feature for AOI Source card
+            const fullGeom = full?.geometry || null;
+            if (!fullGeom) return;
 
-    setAoiGeometry(fullGeom);
-    setGeometryFromSelection(fullGeom);
-     aoiSource = "select";
-     aoiSourceLayerTitle = activeSelectionLayer?.title || null;
-     aoiSourceLayerUrl = activeSelectionLayer?.url || null;
-     
-    aoiSourceObjectIdField = full?.objectIdField || activeSelectionLayer?.objectIdField || "OBJECTID";
-    aoiSourceObjectId = (full?.objectId != null)
-           ? full.objectId
-           : (graphic?.attributes?.[aoiSourceObjectIdField] ?? null);
+            setAoiGeometry(fullGeom);
+            setGeometryFromSelection(fullGeom);
+            resetCoverageCacheForAoi(fullGeom);
 
-    console.log("AOI source captured:", {
-        layerTitle: aoiSourceLayerTitle,
-        layerUrl: aoiSourceLayerUrl,
-        objectIdField: aoiSourceObjectIdField,
-        objectId: aoiSourceObjectId
-    });
+            aoiSource = "select";
+            aoiSourceLayerTitle = activeSelectionLayer?.title || null;
+            aoiSourceLayerUrl = activeSelectionLayer?.url || null;
+            
+            aoiSourceObjectIdField = full?.objectIdField || activeSelectionLayer?.objectIdField || "OBJECTID";
+            aoiSourceObjectId = (full?.objectId != null)
+                ? full.objectId
+                : (graphic?.attributes?.[aoiSourceObjectIdField] ?? null);
+
+            console.log("AOI source captured:", {
+                layerTitle: aoiSourceLayerTitle,
+                layerUrl: aoiSourceLayerUrl,
+                objectIdField: aoiSourceObjectIdField,
+                objectId: aoiSourceObjectId
+            });
 
 
     // Keep PLSS tool context in-sync even if user didn’t click the toolbar button
@@ -2648,6 +2765,7 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
             if (evt.state === "complete") {
                 const geom = evt.graphic?.geometry || null;
                 setAoiGeometry(geom);          // ensure AOI is a single clean graphic
+                resetCoverageCacheForAoi(geom);
                 aoiSource = "draw";
                 aoiSourceLayerTitle = null;
                 aoiSourceLayerUrl = null;
