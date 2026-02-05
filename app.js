@@ -346,37 +346,46 @@ require([
         return map.layers.includes(layer);
     }
 
-    function enableSelectionLayer(idx) {
+    async function enableSelectionLayer(idx) {
         const entry = selectionLayers[idx];
         if (!entry) return;
+
         clearSpinnerWatch(entry.layer);
 
-        // ✅ show spinner immediately for button-driven toggles
+        // show spinner immediately
         setSelectionSpinner(idx, true);
 
-        if (!isLayerOnMap(entry.layer)) map.add(entry.layer);
+        // ✅ DO NOT add/remove; selection layers are already added once in init()
         entry.layer.visible = true;
         updateSelectionToggleCheckbox(idx, true);
         ensureAoiOnTop(map);
 
-        // ✅ wire real updating tracking (will hide when not updating)
+        // ✅ Make sure we're zoomed to a scale where this layer can draw
+        await ensureLayerVisibleAtScale(entry.layer);
+        await waitForViewStationary(1500);
+
+        // ✅ Wire updating -> spinner truth
         const spin = document.getElementById(`sellayer_spin_${idx}`);
         clearSpinnerWatch(entry.layer);
         wireLayerUpdatingSpinner(entry.layer, spin).then((h) => setSpinnerWatch(entry.layer, h));
+
+        // ✅ Gentle one-time poke AFTER stationary (helps stubborn “holes” without thrash)
+        try {
+            const lv = await view.whenLayerView(entry.layer);
+            if (lv && typeof lv.refresh === "function") lv.refresh();
+            try { view.requestRender(); } catch (e) { }
+        } catch (e) { }
     }
 
     function disableSelectionLayer(idx) {
         const entry = selectionLayers[idx];
         if (!entry) return;
+
         clearSpinnerWatch(entry.layer);
 
-        // ✅ hide spinner immediately for button-driven toggles
         setSelectionSpinner(idx, false);
 
-        // ✅ DO NOT remove from map; just hide (prevents LayerView churn / holes)
-        entry.layer.visible = false;
-
-        // Also mark it invisible for safety (even though removed)
+        // ✅ never remove; just hide
         entry.layer.visible = false;
 
         updateSelectionToggleCheckbox(idx, false);
@@ -940,192 +949,55 @@ require([
             const key = String(l.url || "").replace(/\/+$/, "");
 
             cb.addEventListener("change", async () => {
-                const spin = document.getElementById(`rptlayer_spin_${i}`);
-                let myToken = 0;
+                const spin = document.getElementById(`sellayer_spin_${i}`);
 
-                // =========================
-                // OFF: cancel immediately
-                // =========================
-                if (!cb.checked) {
-                    // Bump token so any in-flight ON work becomes stale
-                    bumpReportToken(key);
-
-                    // Hide spinner immediately (Item 9 requirement)
-                    if (spin) spin.classList.add("hidden");
-
-                    // Remove from map + cleanup cache (your existing behavior)
-                    const lyr = reportLayerViews.get(key);
-
-                    if (Array.isArray(lyr)) {
-                        lyr.forEach(x => {
-                            try { clearSpinnerWatch(x); } catch (e) { }
-                            try { map.remove(x); } catch (e) { }
-                        });
-                        reportLayerViews.delete(key);
-                        return;
-                    }
-
-                    if (lyr) {
-                        try { clearSpinnerWatch(lyr); } catch (e) { }
-                        try { map.remove(lyr); } catch (e) { }
-                        reportLayerViews.delete(key);
-                    } else {
-                        // defensive cleanup by URL match
-                        const toRemove = map.layers
-                            .toArray()
-                            .find(x => x?.type === "feature" && String(x?.url || "").replace(/\/+$/, "") === key);
-
-                        if (toRemove) map.remove(toRemove);
-                        reportLayerViews.delete(key);
-                    }
-
-                    return;
-                }
-
-                // =========================
-                // ON: start new token
-                // =========================
-                myToken = bumpReportToken(key);
-
-                try {
+                if (cb.checked) {
                     if (spin) spin.classList.remove("hidden");
 
-                    // If user toggled quickly, abort
-                    if (!cb.checked || !isTokenCurrent(key, myToken)) return;
+                    // ✅ DO NOT add/remove
+                    e.layer.visible = true;
+                    ensureAoiOnTop(map);
 
-                    // ROOT FeatureServer: expand to polygon sublayers and add them all
-                    if (isFeatureServerRoot(l.url)) {
-                        const subs = await expandFeatureServerToPolygonSublayers(l.url);
+                    // ✅ Ensure in-scale, then refresh once (no hardRefreshLayer)
+                    await ensureLayerVisibleAtScale(e.layer);
+                    await waitForViewStationary(1500);
 
-                        // Abort if user toggled OFF during expansion
-                        if (!cb.checked || !isTokenCurrent(key, myToken)) return;
+                    clearSpinnerWatch(e.layer);
+                    wireLayerUpdatingSpinner(e.layer, spin).then((h) => setSpinnerWatch(e.layer, h));
 
-                        const cfgMatch = layerCfgByUrl.get(key)?.cfg || layerCfgByUrl.get(l.url)?.cfg;
+                    // Gentle refresh after stationary
+                    try {
+                        const lv = await view.whenLayerView(e.layer);
+                        if (lv && typeof lv.refresh === "function") lv.refresh();
+                        try { view.requestRender(); } catch (e) { }
+                    } catch (e) { }
 
-                        const created = subs.map(sl => new FeatureLayer({
-                            url: sl.url,
-                            title: sl.title
-                                ? `${l.title} — ${sl.title}`
-                                : l.title,
-                            outFields: ["*"],
-                            visible: true,
-                            renderer: getPresetRenderer("report", cfgMatch) || undefined
-                        }));
-
-                        // Add layers only if still current
-                        if (!cb.checked || !isTokenCurrent(key, myToken)) return;
-
-                        created.forEach(lyr => map.add(lyr));
-                        reportLayerViews.set(key, created);
-
-                        // If user toggled OFF right after add, clean up immediately
-                        if (!cb.checked || !isTokenCurrent(key, myToken)) {
-                            created.forEach(x => { try { map.remove(x); } catch (e) { } });
-                            reportLayerViews.delete(key);
-                            return;
-                        }
-
-                        // Keep spinner visible until ALL created layers finish updating (best-effort).
-                        if (spin) spin.classList.remove("hidden");
-
-                        try {
-                            for (const lyr of created) {
-                                // Cancel guard
-                                if (!cb.checked || !isTokenCurrent(key, myToken)) return;
-
-                                try {
-                                    const lv = await view.whenLayerView(lyr);
-
-                                    // If suspended, wait briefly (optional best-effort)
-                                    if (lv?.suspended) {
-                                        await new Promise(resolve => {
-                                            const h = lv.watch("suspended", (s) => {
-                                                if (!s) { h.remove(); resolve(); }
-                                            });
-                                            window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
-                                        });
-                                    }
-
-                                    // Wait for updating -> false OR timeout (best-effort)
-                                    if (lv?.updating) {
-                                        await new Promise(resolve => {
-                                            const h = lv.watch("updating", (u) => {
-                                                if (!u) { h.remove(); resolve(); }
-                                            });
-                                            window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 8000);
-                                        });
-                                    }
-                                } catch (e) {
-                                    // ignore per-layer issues so UI doesn't get stuck
-                                }
-                            }
-                        } finally {
-                            // Hide spinner only if still current and still checked.
-                            // OFF path already hides immediately.
-                            if (spin && cb.checked && isTokenCurrent(key, myToken)) {
-                                spin.classList.add("hidden");
-                            }
-                        }
-
-                        ensureAoiOnTop(map);
-                        return;
+                    if (!activeSelectionLayer) {
+                        await setActiveSelectionLayerByIndex(i);
                     }
 
-                    // Normal single-layer URL
-                    let lyr = reportLayerViews.get(key);
-
-                    if (Array.isArray(lyr)) {
-                        // Defensive: should not happen for non-root, but handle
-                        lyr.forEach(x => map.add(x));
-                        return;
-                    }
-
-                    if (!lyr) {
-                        const cfgMatch = layerCfgByUrl.get(key)?.cfg || layerCfgByUrl.get(l.url)?.cfg;
-
-                        lyr = new FeatureLayer({
-                            url: l.url,
-                            title: l.title,
-                            outFields: ["*"],
-                            visible: true,
-                            renderer: getPresetRenderer("report", cfgMatch) || undefined
-                        });
-
-                        // Abort before adding if stale
-                        if (!cb.checked || !isTokenCurrent(key, myToken)) return;
-
-                        map.add(lyr);
-                        reportLayerViews.set(key, lyr);
-
-                        // If stale after add, clean up
-                        if (!cb.checked || !isTokenCurrent(key, myToken)) {
-                            try { map.remove(lyr); } catch (e) { }
-                            reportLayerViews.delete(key);
-                            return;
-                        }
-
-                        if (spin) {
-                            clearSpinnerWatch(lyr);
-                            wireLayerUpdatingSpinner(lyr, spin).then((h) => setSpinnerWatch(lyr, h));
-                        }
-                        ensureAoiOnTop(map);
-                    } else {
-                        lyr.visible = true;
-                    }
-
-                } catch (e) {
-                    console.error(e);
-                    setStatus("failed to enable report layer (see console)");
-                    cb.checked = false;
-
-                    // Ensure spinner is not stuck on error
+                } else {
                     if (spin) spin.classList.add("hidden");
 
-                } finally {
-                    // NOTE: do NOT hide spinner here.
-                    // Spinner is controlled by:
-                    //  - OFF path: immediate hide (Item 9)
-                    //  - wireLayerUpdatingSpinner(): layerView.updating watch (truth)
+                    clearSpinnerWatch(e.layer);
+
+                    // ✅ Just hide
+                    e.layer.visible = false;
+                    updateSelectionToggleCheckbox(i, false);
+
+                    if (activeSelectionLayer === e.layer) {
+                        activeSelectionLayer = null;
+                        activeSelectionLayerView = null;
+
+                        // ✅ Pick next visible layer (NOT “on map”)
+                        const nextIdx = (selectionLayers || []).findIndex(x => x?.layer?.visible);
+                        if (nextIdx >= 0) {
+                            await setActiveSelectionLayerByIndex(nextIdx);
+                        } else {
+                            setGeometryFromSelection(null);
+                            setStatus("no selection layers visible (turn one on)");
+                        }
+                    }
                 }
             });
         });
