@@ -694,29 +694,54 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
 
     // ✅ Scale nudge dance - zoom in/out to force tile reload
     try {
-        await new Promise(r => requestAnim
-        try { view.requestRender(); } catch (e) { }
-
-        // ✅ Scale nudge with delays between steps
+        await new Promise(r => requestAnimationFrame(r)); // ✅ FIXED LINE
+        
         const s0 = view.scale;
-        const s1 = s0 * 1.01;
+        const s1 = s0 * 1.02; // ✅ Bigger nudge (2% instead of 1%)
+        const s2 = s0 * 0.98; // ✅ Also nudge the other direction
 
+        // Zoom in
         await view.goTo({ center: view.center, scale: s1 }, { animate: false });
-        await new Promise(r => setTimeout(r, 100)); // ✅ Delay
-        await view.goTo({ center: view.center, scale: s0 }, { animate: false });
-        await new Promise(r => setTimeout(r, 100)); // ✅ Delay
-
+        await new Promise(r => setTimeout(r, 200));
         try { view.requestRender(); } catch (e) { }
         
-        // ✅ One final refresh after scale is restored
-        if (lv && typeof lv.refresh === "function") lv.refresh();
+        // Zoom out past original
+        await view.goTo({ center: view.center, scale: s2 }, { animate: false });
         await new Promise(r => setTimeout(r, 200));
+        try { view.requestRender(); } catch (e) { }
+        
+        // Back to original
+        await view.goTo({ center: view.center, scale: s0 }, { animate: false });
+        await new Promise(r => setTimeout(r, 200));
+        try { view.requestRender(); } catch (e) { }
+        
+        // ✅ Final refresh after scale dance
+        if (lv && typeof lv.refresh === "function") {
+            lv.refresh();
+            
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 3000); // ✅ Longer timeout
+                const h = lv.watch("updating", (u) => {
+                    if (!u) {
+                        window.clearTimeout(t);
+                        try { h.remove(); } catch (e) { }
+                        resolve();
+                    }
+                });
+                if (!lv.updating) {
+                    window.clearTimeout(t);
+                    try { h.remove(); } catch (e) { }
+                    resolve();
+                }
+            });
+        }
+        
+        await new Promise(r => setTimeout(r, 300));
         try { view.requestRender(); } catch (e) { }
     } catch (e) {
         // ignore
     }
 }
-
 
 
 
