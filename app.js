@@ -731,6 +731,25 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
         // Guard: if the HTML containers don't exist, do nothing
         if (!selectionLayerTogglesEl || !reportLayerTogglesEl) return;
 
+        // ✅ #3: clean up any old layerView.updating watchers before rebuilding DOM
+        try {
+            // Selection layers
+            (selectionLayers || []).forEach(e => {
+                if (e?.layer) clearSpinnerWatch(e.layer);
+            });
+
+            // Report layers (single layer or expanded root -> array)
+            for (const v of reportLayerViews.values()) {
+                if (Array.isArray(v)) {
+                    v.forEach(x => { if (x) clearSpinnerWatch(x); });
+                } else if (v) {
+                    clearSpinnerWatch(v);
+                }
+            }
+        } catch (e) {
+            // best-effort cleanup
+        }
+
         // ---- Selection layers (already on map): toggle visibility
         selectionLayerTogglesEl.innerHTML = (selectionLayers || []).map((e, i) => {
             const checked = e.layer.visible ? "checked" : "";
@@ -748,52 +767,48 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
         const cb = document.getElementById(`sellayer_${i}`);
         if (!cb) return;
 
-        cb.addEventListener("change", async () => {
-            const isOnMap = map.layers.includes(e.layer);
+            cb.addEventListener("change", async () => {
             const spin = document.getElementById(`sellayer_spin_${i}`);
 
             if (cb.checked) {
-                // ✅ show spinner immediately while layer is added/initializes
                 if (spin) spin.classList.remove("hidden");
 
-                // turning ON — add to map if not present
-                if (!isOnMap) map.add(e.layer);
+                const isOnMapNow = map.layers.includes(e.layer);
+                if (!isOnMapNow) map.add(e.layer);
+
                 e.layer.visible = true;
                 ensureAoiOnTop(map);
 
-                // wire real updating spinner once the layerView exists (and prevent watch leaks)
                 clearSpinnerWatch(e.layer);
                 wireLayerUpdatingSpinner(e.layer, spin).then((h) => setSpinnerWatch(e.layer, h));
 
-                // If nothing is active, make this the active selection layer
                 if (!activeSelectionLayer) {
-                    await setActiveSelectionLayerByIndex(i);
+                await setActiveSelectionLayerByIndex(i);
                 }
 
             } else {
-                // ✅ hide spinner immediately when turning OFF
                 if (spin) spin.classList.add("hidden");
 
                 clearSpinnerWatch(e.layer);
 
-                // turning OFF — remove from map so it *actually disappears*
-                if (isOnMap) map.remove(e.layer);
+                const isOnMapNow = map.layers.includes(e.layer);
+                if (isOnMapNow) map.remove(e.layer);
 
-                // If the user just removed the active selection layer,
-                // switch active selection to the next available ON-map layer (or null).
+                e.layer.visible = false;
+                updateSelectionToggleCheckbox(i, false);
+
                 if (activeSelectionLayer === e.layer) {
-                    activeSelectionLayer = null;
-                    activeSelectionLayerView = null;
+                activeSelectionLayer = null;
+                activeSelectionLayerView = null;
 
-                    // find first selection layer currently ON the map
-                    const nextIdx = (selectionLayers || []).findIndex(x => map.layers.includes(x.layer));
-                    if (nextIdx >= 0) {
-                        await setActiveSelectionLayerByIndex(nextIdx);
-                    } else {
-                        setGeometryFromSelection(null);
-                        setStatus("no selection layers visible (turn one on)");
-                    }
+                const nextIdx = (selectionLayers || []).findIndex(x => map.layers.includes(x.layer));
+                if (nextIdx >= 0) {
+                    await setActiveSelectionLayerByIndex(nextIdx);
+                } else {
+                    setGeometryFromSelection(null);
+                    setStatus("no selection layers visible (turn one on)");
                 }
+            }
             }
         });
     });
@@ -830,15 +845,13 @@ async function wireLayerUpdatingSpinner(layer, spinnerEl) {
             `;
         }).join("");
 
-        (config.reportLayers || []).forEach((l, i) => {
+            (config.reportLayers || []).forEach((l, i) => {
             const cb = document.getElementById(`rptlayer_${i}`);
             if (!cb) return;
 
-            // Normalize URL key so get/set/delete always match (trailing slash is the usual culprit)
             const key = String(l.url || "").replace(/\/+$/, "");
 
             cb.addEventListener("change", async () => {
-                const key = String(l.url || "").replace(/\/+$/, "");
                 const spin = document.getElementById(`rptlayer_spin_${i}`);
                 let myToken = 0;
 
