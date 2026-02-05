@@ -2908,12 +2908,30 @@ async function getFullFeatureGeometryFromLayer(layer, graphic) {
             aoiSourcePlssTool = which; // <-- ADD: remember which PLSS tool is driving AOI selection
             setPlssToolActive(which);
 
-            // Auto-zoom to minimum visible zoom level (using layer.minScale)
-            const lyr = selectionLayers[idxToEnable]?.layer;
-            await autoZoomToLayerMinVisible(lyr);
+        // Auto-zoom to minimum visible zoom level (using layer.minScale)
+        const lyr = selectionLayers[idxToEnable]?.layer;
+        await autoZoomToLayerMinVisible(lyr);
 
-            const whichLabel = (which === "intersected") ? "parcel" : which;
-            setStatus(`PLSS select: ${whichLabel} (click a polygon)`);
+        // ✅ Kick the layerView to fully fetch/render (prevents “missing tiles until pan”)
+        try {
+        if (lyr && view) {
+            await lyr.when();
+            const lv = await view.whenLayerView(lyr);
+
+            // Force a refresh cycle (helps when visibility/scale changed via code)
+            if (lv && typeof lv.refresh === "function") lv.refresh();
+
+            // Force a render tick (helps when the view container/layout changed recently)
+            requestAnimationFrame(() => {
+            try { view.requestRender(); } catch (e) {}
+            });
+        }
+        } catch (e) {
+        // ignore (best-effort)
+        }
+
+        const whichLabel = (which === "intersected") ? "parcel" : which;
+        setStatus(`PLSS select: ${whichLabel} (click a polygon)`);
         } else {
             setPlssToolActive(which);
             setStatus("PLSS select: layer not found in selection layers");
