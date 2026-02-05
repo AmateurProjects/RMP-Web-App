@@ -640,93 +640,108 @@ require([
         });
     }
 
-    async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
-        if (!view || !layer) return;
+async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
+    if (!view || !layer) return;
 
-        try { await layer.when(); } catch (e) { }
+    try { await layer.when(); } catch (e) { }
 
-        let lv = null;
-        try { lv = await view.whenLayerView(layer); } catch (e) { return; }
-        if (!lv) return;
+    let lv = null;
+    try { lv = await view.whenLayerView(layer); } catch (e) { return; }
+    if (!lv) return;
 
-        // Wait for view to stop moving (important after goTo/scale changes)
-        await waitForViewStationary(1500);
+    // Wait for view to stop moving
+    await waitForViewStationary(1500);
 
-        // If the layerView is suspended, give it a moment to resume
-        if (lv.suspended) {
-            await new Promise(resolve => {
-                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 1500);
-                const h = lv.watch("suspended", (s) => {
-                    if (!s) {
-                        window.clearTimeout(t);
-                        try { h.remove(); } catch (e) { }
-                        resolve();
-                    }
-                });
-            });
-        }
-
-        // Force a fetch/refresh
-        if (typeof lv.refresh === "function") lv.refresh();
-
-        // Wait for updating to finish (best effort)
+    // If the layerView is suspended, give it a moment to resume
+    if (lv.suspended) {
         await new Promise(resolve => {
-            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
-            const h = lv.watch("updating", (u) => {
-                if (!u) {
+            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 1500);
+            const h = lv.watch("suspended", (s) => {
+                if (!s) {
                     window.clearTimeout(t);
                     try { h.remove(); } catch (e) { }
                     resolve();
                 }
             });
-            // If it’s already not updating, resolve immediately
-            if (!lv.updating) {
+        });
+    }
+
+    // Force a fetch/refresh
+    if (typeof lv.refresh === "function") lv.refresh();
+
+    // Wait for updating to finish
+    await new Promise(resolve => {
+        const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
+        const h = lv.watch("updating", (u) => {
+            if (!u) {
                 window.clearTimeout(t);
                 try { h.remove(); } catch (e) { }
                 resolve();
             }
         });
-
-        // If we had to wait (or if tiles are still trickling), do one more refresh after a beat.
-        // This helps with occasional “holes” that only fill after a user pan.
-        await new Promise(r => setTimeout(r, 200));
-
-        try {
-        // Re-read lv in case it changed (defensive)
-        const lv2 = await view.whenLayerView(layer);
-
-        // If it's still updating or was recently suspended, poke it again.
-        if (lv2?.updating || lv2?.suspended) {
-            if (typeof lv2.refresh === "function") lv2.refresh();
+        if (!lv.updating) {
+            window.clearTimeout(t);
+            try { h.remove(); } catch (e) { }
+            resolve();
         }
-        } catch (e) {}
+    });
 
+    await new Promise(r => setTimeout(r, 200));
 
-        // Ask the view to repaint
-        // Ask the view to repaint
-        try { view.requestRender(); } catch (e) { }
-
-        // ✅ Extra “paint poke”: refresh again on next frame + tiny scale nudge
-        // This is the bit that usually fills the last “holes”.
-        try {
-            await new Promise(r => requestAnimationFrame(r));
-            const lv3 = await view.whenLayerView(layer);
-            if (lv3 && typeof lv3.refresh === "function") lv3.refresh();
-            try { view.requestRender(); } catch (e) { }
-
-            // Tiny scale nudge to force a full redraw (no visible extent change)
-            const s0 = view.scale;
-            const s1 = s0 * 1.01;
-
-            await view.goTo({ center: view.center, scale: s1 }, { animate: false });
-            await view.goTo({ center: view.center, scale: s0 }, { animate: false });
-
-            try { view.requestRender(); } catch (e) { }
-        } catch (e) {
-            // ignore
-        }
+    // ✅ REUSE the same layerView reference
+    if (lv?.updating || lv?.suspended) {
+        if (typeof lv.refresh === "function") lv.refresh();
     }
 
+    try { view.requestRender(); } catch (e) { }
+
+    // ✅ Final refresh + scale nudge with proper delays
+    try {
+        await new Promise(r => requestAnimationFrame(r));
+        
+        // ✅ Await the refresh
+        if (lv && typeof lv.refresh === "function") {
+            lv.refresh();
+            
+            // ✅ Wait for refresh to complete
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 2000);
+                const h = lv.watch("updating", (u) => {
+                    if (!u) {
+                        window.clearTimeout(t);
+                        try { h.remove(); } catch (e) { }
+                        resolve();
+                    }
+                });
+                if (!lv.updating) {
+                    window.clearTimeout(t);
+                    try { h.remove(); } catch (e) { }
+                    resolve();
+                }
+            });
+        }
+
+        try { view.requestRender(); } catch (e) { }
+
+        // ✅ Scale nudge with delays between steps
+        const s0 = view.scale;
+        const s1 = s0 * 1.01;
+
+        await view.goTo({ center: view.center, scale: s1 }, { animate: false });
+        await new Promise(r => setTimeout(r, 100)); // ✅ Delay
+        await view.goTo({ center: view.center, scale: s0 }, { animate: false });
+        await new Promise(r => setTimeout(r, 100)); // ✅ Delay
+
+        try { view.requestRender(); } catch (e) { }
+        
+        // ✅ One final refresh after scale is restored
+        if (lv && typeof lv.refresh === "function") lv.refresh();
+        await new Promise(r => setTimeout(r, 200));
+        try { view.requestRender(); } catch (e) { }
+    } catch (e) {
+        // ignore
+    }
+}
 
 
 
