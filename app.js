@@ -151,7 +151,6 @@ require([
         return getReportToken(key) === token;
     }
 
-
     // ---------- Operation lock + cancel (Report / Visual) ----------
     let reportOpToken = 0;
     let visualOpToken = 0;
@@ -369,12 +368,8 @@ require([
         clearSpinnerWatch(entry.layer);
         wireLayerUpdatingSpinner(entry.layer, spin).then((h) => setSpinnerWatch(entry.layer, h));
 
-        // ✅ Gentle one-time poke AFTER stationary (helps stubborn “holes” without thrash)
-        try {
-            const lv = await view.whenLayerView(entry.layer);
-            if (lv && typeof lv.refresh === "function") lv.refresh();
-            try { view.requestRender(); } catch (e) { }
-        } catch (e) { }
+        // ✅ Stronger refresh (includes double refresh + micro scale nudge)
+        await hardRefreshLayer(entry.layer);
     }
 
     function disableSelectionLayer(idx) {
@@ -567,6 +562,10 @@ require([
         return u.replace(/\/$/, "") + "?f=pjson";
     }
 
+    function normalizeUrlKey(u) {
+        return String(u || "").replace(/\/+$/, "");
+    }
+
     function buildLayerCfgIndex(cfg) {
         const m = new Map();
 
@@ -704,7 +703,28 @@ require([
 
 
         // Ask the view to repaint
+        // Ask the view to repaint
         try { view.requestRender(); } catch (e) { }
+
+        // ✅ Extra “paint poke”: refresh again on next frame + tiny scale nudge
+        // This is the bit that usually fills the last “holes”.
+        try {
+            await new Promise(r => requestAnimationFrame(r));
+            const lv3 = await view.whenLayerView(layer);
+            if (lv3 && typeof lv3.refresh === "function") lv3.refresh();
+            try { view.requestRender(); } catch (e) { }
+
+            // Tiny scale nudge to force a full redraw (no visible extent change)
+            const s0 = view.scale;
+            const s1 = s0 * 1.01;
+
+            await view.goTo({ center: view.center, scale: s1 }, { animate: false });
+            await view.goTo({ center: view.center, scale: s0 }, { animate: false });
+
+            try { view.requestRender(); } catch (e) { }
+        } catch (e) {
+            // ignore
+        }
     }
 
 
@@ -774,6 +794,72 @@ require([
 
         return out;
     }
+
+async function buildReportDisplayLayers() {
+    if (!map) return;
+
+    // Clear any previous (defensive)
+    reportLayerViews.clear();
+
+    for (const cfg of (config.reportLayers || [])) {
+        const key = normalizeUrlKey(cfg.url);
+        if (!key) continue;
+
+        // Skip if already built
+        if (reportLayerViews.has(key)) continue;
+
+        // FeatureServer root: expand to polygon sublayers
+        if (isFeatureServerRoot(key)) {
+            const subs = await expandFeatureServerToPolygonSublayers(key);
+
+            const layers = subs.map(sl => new FeatureLayer({
+                url: sl.url,
+                title: `${cfg.title}: ${sl.title}`,
+                outFields: ["*"],
+                visible: false,
+                renderer: getPresetRenderer("report", cfg) || undefined
+            }));
+
+            layers.forEach(l => map.add(l));
+            reportLayerViews.set(key, layers);
+            continue;
+        }
+
+        // MapServer root: expand to polygon sublayers
+        if (isMapServerRoot(key)) {
+            const subs = await expandMapServerToSublayers(key, { polygonOnly: true });
+
+            const layers = subs.map(sl => new FeatureLayer({
+                url: sl.url,
+                title: `${cfg.title}: ${sl.title}`,
+                outFields: ["*"],
+                visible: false,
+                renderer: getPresetRenderer("report", cfg) || undefined
+            }));
+
+            layers.forEach(l => map.add(l));
+            reportLayerViews.set(key, layers);
+            continue;
+        }
+
+        // Normal single layer
+        const lyr = new FeatureLayer({
+            url: key,
+            title: cfg.title,
+            outFields: ["*"],
+            visible: false,
+            renderer: getPresetRenderer("report", cfg) || undefined
+        });
+
+        map.add(lyr);
+        reportLayerViews.set(key, lyr);
+    }
+
+    ensureAoiOnTop(map);
+}
+
+
+
 
     function clearAll() {
         selectionGeom = null;
@@ -915,7 +1001,7 @@ require([
         // We will show it in the list but disable the checkbox to avoid confusion.
         reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
             const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
-            const key = String(l.url || "").replace(/\/+$/, "");
+            const key = normalizeUrlKey(l.url);
             const existing = reportLayerViews.get(key);
 
             // If existing is an array (expanded root), consider it checked if any layer exists
@@ -946,59 +1032,41 @@ require([
             const cb = document.getElementById(`rptlayer_${i}`);
             if (!cb) return;
 
-            const key = String(l.url || "").replace(/\/+$/, "");
+            const key = normalizeUrlKey(l.url);
 
             cb.addEventListener("change", async () => {
-                const spin = document.getElementById(`sellayer_spin_${i}`);
+                const spin = document.getElementById(`rptlayer_spin_${i}`);
+                const key = normalizeUrlKey(l.url);
+
+                // Get existing drawn layers for this report entry (single or array)
+                const existing = reportLayerViews.get(key);
+
+                // Helper to set visibility on single/array
+                const setVisible = (obj, vis) => {
+                    if (!obj) return;
+                    if (Array.isArray(obj)) obj.forEach(x => { try { x.visible = vis; } catch (e) { } });
+                    else { try { obj.visible = vis; } catch (e) { } }
+                };
 
                 if (cb.checked) {
                     if (spin) spin.classList.remove("hidden");
 
-                    // ✅ DO NOT add/remove
-                    e.layer.visible = true;
-                    ensureAoiOnTop(map);
+                    // If we already created layers for this entry, just show them
+                    setVisible(existing, true);
 
-                    // ✅ Ensure in-scale, then refresh once (no hardRefreshLayer)
-                    await ensureLayerVisibleAtScale(e.layer);
-                    await waitForViewStationary(1500);
+                    // If nothing exists yet (first time), you can either:
+                    // (a) do nothing (since report layers are rendered via temp layers in Visual/Final)
+                    // OR (b) expand + add to map here.
+                    // Minimal approach: do nothing else.
 
-                    clearSpinnerWatch(e.layer);
-                    wireLayerUpdatingSpinner(e.layer, spin).then((h) => setSpinnerWatch(e.layer, h));
-
-                    // Gentle refresh after stationary
-                    try {
-                        const lv = await view.whenLayerView(e.layer);
-                        if (lv && typeof lv.refresh === "function") lv.refresh();
-                        try { view.requestRender(); } catch (e) { }
-                    } catch (e) { }
-
-                    if (!activeSelectionLayer) {
-                        await setActiveSelectionLayerByIndex(i);
-                    }
-
+                    if (spin) spin.classList.add("hidden");
                 } else {
                     if (spin) spin.classList.add("hidden");
-
-                    clearSpinnerWatch(e.layer);
-
-                    // ✅ Just hide
-                    e.layer.visible = false;
-                    updateSelectionToggleCheckbox(i, false);
-
-                    if (activeSelectionLayer === e.layer) {
-                        activeSelectionLayer = null;
-                        activeSelectionLayerView = null;
-
-                        // ✅ Pick next visible layer (NOT “on map”)
-                        const nextIdx = (selectionLayers || []).findIndex(x => x?.layer?.visible);
-                        if (nextIdx >= 0) {
-                            await setActiveSelectionLayerByIndex(nextIdx);
-                        } else {
-                            setGeometryFromSelection(null);
-                            setStatus("no selection layers visible (turn one on)");
-                        }
-                    }
+                    setVisible(existing, false);
                 }
+
+                ensureAoiOnTop(map);
+                try { view.requestRender(); } catch (e) { }
             });
         });
     }
@@ -2814,6 +2882,10 @@ require([
         }));
 
         selectionLayers.forEach(e => map.add(e.layer));
+
+        // ✅ NEW: build report layers (for map display toggles)
+        await buildReportDisplayLayers();
+
         renderLayerToggles(map);
         ensureAoiOnTop(map);
 
