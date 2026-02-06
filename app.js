@@ -913,7 +913,7 @@ function clearAll() {
             <div class="toggle-row">
                 <input type="checkbox" id="sellayer_${i}" ${checked} />
                 <span class="layer-swatch layer-swatch-selection" aria-hidden="true" title="Selection layer"></span>
-                <label class="toggle-name" for="sellayer_${i}">${escapeHtml(e.cfg.title)}${statusIcon}</label>
+                <label class="toggle-name" for="sellayer_${i}">${statusIcon}${escapeHtml(e.cfg.title)}</label>
                 <span id="sellayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
             </div>            
         `;
@@ -999,7 +999,7 @@ function clearAll() {
                 <div class="toggle-row">
                     <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
                     <span class="layer-swatch layer-swatch-report" aria-hidden="true" title="Report layer"></span>
-                    <label class="toggle-name" for="rptlayer_${i}">${escapeHtml(l.title)}${statusIcon}${note}</label>
+                    <label class="toggle-name" for="rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}${note}</label>
                     <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
                 </div>
             `;
@@ -2348,11 +2348,11 @@ async function generateVisualReportData(myOp) {
         return `${src}${srcDetail} • AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
     }
 
-    function buildFinalReportHtmlDoc({ title, createdAt, aoiSummary, totalsHtml, sectionsHtml }) {
-        const safeTitle = escapeHtml(title || "Final Report");
 
-        // Minimal, clean print CSS (no external deps)
-        return `<!doctype html>
+function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml }) {
+    const safeTitle = escapeHtml(title || "Final Report");
+
+    return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
@@ -2368,19 +2368,35 @@ async function generateVisualReportData(myOp) {
     html,body{ margin:0; padding:0; background:var(--bg); color:var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
     .wrap{ max-width: 980px; margin: 0 auto; padding: 28px 22px 60px; }
     h1{ font-size: 22px; margin: 0 0 6px; }
+    h2{ font-size: 18px; margin: 24px 0 12px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
     .meta{ font-size: 12px; color: var(--muted); margin-bottom: 14px; }
-    .aoi{ font-size: 13px; padding: 10px 12px; border:1px solid var(--border); border-radius: 10px; background:#fafafa; }
     .totals{ margin-top: 12px; }
     .totals .row{ display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
     .pill{ border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size: 12px; background:#fff; }
-    .section{ margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
-    .section h2{ margin:0 0 8px; font-size: 16px; }
+    
+    .aoi-map{ margin: 12px 0; border:1px solid var(--border); border-radius: 12px; overflow:hidden; }
+    .aoi-map img{ display:block; width:100%; height:auto; }
+    .aoi-details{ margin-top: 16px; }
+    .aoi-field{ margin: 8px 0; font-size: 14px; }
+    .aoi-label{ font-weight: 600; color: var(--muted); }
+    .legal-list{ margin: 4px 0 0 20px; padding: 0; }
+    .legal-list li{ margin: 4px 0; }
+    
+    .section{ margin-top: 18px; padding-top: 14px; }
     .section .sub{ font-size: 12px; color: var(--muted); margin-bottom: 10px; }
-    .map{ width:100%; border:1px solid var(--border); border-radius: 12px; overflow:hidden; background:#fff; }
+    .map{ width:100%; border:1px solid var(--border); border-radius: 12px; overflow:hidden; background:#fff; margin: 12px 0; }
     .map img{ display:block; width:100%; height:auto; }
     table.metaTbl{ width:100%; border-collapse: collapse; margin-top:10px; font-size: 12px; }
     table.metaTbl td{ padding: 6px 8px; border-bottom: 1px solid var(--border); }
     table.metaTbl td:first-child{ color: var(--muted); width: 220px; }
+    
+    table.data-sources-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+    table.data-sources-table th{ background: #f5f5f5; padding: 8px; text-align: left; border-bottom: 2px solid var(--border); }
+    table.data-sources-table td{ padding: 8px; border-bottom: 1px solid var(--border); }
+    .mono{ font-family: monospace; font-size: 11px; }
+    .status-up{ color: #22c55e; font-weight: 600; }
+    .status-down{ color: #ef4444; font-weight: 600; }
+    
     .actions{ margin-top: 14px; display:flex; gap:10px; flex-wrap: wrap; }
     .btn{
       display:inline-block; border:1px solid var(--border); background:#fff; border-radius: 10px;
@@ -2389,7 +2405,6 @@ async function generateVisualReportData(myOp) {
     .btn:hover{ background:#f4f4f4; }
     .hint{ font-size: 12px; color: var(--muted); margin-top: 8px; }
 
-    /* Print */
     @media print{
       .actions, .hint{ display:none !important; }
       .wrap{ max-width: none; padding: 0.5in; }
@@ -2403,58 +2418,266 @@ async function generateVisualReportData(myOp) {
     <h1>${safeTitle}</h1>
     <div class="meta">Created: ${escapeHtml(createdAt || "")}</div>
 
-    <div class="aoi">${escapeHtml(aoiSummary || "")}</div>
-
     <div class="actions">
       <a class="btn" href="javascript:window.print()">Print / Save as PDF</a>
     </div>
-    <div class="hint">Tip: Use your browser print dialog → “Save as PDF” later, when you’re ready.</div>
+    <div class="hint">Tip: Use your browser print dialog → "Save as PDF" later, when you're ready.</div>
 
     <div class="totals">
       ${totalsHtml || ""}
     </div>
 
+    ${aoiSectionHtml || ""}
+
+    <h2>Maps</h2>
     ${sectionsHtml || ""}
+
+    ${dataSourcesHtml || ""}
   </div>
 </body>
 </html>`;
+}
+
+
+
+
+async function buildFinalReportHtml() {
+    if (!view) return;
+
+    if (!selectionGeom) {
+        setStatus("Select or draw an AOI first.");
+        return;
     }
 
-    async function buildFinalReportHtml() {
-        if (!view) return;
+    if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+        setStatus("Run the report first (Tables tab) so we know which layers intersect.");
+        return;
+    }
 
-        if (!selectionGeom) {
-            setStatus("Select or draw an AOI first.");
-            return;
-        }
-
-        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-            setStatus("Run the report first (Tables tab) so we know which layers intersect.");
-            return;
-        }
-
-        if (finalReportStatus) finalReportStatus.textContent = "Building report...";
+    if (finalReportStatus) finalReportStatus.textContent = "Building report...";
+    
+    try {
+        // ========================================
+        // STEP 1: Compute AOI area
+        // ========================================
+        let aoiAcres = 0;
         try {
-            // Only layers with real hits and usable query objects (skip pinned AOI source card)
-            const targets = lastReportRowsByLayer
-                .filter(x => (x?.count || 0) > 0)
-                .filter(x => x?._layer && x?._exportQuery);
+            const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
+            aoiAcres = aoiSqm / SQM_PER_ACRE;
+        } catch (e) {
+            aoiAcres = 0;
+        }
 
-            // AOI area in acres
-            let aoiAcres = 0;
-            try {
-                const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
-                aoiAcres = aoiSqm / SQM_PER_ACRE;
-            } catch (e) {
-                aoiAcres = 0;
+        // ========================================
+        // STEP 2: Generate AOI Section Data
+        // ========================================
+        
+        // 2a. Primary State (from PLSS: State Boundaries)
+        let primaryState = "";
+        let additionalStates = "";
+        
+        const stateItem = lastReportRowsByLayer.find(x => 
+            x.title && x.title.toLowerCase().includes("state boundaries")
+        );
+        
+        if (stateItem && stateItem.fullRows && stateItem.fullRows.length > 0) {
+            // If we have full rows with geometry, compute primary by area
+            // Otherwise just list states in order
+            const stateNames = stateItem.fullRows
+                .map(r => r.STUSPS || r.STATE_NAME || r.STATE || "")
+                .filter(Boolean);
+            
+            if (stateNames.length > 0) {
+                primaryState = stateNames[0];
+                if (stateNames.length > 1) {
+                    additionalStates = stateNames.slice(1).join(", ");
+                }
             }
+        }
 
-            // Totals summary (counts)
-            const totalLayers = lastReportRowsByLayer.length;
-            const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
-            const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+        // 2b. Legal Land Description (from PLSS: Parcel)
+        const legalDescriptions = [];
+        const parcelItem = lastReportRowsByLayer.find(x => 
+            x.title && (x.title.toLowerCase().includes("parcel") || x.title.toLowerCase().includes("intersected"))
+        );
+        
+        if (parcelItem && parcelItem.fullRows && parcelItem.fullRows.length > 0) {
+            for (const row of parcelItem.fullRows) {
+                // Extract Township, Range, Section from attributes
+                // Common field names: TWNSHPLAB, RANGLAB, SECLAB or PLSSID
+                const twp = row.TWNSHPLAB || row.TOWNSHIP || "";
+                const rng = row.RANGLAB || row.RANGE || "";
+                const sec = row.SECLAB || row.SECTION || "";
+                
+                if (twp && rng && sec) {
+                    legalDescriptions.push(`${twp} ${rng} Section ${sec}`);
+                } else if (row.PLSSID) {
+                    // Fallback: use PLSSID if structured fields not available
+                    legalDescriptions.push(row.PLSSID);
+                }
+            }
+        }
 
-            const totalsHtml = `
+        // 2c. AOI Method
+        let aoiMethod = "Manually Drawn";
+        if (aoiSource === "select") {
+            const tool = plssToolLabel(aoiSourcePlssTool);
+            aoiMethod = `Selected ${tool}`;
+        }
+
+        // 2d. Generate AOI Maps (zoomed out + zoomed in with red circles)
+        setStatus("building final report… (generating AOI maps)");
+        
+        const aoiMapsHtml = await generateAoiMapsWithCircles();
+
+        // ========================================
+        // STEP 3: Generate Map Section (existing layers)
+        // ========================================
+        setStatus("building final report… (generating layer maps)");
+        
+        // Filter out PLSS: State Boundaries from map section
+        const targets = lastReportRowsByLayer
+            .filter(x => (x?.count || 0) > 0)
+            .filter(x => x?._layer && x?._exportQuery)
+            .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+
+        const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+        const width = config?.visualReport?.screenshotWidth ?? 1400;
+
+        // Lock extent for screenshots
+        let fixedExtent = null;
+        const ext = selectionGeom?.extent;
+        if (ext && ext.expand) {
+            fixedExtent = ext.expand(paddingFactor);
+            await view.goTo(fixedExtent, { animate: true, duration: 450 });
+        } else {
+            await view.goTo(selectionGeom, { animate: true, duration: 450 });
+        }
+
+        // Snapshot visibility
+        const allLayers = view.map.layers.toArray();
+        const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+
+        function setVisibilityForScreenshot(tempLayer) {
+            for (const l of allLayers) {
+                if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                if (l?.type === "tile") { l.visible = true; continue; }
+                l.visible = false;
+            }
+            if (tempLayer) tempLayer.visible = true;
+            ensureAoiOnTop(view.map);
+        }
+
+        function restoreVisibility() {
+            visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+            ensureAoiOnTop(view.map);
+        }
+
+        // Build per-layer sections (without Service URLs)
+        let sectionsHtml = "";
+
+        if (!targets.length) {
+            sectionsHtml = `
+              <div class="section">
+                <h2>No intersecting layers</h2>
+                <div class="sub">(All layer counts are 0.)</div>
+              </div>
+            `;
+        } else {
+            for (let i = 0; i < targets.length; i++) {
+                const item = targets[i];
+                setStatus(`building final report… (${i + 1}/${targets.length})`);
+
+                const temp = new FeatureLayer({
+                    url: item.url,
+                    title: item.title,
+                    outFields: ["*"],
+                    visible: true,
+                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
+                });
+
+                temp.minScale = 0;
+                temp.maxScale = 0;
+
+                view.map.add(temp);
+                try {
+                    setVisibilityForScreenshot(temp);
+                    try { await temp.when(); } catch (e) { }
+
+                    try {
+                        const lv = await view.whenLayerView(temp);
+
+                        if (lv?.suspended) {
+                            await new Promise(resolve => {
+                                const h = lv.watch("suspended", (s) => {
+                                    if (!s) { h.remove(); resolve(); }
+                                });
+                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
+                            });
+                        }
+
+                        if (lv?.updating) {
+                            await new Promise(resolve => {
+                                const h = lv.watch("updating", (u) => {
+                                    if (!u) { h.remove(); resolve(); }
+                                });
+                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 6000);
+                            });
+                        }
+                    } catch (e) { }
+
+                    if (fixedExtent) {
+                        await view.goTo(fixedExtent, { animate: false });
+                    }
+
+                    const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
+                    const dataUrl = ss?.dataUrl;
+                    if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+                    const cov = await computeLayerCoverageStats(item, selectionGeom);
+                    const acresCovered = cov ? cov.acresCovered : 0;
+                    const pctCovered = cov ? cov.pctAoiCovered : 0;
+
+                    // ✅ Remove Service URL from map cards
+                    sectionsHtml += `
+                    <div class="section">
+                        <h2>${escapeHtml(item.title)}</h2>
+
+                        <div class="map">
+                            <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
+                        </div>
+
+                        <table class="metaTbl">
+                            <tr><td>AOI area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
+                            <tr><td>Intersecting features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
+                            <tr><td>AOI covered by layer</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
+                            <tr><td>% AOI covered</td><td><b>${formatNumber(pctCovered, 2)}</b>%</td></tr>
+                        </table>
+                    </div>
+                    <div class="pagebreak"></div>
+                    `;
+                } finally {
+                    try { view.map.remove(temp); } catch (e) { }
+                    restoreVisibility();
+                }
+            }
+        }
+
+        // ========================================
+        // STEP 4: Generate Data Sources Appendix
+        // ========================================
+        const dataSourcesHtml = buildDataSourcesSection();
+
+        // ========================================
+        // STEP 5: Build Final HTML Document
+        // ========================================
+        
+        // Totals summary
+        const totalLayers = lastReportRowsByLayer.length;
+        const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
+        const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+
+        const totalsHtml = `
           <div class="row">
             <div class="pill">Layers queried: <b>${escapeHtml(String(totalLayers))}</b></div>
             <div class="pill">Layers with hits: <b>${escapeHtml(String(layersWithHits))}</b></div>
@@ -2462,167 +2685,190 @@ async function generateVisualReportData(myOp) {
           </div>
         `;
 
-            // Zoom to AOI once
-            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
-            const width = config?.visualReport?.screenshotWidth ?? 1400;
+        // AOI Section HTML
+        const stateHtml = primaryState 
+            ? `<div class="aoi-field"><span class="aoi-label">Primary State:</span> ${escapeHtml(primaryState)}${additionalStates ? ` (Additional: ${escapeHtml(additionalStates)})` : ""}</div>`
+            : "";
 
-            // 🔒 Compute and lock a single extent for ALL screenshots
-            let fixedExtent = null;
-            const ext = selectionGeom?.extent;
+        const legalHtml = legalDescriptions.length > 0
+            ? `<div class="aoi-field">
+                <span class="aoi-label">Legal Land Description:</span>
+                <ul class="legal-list">
+                    ${legalDescriptions.map(ld => `<li>${escapeHtml(ld)}</li>`).join("")}
+                </ul>
+               </div>`
+            : "";
 
-            if (ext && ext.expand) {
-                fixedExtent = ext.expand(paddingFactor);
-                await view.goTo(fixedExtent, { animate: true, duration: 450 });
-            } else {
-                await view.goTo(selectionGeom, { animate: true, duration: 450 });
-            }
+        const aoiSectionHtml = `
+            <h2>Area of Interest</h2>
+            ${aoiMapsHtml}
+            <div class="aoi-details">
+                ${stateHtml}
+                ${legalHtml}
+                <div class="aoi-field"><span class="aoi-label">Area:</span> ${formatNumber(aoiAcres, 2)} acres</div>
+                <div class="aoi-field"><span class="aoi-label">Method:</span> ${escapeHtml(aoiMethod)}</div>
+            </div>
+        `;
 
-            // Snapshot vis so we can restore after each screenshot
-            const allLayers = view.map.layers.toArray();
-            const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
-
-            function setVisibilityForScreenshot(tempLayer) {
-                for (const l of allLayers) {
-                    // Keep AOI visible
-                    if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                    // Keep tile overlays (SMA) visible
-                    if (l?.type === "tile") { l.visible = true; continue; }
-                    // Hide everything else
-                    l.visible = false;
-                }
-                if (tempLayer) tempLayer.visible = true;
-                ensureAoiOnTop(view.map);
-            }
-
-            function restoreVisibility() {
-                visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
-                ensureAoiOnTop(view.map);
-            }
-
-            // Build per-layer sections
-            let sectionsHtml = "";
-
-            if (!targets.length) {
-                sectionsHtml = `
-              <div class="section">
-                <h2>No intersecting layers</h2>
-                <div class="sub">(All layer counts are 0.)</div>
-              </div>
-            `;
-            } else {
-                for (let i = 0; i < targets.length; i++) {
-
-                    const item = targets[i];
-                    setStatus(`building final report… (${i + 1}/${targets.length})`);
-
-                    // Temp layer (so it renders regardless of user toggles)
-                    const temp = new FeatureLayer({
-                        url: item.url,
-                        title: item.title,
-                        outFields: ["*"],
-                        visible: true,
-                        renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
-                    });
-
-                    // 🔒 Prevent scale-based rendering rules from forcing view scale changes
-                    temp.minScale = 0;
-                    temp.maxScale = 0;
-
-                    // Add temp, hide everything else, screenshot, then remove temp
-                    view.map.add(temp);
-                    try {
-                        setVisibilityForScreenshot(temp);
-
-                        // Wait for layer to load
-                        try { await temp.when(); } catch (e) { }
-
-                        // ✅ Wait until layerView is not suspended AND not updating (best effort)
-                        try {
-                            const lv = await view.whenLayerView(temp);
-
-                            // Wait for suspended -> false OR timeout
-                            if (lv?.suspended) {
-                                await new Promise(resolve => {
-                                    const h = lv.watch("suspended", (s) => {
-                                        if (!s) { h.remove(); resolve(); }
-                                    });
-                                    window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
-                                });
-                            }
-
-                            // Wait for updating -> false OR timeout
-                            if (lv?.updating) {
-                                await new Promise(resolve => {
-                                    const h = lv.watch("updating", (u) => {
-                                        if (!u) { h.remove(); resolve(); }
-                                    });
-                                    window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 6000);
-                                });
-                            }
-                        } catch (e) { }
-
-
-                        // 🔒 Re-apply locked extent to guarantee identical framing
-                        if (fixedExtent) {
-                            await view.goTo(fixedExtent, { animate: false });
-                        }
-
-                        const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
-                        const dataUrl = ss?.dataUrl;
-                        if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
-
-                        // Coverage stats
-                        const cov = await computeLayerCoverageStats(item, selectionGeom);
-                        const acresCovered = cov ? cov.acresCovered : 0;
-                        const pctCovered = cov ? cov.pctAoiCovered : 0;
-
-                        const layerUrlLink = escapeHtml(item.url);
-
-                        sectionsHtml += `
-                    <div class="section">
-                        <h2>${escapeHtml(item.title)}</h2>
-                        <div class="sub">
-                        Service: <a href="${layerUrlLink}" target="_blank" rel="noopener">${layerUrlLink}</a>
-                        </div>
-
-                        <div class="map">
-                        <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
-                        </div>
-
-                        <table class="metaTbl">
-                        <tr><td>AOI area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
-                        <tr><td>Intersecting features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
-                        <tr><td>AOI covered by layer</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
-                        <tr><td>% AOI covered</td><td><b>${formatNumber(pctCovered, 2)}</b>%</td></tr>
-                        </table>
-                    </div>
-                    <div class="pagebreak"></div>
-                    `;
-                    } finally {
-                        try { view.map.remove(temp); } catch (e) { }
-                        restoreVisibility();
-                    }
-                }
-            }
-
-            const htmlDoc = buildFinalReportHtmlDoc({
-                title: "RMP Viewer — Final Report",
-                createdAt: formatDateTimeForReport(new Date()),
-                aoiSummary: getAoiSummaryForReport(aoiAcres),
-                totalsHtml,
-                sectionsHtml
-            });
-        
+        const htmlDoc = buildFinalReportHtmlDoc({
+            title: "Lands Explorer — Final Report",
+            createdAt: formatDateTimeForReport(new Date()),
+            totalsHtml,
+            aoiSectionHtml,
+            sectionsHtml,
+            dataSourcesHtml
+        });
+    
         cachedFinalReportHtml = htmlDoc;
 
         if (finalReportStatus) finalReportStatus.textContent = "Report ready.";
 
-        } catch (e) {
-            console.error(e);
-            if (finalReportStatus) finalReportStatus.textContent = "Failed to build report (see console).";
-        }        
-      }
+    } catch (e) {
+        console.error(e);
+        if (finalReportStatus) finalReportStatus.textContent = "Failed to build report (see console).";
+    }        
+}
+
+// ========================================
+// HELPER: Generate AOI maps with red circles
+// ========================================
+async function generateAoiMapsWithCircles() {
+    if (!view || !selectionGeom) return "";
+
+    const width = config?.visualReport?.screenshotWidth ?? 1400;
+    const maps = [];
+
+    // Snapshot visibility
+    const allLayers = view.map.layers.toArray();
+    const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+
+    function setVisibilityForAoi() {
+        for (const l of allLayers) {
+            if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+            if (l?.type === "tile") { l.visible = true; continue; }
+            l.visible = false;
+        }
+        ensureAoiOnTop(view.map);
+    }
+
+    function restoreVisibility() {
+        visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+        ensureAoiOnTop(view.map);
+    }
+
+    try {
+        setVisibilityForAoi();
+
+        // Map 1: Zoomed out (show ~4 states)
+        const ext1 = selectionGeom.extent.expand(8); // Wide zoom
+        await view.goTo(ext1, { animate: false });
+        await waitForViewStationary(1000);
+        
+        const ss1 = await view.takeScreenshot({ format: "png", quality: 100, width });
+        if (ss1?.dataUrl) {
+            const withCircle1 = await addRedCircleToScreenshot(ss1.dataUrl, selectionGeom.extent, ext1);
+            maps.push(`<div class="aoi-map"><img src="${withCircle1}" alt="AOI Context (Regional)" /></div>`);
+        }
+
+        // Map 2: Zoomed in (state-level)
+        const ext2 = selectionGeom.extent.expand(2.5); // Closer zoom
+        await view.goTo(ext2, { animate: false });
+        await waitForViewStationary(1000);
+        
+        const ss2 = await view.takeScreenshot({ format: "png", quality: 100, width });
+        if (ss2?.dataUrl) {
+            const withCircle2 = await addRedCircleToScreenshot(ss2.dataUrl, selectionGeom.extent, ext2);
+            maps.push(`<div class="aoi-map"><img src="${withCircle2}" alt="AOI Context (State)" /></div>`);
+        }
+
+    } finally {
+        restoreVisibility();
+    }
+
+    return maps.join("");
+}
+
+// ========================================
+// HELPER: Draw red circle on screenshot
+// ========================================
+async function addRedCircleToScreenshot(dataUrl, aoiExtent, viewExtent) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    await new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = (e) => reject(e);
+        img.src = dataUrl;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
     
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+
+    // Calculate AOI center in screen coordinates
+    const aoiCenterX = (aoiExtent.center.x - viewExtent.xmin) / (viewExtent.xmax - viewExtent.xmin) * canvas.width;
+    const aoiCenterY = (1 - (aoiExtent.center.y - viewExtent.ymin) / (viewExtent.ymax - viewExtent.ymin)) * canvas.height;
+
+    // Calculate circle radius (1.5x AOI width in screen coords)
+    const aoiWidthScreen = (aoiExtent.width / (viewExtent.xmax - viewExtent.xmin)) * canvas.width;
+    const radius = Math.max(30, aoiWidthScreen * 0.75); // At least 30px, max 1.5x AOI width
+
+    // Draw red circle
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(aoiCenterX, aoiCenterY, radius, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    return canvas.toDataURL("image/png");
+}
+
+// ========================================
+// HELPER: Build data sources appendix
+// ========================================
+function buildDataSourcesSection() {
+    const services = getConfiguredServices();
+    
+    const rows = services.map(svc => {
+        const status = serviceStatus.get(svc.url) || "UNKNOWN";
+        const statusClass = status === "UP" ? "status-up" : "status-down";
+        
+        // Get description from service (would need to be cached from refreshServicesTab)
+        const desc = "(Description not available)"; // TODO: Cache descriptions
+        
+        return `
+            <tr>
+                <td>${escapeHtml(svc.title)}</td>
+                <td class="mono"><a href="${escapeHtml(svc.url)}" target="_blank" rel="noopener">${escapeHtml(svc.url)}</a></td>
+                <td>${escapeHtml(desc)}</td>
+                <td><span class="${statusClass}">${status}</span></td>
+            </tr>
+        `;
+    }).join("");
+
+    return `
+        <div class="section">
+            <h2>Data Used in this Report</h2>
+            <table class="data-sources-table">
+                <thead>
+                    <tr>
+                        <th>Service Name</th>
+                        <th>Service URL</th>
+                        <th>Description</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
 
 
     // Simple wrapper - opens cached HTML
