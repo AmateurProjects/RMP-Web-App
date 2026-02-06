@@ -640,6 +640,7 @@ require([
         });
     }
 
+
 async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
     if (!view || !layer) return;
 
@@ -650,7 +651,7 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
     if (!lv) return;
 
     // Wait for view to stop moving
-    await waitForViewStationary(2000); // ✅ Increased from 1500ms
+    await waitForViewStationary(2000);
 
     // If the layerView is suspended, give it a moment to resume
     if (lv.suspended) {
@@ -666,8 +667,9 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
         });
     }
 
-    // ✅ TRIPLE REFRESH - aggressive approach for stubborn tiles
-    for (let i = 0; i < 3; i++) {
+    // ✅ AGGRESSIVE REFRESH LOOP - keep trying until tiles load
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         if (typeof lv.refresh === "function") lv.refresh();
         
         // Wait for updating to finish
@@ -687,40 +689,57 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
             }
         });
         
-        await new Promise(r => setTimeout(r, 300)); // ✅ Longer delay between refreshes
+        // ✅ Scale nudge after EACH refresh (this is what zooming does manually)
+        const s0 = view.scale;
+        const s1 = s0 * 1.015; // 1.5% zoom in
+        
+        await view.goTo({ center: view.center, scale: s1 }, { animate: false });
+        await new Promise(r => setTimeout(r, 150));
+        await view.goTo({ center: view.center, scale: s0 }, { animate: false });
+        await new Promise(r => setTimeout(r, 150));
+        
+        try { view.requestRender(); } catch (e) { }
+        
+        // ✅ Wait a bit longer between attempts
+        if (attempt < MAX_ATTEMPTS - 1) {
+            await new Promise(r => setTimeout(r, 400));
+        }
     }
 
     try { view.requestRender(); } catch (e) { }
 
-    // ✅ Scale nudge dance - zoom in/out to force tile reload
+    // ✅ FINAL VERIFICATION: One more big scale change to force complete reload
     try {
-        await new Promise(r => requestAnimationFrame(r)); // ✅ FIXED LINE
+        await new Promise(r => requestAnimationFrame(r));
         
         const s0 = view.scale;
-        const s1 = s0 * 1.02; // ✅ Bigger nudge (2% instead of 1%)
-        const s2 = s0 * 0.98; // ✅ Also nudge the other direction
-
-        // Zoom in
-        await view.goTo({ center: view.center, scale: s1 }, { animate: false });
-        await new Promise(r => setTimeout(r, 200));
-        try { view.requestRender(); } catch (e) { }
+        const s1 = s0 * 1.05; // 5% zoom in
+        const s2 = s0 * 0.95; // 5% zoom out
         
-        // Zoom out past original
-        await view.goTo({ center: view.center, scale: s2 }, { animate: false });
+        // Big zoom in
+        await view.goTo({ center: view.center, scale: s1 }, { animate: false });
+        await new Promise(r => setTimeout(r, 250));
+        
+        if (typeof lv.refresh === "function") lv.refresh();
         await new Promise(r => setTimeout(r, 200));
-        try { view.requestRender(); } catch (e) { }
+        
+        // Big zoom out
+        await view.goTo({ center: view.center, scale: s2 }, { animate: false });
+        await new Promise(r => setTimeout(r, 250));
+        
+        if (typeof lv.refresh === "function") lv.refresh();
+        await new Promise(r => setTimeout(r, 200));
         
         // Back to original
         await view.goTo({ center: view.center, scale: s0 }, { animate: false });
-        await new Promise(r => setTimeout(r, 200));
-        try { view.requestRender(); } catch (e) { }
+        await new Promise(r => setTimeout(r, 250));
         
-        // ✅ Final refresh after scale dance
+        // ✅ Final refresh + wait
         if (lv && typeof lv.refresh === "function") {
             lv.refresh();
             
             await new Promise(resolve => {
-                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 3000); // ✅ Longer timeout
+                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 3000);
                 const h = lv.watch("updating", (u) => {
                     if (!u) {
                         window.clearTimeout(t);
@@ -742,6 +761,7 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
         // ignore
     }
 }
+
 
 
 
