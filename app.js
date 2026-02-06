@@ -391,23 +391,23 @@ require([
         }
     }
 
-    async function autoZoomToLayerMinVisible(layer) {
-        if (!view || !layer) return;
+async function autoZoomToLayerMinVisible(layer) {
+    if (!view || !layer) return;
 
-        const minScale = Number(layer.minScale || 0);
-        if (!minScale || !isFinite(minScale) || minScale <= 0) return;
+    const minScale = Number(layer.minScale || 0);
+    if (!minScale || !isFinite(minScale) || minScale <= 0) return;
 
-        // ✅ FIXED: Zoom in MUCH more than minScale to ensure tiles load
-        // Smaller scale number = more zoomed in
-        // Was: 0.50 (50% more zoomed in) - NOT ENOUGH
-        // Now: 0.25 (75% more zoomed in) - guarantees tile visibility
-        const nudgeFactor = 0.25;
-        const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
+    // ✅ VERY AGGRESSIVE ZOOM: 90% more zoomed in than minScale
+    // Smaller scale number = more zoomed in
+    // 0.10 = zoom in 10x closer than minimum required
+    const nudgeFactor = 0.10;
+    const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
 
-        if (view.scale > targetScale) {
-            await view.goTo({ scale: targetScale }, { animate: true, duration: 450 });
-        }
+    if (view.scale > targetScale) {
+        await view.goTo({ scale: targetScale }, { animate: true, duration: 450 });
     }
+}
+
     async function ensureLayerVisibleAtScale(layer) {
         if (!view || !layer) return;
 
