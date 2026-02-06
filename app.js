@@ -397,16 +397,17 @@ require([
         const minScale = Number(layer.minScale || 0);
         if (!minScale || !isFinite(minScale) || minScale <= 0) return;
 
-        // Nudge a bit more zoomed-in than minScale so the layer reliably renders.
-        // Smaller scale number = more zoomed in.
-        const nudgeFactor = 0.50; // 50% more zoomed in than minScale (tweak 0.90–0.95 if desired)
+        // ✅ FIXED: Zoom in MUCH more than minScale to ensure tiles load
+        // Smaller scale number = more zoomed in
+        // Was: 0.50 (50% more zoomed in) - NOT ENOUGH
+        // Now: 0.25 (75% more zoomed in) - guarantees tile visibility
+        const nudgeFactor = 0.25;
         const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
 
         if (view.scale > targetScale) {
             await view.goTo({ scale: targetScale }, { animate: true, duration: 450 });
         }
     }
-
     async function ensureLayerVisibleAtScale(layer) {
         if (!view || !layer) return;
 
@@ -651,9 +652,9 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
     if (!lv) return;
 
     // Wait for view to stop moving
-    await waitForViewStationary(2000);
+    await waitForViewStationary(1500);
 
-    // If the layerView is suspended, give it a moment to resume
+    // If suspended, wait for resume
     if (lv.suspended) {
         await new Promise(resolve => {
             const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 2000);
@@ -667,101 +668,28 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
         });
     }
 
-    // ✅ AGGRESSIVE REFRESH LOOP - keep trying until tiles load
-    const MAX_ATTEMPTS = 5;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        if (typeof lv.refresh === "function") lv.refresh();
-        
-        // Wait for updating to finish
-        await new Promise(resolve => {
-            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
-            const h = lv.watch("updating", (u) => {
-                if (!u) {
-                    window.clearTimeout(t);
-                    try { h.remove(); } catch (e) { }
-                    resolve();
-                }
-            });
-            if (!lv.updating) {
+    // Single refresh
+    if (typeof lv.refresh === "function") lv.refresh();
+
+    // Wait for updating to finish
+    await new Promise(resolve => {
+        const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
+        const h = lv.watch("updating", (u) => {
+            if (!u) {
                 window.clearTimeout(t);
                 try { h.remove(); } catch (e) { }
                 resolve();
             }
         });
-        
-        // ✅ Scale nudge after EACH refresh (this is what zooming does manually)
-        const s0 = view.scale;
-        const s1 = s0 * 1.015; // 1.5% zoom in
-        
-        await view.goTo({ center: view.center, scale: s1 }, { animate: false });
-        await new Promise(r => setTimeout(r, 150));
-        await view.goTo({ center: view.center, scale: s0 }, { animate: false });
-        await new Promise(r => setTimeout(r, 150));
-        
-        try { view.requestRender(); } catch (e) { }
-        
-        // ✅ Wait a bit longer between attempts
-        if (attempt < MAX_ATTEMPTS - 1) {
-            await new Promise(r => setTimeout(r, 400));
+        if (!lv.updating) {
+            window.clearTimeout(t);
+            try { h.remove(); } catch (e) { }
+            resolve();
         }
-    }
+    });
 
     try { view.requestRender(); } catch (e) { }
-
-    // ✅ FINAL VERIFICATION: One more big scale change to force complete reload
-    try {
-        await new Promise(r => requestAnimationFrame(r));
-        
-        const s0 = view.scale;
-        const s1 = s0 * 1.05; // 5% zoom in
-        const s2 = s0 * 0.95; // 5% zoom out
-        
-        // Big zoom in
-        await view.goTo({ center: view.center, scale: s1 }, { animate: false });
-        await new Promise(r => setTimeout(r, 250));
-        
-        if (typeof lv.refresh === "function") lv.refresh();
-        await new Promise(r => setTimeout(r, 200));
-        
-        // Big zoom out
-        await view.goTo({ center: view.center, scale: s2 }, { animate: false });
-        await new Promise(r => setTimeout(r, 250));
-        
-        if (typeof lv.refresh === "function") lv.refresh();
-        await new Promise(r => setTimeout(r, 200));
-        
-        // Back to original
-        await view.goTo({ center: view.center, scale: s0 }, { animate: false });
-        await new Promise(r => setTimeout(r, 250));
-        
-        // ✅ Final refresh + wait
-        if (lv && typeof lv.refresh === "function") {
-            lv.refresh();
-            
-            await new Promise(resolve => {
-                const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 3000);
-                const h = lv.watch("updating", (u) => {
-                    if (!u) {
-                        window.clearTimeout(t);
-                        try { h.remove(); } catch (e) { }
-                        resolve();
-                    }
-                });
-                if (!lv.updating) {
-                    window.clearTimeout(t);
-                    try { h.remove(); } catch (e) { }
-                    resolve();
-                }
-            });
-        }
-        
-        await new Promise(r => setTimeout(r, 300));
-        try { view.requestRender(); } catch (e) { }
-    } catch (e) {
-        // ignore
-    }
 }
-
 
 
 
