@@ -2608,10 +2608,13 @@ function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, aoiSectionHtml,
                 table.metaTbl{ width:100%; border-collapse: collapse; margin-top:10px; font-size: 12px; }
                 table.metaTbl td{ padding: 6px 8px; border-bottom: 1px solid var(--border); }
                 table.metaTbl td:first-child{ color: var(--muted); width: 220px; }
-                
-                table.data-sources-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
-                table.data-sources-table th{ background: #f5f5f5; padding: 8px; text-align: left; border-bottom: 2px solid var(--border); }
-                table.data-sources-table td{ padding: 8px; border-bottom: 1px solid var(--border); }
+
+                table.data-sources-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; table-layout: fixed; }
+                table.data-sources-table th{ background: #f5f5f5; padding: 8px; text-align: left; border-bottom: 2px solid var(--border); font-weight: 600; }
+                table.data-sources-table td{ padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; word-wrap: break-word; }
+                table.data-sources-table .service-desc-col{ white-space: normal; line-height: 1.4; }
+                table.data-sources-table .service-url-col{ font-family: monospace; font-size: 10px; word-break: break-all; }    
+
                 .mono{ font-family: monospace; font-size: 11px; }
                 .status-up{ color: #22c55e; font-weight: 600; }
                 .status-down{ color: #ef4444; font-weight: 600; }
@@ -2687,7 +2690,7 @@ async function buildFinalReportHtml() {
             aoiAcres = 0;
         }
 
-        // ========================================
+// ========================================
         // STEP 2: Generate AOI Section Data
         // ========================================
         
@@ -2699,9 +2702,23 @@ async function buildFinalReportHtml() {
             x.title && x.title.toLowerCase().includes("state boundaries")
         );
         
+        // ✅ Fetch full rows if not already cached
+        if (stateItem && !stateItem.fullRows && stateItem._layer && stateItem._exportQuery) {
+            try {
+                const pageSize = config.report?.pageSize ?? 1000;
+                const fullFeatures = await queryAllFeaturesPaged(
+                    stateItem._layer,
+                    stateItem._exportQuery,
+                    pageSize,
+                    100  // Cap at 100 for states
+                );
+                stateItem.fullRows = flattenAttributes(fullFeatures);
+            } catch (e) {
+                console.warn("Failed to fetch state data:", e);
+            }
+        }
+        
         if (stateItem && stateItem.fullRows && stateItem.fullRows.length > 0) {
-            // If we have full rows with geometry, compute primary by area
-            // Otherwise just list states in order
             const stateNames = stateItem.fullRows
                 .map(r => r.STUSPS || r.STATE_NAME || r.STATE || "")
                 .filter(Boolean);
@@ -2720,10 +2737,24 @@ async function buildFinalReportHtml() {
             x.title && (x.title.toLowerCase().includes("parcel") || x.title.toLowerCase().includes("intersected"))
         );
         
+        // ✅ Fetch full rows if not already cached
+        if (parcelItem && !parcelItem.fullRows && parcelItem._layer && parcelItem._exportQuery) {
+            try {
+                const pageSize = config.report?.pageSize ?? 1000;
+                const fullFeatures = await queryAllFeaturesPaged(
+                    parcelItem._layer,
+                    parcelItem._exportQuery,
+                    pageSize,
+                    100  // Cap at 100 for parcels
+                );
+                parcelItem.fullRows = flattenAttributes(fullFeatures);
+            } catch (e) {
+                console.warn("Failed to fetch parcel data:", e);
+            }
+        }
+        
         if (parcelItem && parcelItem.fullRows && parcelItem.fullRows.length > 0) {
             for (const row of parcelItem.fullRows) {
-                // Extract Township, Range, Section from attributes
-                // Common field names: TWNSHPLAB, RANGLAB, SECLAB or PLSSID
                 const twp = row.TWNSHPLAB || row.TOWNSHIP || "";
                 const rng = row.RANGLAB || row.RANGE || "";
                 const sec = row.SECLAB || row.SECTION || "";
@@ -2731,7 +2762,6 @@ async function buildFinalReportHtml() {
                 if (twp && rng && sec) {
                     legalDescriptions.push(`${twp} ${rng} Section ${sec}`);
                 } else if (row.PLSSID) {
-                    // Fallback: use PLSSID if structured fields not available
                     legalDescriptions.push(row.PLSSID);
                 }
             }
@@ -2744,11 +2774,10 @@ async function buildFinalReportHtml() {
             aoiMethod = `Selected ${tool}`;
         }
 
-        // 2d. Generate AOI Maps (zoomed out + zoomed in with red circles)
+        // 2d. Generate AOI Maps (zoomed out + county-level with red circle)
         setStatus("building final report… (generating AOI maps)");
         
         const aoiMapsHtml = await generateAoiMapsWithCircles();
-
 
 // ========================================
         // STEP 3: Generate Map Section (existing layers)
@@ -3055,8 +3084,9 @@ async function addRedCircleToScreenshot(dataUrl, aoiExtent, viewExtent) {
     return canvas.toDataURL("image/png");
 }
 
+
 // ========================================
-// HELPER: Build data sources appendix
+// HELPER: Build data sources appendix (IMPROVED TABLE)
 // ========================================
 function buildDataSourcesSection() {
     const services = getConfiguredServices();
@@ -3064,16 +3094,14 @@ function buildDataSourcesSection() {
     const rows = services.map(svc => {
         const status = serviceStatus.get(svc.url) || "UNKNOWN";
         const statusClass = status === "UP" ? "status-up" : "status-down";
-        
-        // Get description from service (would need to be cached from refreshServicesTab)
         const desc = serviceStatus.get(svc.url + "::desc") || "(Description not available)";
         
         return `
             <tr>
-                <td>${escapeHtml(svc.title)}</td>
-                <td class="mono"><a href="${escapeHtml(svc.url)}" target="_blank" rel="noopener">${escapeHtml(svc.url)}</a></td>
-                <td>${escapeHtml(desc)}</td>
-                <td><span class="${statusClass}">${status}</span></td>
+                <td class="service-name-col">${escapeHtml(svc.title)}</td>
+                <td class="service-url-col"><a href="${escapeHtml(svc.url)}" target="_blank" rel="noopener">${escapeHtml(svc.url)}</a></td>
+                <td class="service-desc-col">${escapeHtml(desc)}</td>
+                <td class="service-status-col"><span class="${statusClass}">${status}</span></td>
             </tr>
         `;
     }).join("");
@@ -3084,10 +3112,10 @@ function buildDataSourcesSection() {
             <table class="data-sources-table">
                 <thead>
                     <tr>
-                        <th>Service Name</th>
-                        <th>Service URL</th>
-                        <th>Description</th>
-                        <th>Status</th>
+                        <th style="width: 20%;">Service Name</th>
+                        <th style="width: 25%;">Service URL</th>
+                        <th style="width: 45%;">Description</th>
+                        <th style="width: 10%;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -3097,6 +3125,8 @@ function buildDataSourcesSection() {
         </div>
     `;
 }
+
+
 
 
 
