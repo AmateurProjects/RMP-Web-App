@@ -1169,6 +1169,11 @@ async function checkServiceStatusBackground() {
             }
 
             serviceStatus.set(it.url, status);
+
+            if (desc) {
+                serviceStatus.set(it.url + "::desc", desc);
+            }
+
             const pillClass = (status === "UP") ? "pill pill-up" : "pill pill-down";
             const descHtml = desc
                 ? `
@@ -1677,8 +1682,7 @@ async function queryAllLayers(reportGeom, myOp) {
                 continue;
             }
 
-
-            const r = await querySingleLayer(
+const r = await querySingleLayer(
                 t.url,
                 t.title,
                 reportGeom,
@@ -1693,8 +1697,32 @@ async function queryAllLayers(reportGeom, myOp) {
                 rows,
                 _layer: r.layer,
                 _exportQuery: r.exportQuery,
-                fullRows: null
+                fullRows: null  // ✅ Will be populated on-demand for State/Parcel
             });
+
+            // ✅ Pre-fetch full rows for State Boundaries & Parcel (needed for Final Report)
+            const isStateBoundaries = r.title && r.title.toLowerCase().includes("state boundaries");
+            const isParcel = r.title && (r.title.toLowerCase().includes("parcel") || r.title.toLowerCase().includes("intersected"));
+
+            if ((isStateBoundaries || isParcel) && r.count > 0 && r.layer && r.exportQuery) {
+                try {
+                    const pageSize = config.report?.pageSize ?? 1000;
+                    const maxExport = config.report?.maxExportFeatures ?? 50000;
+
+                    const fullFeatures = await queryAllFeaturesPaged(
+                        r.layer,
+                        r.exportQuery,
+                        pageSize,
+                        Math.min(maxExport, 100)  // Cap at 100 for State/Parcel (they should be small)
+                    );
+
+                    // Store in the item we just pushed
+                    lastReportRowsByLayer[lastReportRowsByLayer.length - 1].fullRows = flattenAttributes(fullFeatures);
+                } catch (e) {
+                    console.warn(`Failed to pre-fetch full rows for ${r.title}:`, e);
+                }
+            }
+
 
 
             const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
@@ -2353,90 +2381,90 @@ function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, aoiSectionHtml,
     const safeTitle = escapeHtml(title || "Final Report");
 
     return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>${safeTitle}</title>
-  <style>
-    :root{
-      --fg:#111;
-      --muted:#666;
-      --border:#e6e6e6;
-      --bg:#fff;
-    }
-    html,body{ margin:0; padding:0; background:var(--bg); color:var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-    .wrap{ max-width: 980px; margin: 0 auto; padding: 28px 22px 60px; }
-    h1{ font-size: 22px; margin: 0 0 6px; }
-    h2{ font-size: 18px; margin: 24px 0 12px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
-    .meta{ font-size: 12px; color: var(--muted); margin-bottom: 14px; }
-    .totals{ margin-top: 12px; }
-    .totals .row{ display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
-    .pill{ border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size: 12px; background:#fff; }
-    
-    .aoi-map{ margin: 12px 0; border:1px solid var(--border); border-radius: 12px; overflow:hidden; }
-    .aoi-map img{ display:block; width:100%; height:auto; }
-    .aoi-details{ margin-top: 16px; }
-    .aoi-field{ margin: 8px 0; font-size: 14px; }
-    .aoi-label{ font-weight: 600; color: var(--muted); }
-    .legal-list{ margin: 4px 0 0 20px; padding: 0; }
-    .legal-list li{ margin: 4px 0; }
-    
-    .section{ margin-top: 18px; padding-top: 14px; }
-    .section .sub{ font-size: 12px; color: var(--muted); margin-bottom: 10px; }
-    .map{ width:100%; border:1px solid var(--border); border-radius: 12px; overflow:hidden; background:#fff; margin: 12px 0; }
-    .map img{ display:block; width:100%; height:auto; }
-    table.metaTbl{ width:100%; border-collapse: collapse; margin-top:10px; font-size: 12px; }
-    table.metaTbl td{ padding: 6px 8px; border-bottom: 1px solid var(--border); }
-    table.metaTbl td:first-child{ color: var(--muted); width: 220px; }
-    
-    table.data-sources-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
-    table.data-sources-table th{ background: #f5f5f5; padding: 8px; text-align: left; border-bottom: 2px solid var(--border); }
-    table.data-sources-table td{ padding: 8px; border-bottom: 1px solid var(--border); }
-    .mono{ font-family: monospace; font-size: 11px; }
-    .status-up{ color: #22c55e; font-weight: 600; }
-    .status-down{ color: #ef4444; font-weight: 600; }
-    
-    .actions{ margin-top: 14px; display:flex; gap:10px; flex-wrap: wrap; }
-    .btn{
-      display:inline-block; border:1px solid var(--border); background:#fff; border-radius: 10px;
-      padding:8px 10px; font-size:12px; text-decoration:none; color:var(--fg);
-    }
-    .btn:hover{ background:#f4f4f4; }
-    .hint{ font-size: 12px; color: var(--muted); margin-top: 8px; }
+            <html lang="en">
+            <head>
+            <meta charset="utf-8"/>
+            <meta name="viewport" content="width=device-width,initial-scale=1"/>
+            <title>${safeTitle}</title>
+            <style>
+                :root{
+                --fg:#111;
+                --muted:#666;
+                --border:#e6e6e6;
+                --bg:#fff;
+                }
+                html,body{ margin:0; padding:0; background:var(--bg); color:var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+                .wrap{ max-width: 980px; margin: 0 auto; padding: 28px 22px 60px; }
+                h1{ font-size: 22px; margin: 0 0 6px; }
+                h2{ font-size: 18px; margin: 24px 0 12px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
+                .meta{ font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+                .totals{ margin-top: 12px; }
+                .totals .row{ display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
+                .pill{ border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size: 12px; background:#fff; }
+                
+                .aoi-map{ margin: 12px 0; border:1px solid var(--border); border-radius: 12px; overflow:hidden; }
+                .aoi-map img{ display:block; width:100%; height:auto; }
+                .aoi-details{ margin-top: 16px; }
+                .aoi-field{ margin: 8px 0; font-size: 14px; }
+                .aoi-label{ font-weight: 600; color: var(--muted); }
+                .legal-list{ margin: 4px 0 0 20px; padding: 0; }
+                .legal-list li{ margin: 4px 0; }
+                
+                .section{ margin-top: 18px; padding-top: 14px; }
+                .section .sub{ font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+                .map{ width:100%; border:1px solid var(--border); border-radius: 12px; overflow:hidden; background:#fff; margin: 12px 0; }
+                .map img{ display:block; width:100%; height:auto; }
+                table.metaTbl{ width:100%; border-collapse: collapse; margin-top:10px; font-size: 12px; }
+                table.metaTbl td{ padding: 6px 8px; border-bottom: 1px solid var(--border); }
+                table.metaTbl td:first-child{ color: var(--muted); width: 220px; }
+                
+                table.data-sources-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+                table.data-sources-table th{ background: #f5f5f5; padding: 8px; text-align: left; border-bottom: 2px solid var(--border); }
+                table.data-sources-table td{ padding: 8px; border-bottom: 1px solid var(--border); }
+                .mono{ font-family: monospace; font-size: 11px; }
+                .status-up{ color: #22c55e; font-weight: 600; }
+                .status-down{ color: #ef4444; font-weight: 600; }
+                
+                .actions{ margin-top: 14px; display:flex; gap:10px; flex-wrap: wrap; }
+                .btn{
+                display:inline-block; border:1px solid var(--border); background:#fff; border-radius: 10px;
+                padding:8px 10px; font-size:12px; text-decoration:none; color:var(--fg);
+                }
+                .btn:hover{ background:#f4f4f4; }
+                .hint{ font-size: 12px; color: var(--muted); margin-top: 8px; }
 
-    @media print{
-      .actions, .hint{ display:none !important; }
-      .wrap{ max-width: none; padding: 0.5in; }
-      .section{ break-inside: avoid; }
-      .pagebreak{ break-after: page; }
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>${safeTitle}</h1>
-    <div class="meta">Created: ${escapeHtml(createdAt || "")}</div>
+                @media print{
+                .actions, .hint{ display:none !important; }
+                .wrap{ max-width: none; padding: 0.5in; }
+                .section{ break-inside: avoid; }
+                .pagebreak{ break-after: page; }
+                }
+            </style>
+            </head>
+            <body>
+            <div class="wrap">
+                <h1>${safeTitle}</h1>
+                <div class="meta">Created: ${escapeHtml(createdAt || "")}</div>
 
-    <div class="actions">
-      <a class="btn" href="javascript:window.print()">Print / Save as PDF</a>
-    </div>
-    <div class="hint">Tip: Use your browser print dialog → "Save as PDF" later, when you're ready.</div>
+                <div class="actions">
+                <a class="btn" href="javascript:window.print()">Print / Save as PDF</a>
+                </div>
+                <div class="hint">Tip: Use your browser print dialog → "Save as PDF" later, when you're ready.</div>
 
-    <div class="totals">
-      ${totalsHtml || ""}
-    </div>
+                <div class="totals">
+                ${totalsHtml || ""}
+                </div>
 
-    ${aoiSectionHtml || ""}
+                ${aoiSectionHtml || ""}
 
-    <h2>Maps</h2>
-    ${sectionsHtml || ""}
+                <h2>Maps</h2>
+                ${sectionsHtml || ""}
 
-    ${dataSourcesHtml || ""}
-  </div>
-</body>
-</html>`;
-}
+                ${dataSourcesHtml || ""}
+            </div>
+            </body>
+            </html>`;
+            }
 
 
 
@@ -2530,50 +2558,29 @@ async function buildFinalReportHtml() {
         
         const aoiMapsHtml = await generateAoiMapsWithCircles();
 
-        // ========================================
+
+// ========================================
         // STEP 3: Generate Map Section (existing layers)
         // ========================================
         setStatus("building final report… (generating layer maps)");
         
+        // ✅ Use EXACT same extent as Visual Report (where maps were already generated)
+        const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+        const width = config?.visualReport?.screenshotWidth ?? 1400;
+
+        let fixedExtent = null;
+        const ext = selectionGeom?.extent;
+        if (ext && ext.expand) {
+            fixedExtent = ext.expand(paddingFactor);
+        }
+
         // Filter out PLSS: State Boundaries from map section
         const targets = lastReportRowsByLayer
             .filter(x => (x?.count || 0) > 0)
             .filter(x => x?._layer && x?._exportQuery)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 
-        const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
-        const width = config?.visualReport?.screenshotWidth ?? 1400;
-
-        // Lock extent for screenshots
-        let fixedExtent = null;
-        const ext = selectionGeom?.extent;
-        if (ext && ext.expand) {
-            fixedExtent = ext.expand(paddingFactor);
-            await view.goTo(fixedExtent, { animate: true, duration: 450 });
-        } else {
-            await view.goTo(selectionGeom, { animate: true, duration: 450 });
-        }
-
-        // Snapshot visibility
-        const allLayers = view.map.layers.toArray();
-        const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
-
-        function setVisibilityForScreenshot(tempLayer) {
-            for (const l of allLayers) {
-                if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                if (l?.type === "tile") { l.visible = true; continue; }
-                l.visible = false;
-            }
-            if (tempLayer) tempLayer.visible = true;
-            ensureAoiOnTop(view.map);
-        }
-
-        function restoreVisibility() {
-            visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
-            ensureAoiOnTop(view.map);
-        }
-
-        // Build per-layer sections (without Service URLs)
+        // Build per-layer sections (reuse screenshots from Visual Report if possible)
         let sectionsHtml = "";
 
         if (!targets.length) {
@@ -2584,6 +2591,33 @@ async function buildFinalReportHtml() {
               </div>
             `;
         } else {
+            // ✅ For Final Report, we regenerate screenshots (ensures fresh rendering)
+            // But we use the SAME extent as Visual Report
+            
+            if (fixedExtent) {
+                await view.goTo(fixedExtent, { animate: false });
+            } else {
+                await view.goTo(selectionGeom, { animate: false });
+            }
+
+            const allLayers = view.map.layers.toArray();
+            const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+
+            function setVisibilityForScreenshot(tempLayer) {
+                for (const l of allLayers) {
+                    if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                    if (l?.type === "tile") { l.visible = true; continue; }
+                    l.visible = false;
+                }
+                if (tempLayer) tempLayer.visible = true;
+                ensureAoiOnTop(view.map);
+            }
+
+            function restoreVisibility() {
+                visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+                ensureAoiOnTop(view.map);
+            }
+
             for (let i = 0; i < targets.length; i++) {
                 const item = targets[i];
                 setStatus(`building final report… (${i + 1}/${targets.length})`);
@@ -2626,6 +2660,7 @@ async function buildFinalReportHtml() {
                         }
                     } catch (e) { }
 
+                    // ✅ CRITICAL: Re-apply the SAME extent used in Visual Report
                     if (fixedExtent) {
                         await view.goTo(fixedExtent, { animate: false });
                     }
@@ -2638,7 +2673,6 @@ async function buildFinalReportHtml() {
                     const acresCovered = cov ? cov.acresCovered : 0;
                     const pctCovered = cov ? cov.pctAoiCovered : 0;
 
-                    // ✅ Remove Service URL from map cards
                     sectionsHtml += `
                     <div class="section">
                         <h2>${escapeHtml(item.title)}</h2>
@@ -2662,6 +2696,8 @@ async function buildFinalReportHtml() {
                 }
             }
         }
+
+
 
         // ========================================
         // STEP 4: Generate Data Sources Appendix
@@ -2837,7 +2873,7 @@ function buildDataSourcesSection() {
         const statusClass = status === "UP" ? "status-up" : "status-down";
         
         // Get description from service (would need to be cached from refreshServicesTab)
-        const desc = "(Description not available)"; // TODO: Cache descriptions
+        const desc = serviceStatus.get(svc.url + "::desc") || "(Description not available)";
         
         return `
             <tr>
