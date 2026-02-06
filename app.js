@@ -2957,7 +2957,7 @@ async function buildFinalReportHtml() {
 }
 
 // ========================================
-// HELPER: Generate AOI maps with red circles
+// HELPER: Generate AOI maps WITH red circles at different zoom levels
 // ========================================
 async function generateAoiMapsWithCircles() {
     if (!view || !selectionGeom) return "";
@@ -2986,8 +2986,8 @@ async function generateAoiMapsWithCircles() {
     try {
         setVisibilityForAoi();
 
-        // Map 1: Zoomed out (show ~4 states)
-        const ext1 = selectionGeom.extent.expand(8); // Wide zoom
+        // ✅ Map 1: VERY zoomed out (show several states) WITH red circle
+        const ext1 = selectionGeom.extent.expand(20); // Much wider zoom to show multiple states
         await view.goTo(ext1, { animate: false });
         await waitForViewStationary(1000);
         
@@ -2997,15 +2997,15 @@ async function generateAoiMapsWithCircles() {
             maps.push(`<div class="aoi-map"><img src="${withCircle1}" alt="AOI Context (Regional)" /></div>`);
         }
 
-        // Map 2: Zoomed in (state-level)
-        const ext2 = selectionGeom.extent.expand(2.5); // Closer zoom
+        // ✅ Map 2: County-level zoom (4-8 counties visible) WITH red circle
+        const ext2 = selectionGeom.extent.expand(4); // County-level zoom
         await view.goTo(ext2, { animate: false });
         await waitForViewStationary(1000);
         
         const ss2 = await view.takeScreenshot({ format: "png", quality: 100, width });
         if (ss2?.dataUrl) {
             const withCircle2 = await addRedCircleToScreenshot(ss2.dataUrl, selectionGeom.extent, ext2);
-            maps.push(`<div class="aoi-map"><img src="${withCircle2}" alt="AOI Context (State)" /></div>`);
+            maps.push(`<div class="aoi-map"><img src="${withCircle2}" alt="AOI Context (County)" /></div>`);
         }
 
     } finally {
@@ -3014,6 +3014,8 @@ async function generateAoiMapsWithCircles() {
 
     return maps.join("");
 }
+
+
 
 // ========================================
 // HELPER: Draw red circle on screenshot
