@@ -184,11 +184,6 @@ function setBusy(isBusy) {
             
             this.success.classList.remove("hidden");
             
-            // Auto-close after 5 seconds (optional)
-            setTimeout(() => {
-                this.hide();
-                setActiveTab("report");
-            }, 5000);
         }
     };
 
