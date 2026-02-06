@@ -2698,6 +2698,8 @@ async function buildReportDisplayLayers() {
 
         map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
 
+        const plssCacheBuster = `?_cb=${Date.now()}`;
+
         // --- Always-on basemap overlay: BLM SMA (BLM Only) ---
         const smaBlmOnly = new TileLayer({
             url: "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer",
@@ -2835,6 +2837,7 @@ async function buildReportDisplayLayers() {
         selectionLayers = expandedSelectionCfgs.map(cfg => ({
             cfg,
             layer: new FeatureLayer({
+                url: cfg.url + (cfg.url.includes('PLSS') ? plssCacheBuster : ''),
                 url: cfg.url,
                 title: cfg.title,
                 outFields: ["*"],
