@@ -73,10 +73,125 @@ require([
         else if (statusEl) statusEl.textContent = text;
     }
 
-    function setBusy(isBusy) {
+function setBusy(isBusy) {
         if (!busyIndicatorEl) return;
         busyIndicatorEl.classList.toggle("hidden", !isBusy);
     }
+
+    // ---------- Analysis Modal Helpers ----------
+    const analysisModal = {
+        el: null,
+        progressFill: null,
+        currentStep: null,
+        log: null,
+        stats: {
+            layersQueried: null,
+            featuresFound: null,
+            mapsGenerated: null
+        },
+        success: null,
+        
+        init() {
+            this.el = document.getElementById("analysisModal");
+            this.progressFill = document.getElementById("analysisProgressFill");
+            this.currentStep = document.getElementById("analysisCurrentStep");
+            this.log = document.getElementById("analysisLog");
+            this.stats.layersQueried = document.getElementById("analysisLayersQueried");
+            this.stats.featuresFound = document.getElementById("analysisFeaturesFound");
+            this.stats.mapsGenerated = document.getElementById("analysisMapsGenerated");
+            this.success = document.getElementById("analysisSuccess");
+            
+            // Wire cancel button
+            const cancelBtn = document.getElementById("analysisModalCancelBtn");
+            if (cancelBtn) {
+                cancelBtn.addEventListener("click", () => {
+                    reportOpToken++; // Cancel analysis
+                    this.hide();
+                });
+            }
+            
+            // Wire success close button
+            const successCloseBtn = document.getElementById("analysisSuccessCloseBtn");
+            if (successCloseBtn) {
+                successCloseBtn.addEventListener("click", () => {
+                    this.hide();
+                    setActiveTab("report"); // Jump to Tables tab
+                });
+            }
+        },
+        
+        show() {
+            if (!this.el) return;
+            this.el.classList.remove("hidden");
+            this.reset();
+        },
+        
+        hide() {
+            if (!this.el) return;
+            this.el.classList.add("hidden");
+        },
+        
+        reset() {
+            this.setProgress(0);
+            this.setStep("Initializing...");
+            this.clearLog();
+            this.updateStats(0, 0, 0);
+            if (this.success) this.success.classList.add("hidden");
+        },
+        
+        setProgress(percent) {
+            if (this.progressFill) {
+                this.progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+            }
+        },
+        
+        setStep(text) {
+            if (this.currentStep) {
+                this.currentStep.textContent = text;
+            }
+        },
+        
+        addLog(message, type = "info") {
+            if (!this.log) return;
+            const entry = document.createElement("div");
+            entry.className = `analysis-log-entry ${type}`;
+            entry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            this.log.appendChild(entry);
+            this.log.scrollTop = this.log.scrollHeight; // Auto-scroll
+        },
+        
+        clearLog() {
+            if (this.log) this.log.innerHTML = "";
+        },
+        
+        updateStats(layersQueried, featuresFound, mapsGenerated) {
+            if (this.stats.layersQueried) this.stats.layersQueried.textContent = layersQueried;
+            if (this.stats.featuresFound) this.stats.featuresFound.textContent = featuresFound;
+            if (this.stats.mapsGenerated) this.stats.mapsGenerated.textContent = mapsGenerated;
+        },
+        
+        showSuccess(layersQueried, featuresFound, mapsGenerated) {
+            if (!this.success) return;
+            
+            // Update success summary
+            const successLayersQueried = document.getElementById("successLayersQueried");
+            const successFeaturesFound = document.getElementById("successFeaturesFound");
+            const successMapsGenerated = document.getElementById("successMapsGenerated");
+            
+            if (successLayersQueried) successLayersQueried.textContent = layersQueried;
+            if (successFeaturesFound) successFeaturesFound.textContent = featuresFound;
+            if (successMapsGenerated) successMapsGenerated.textContent = mapsGenerated;
+            
+            this.success.classList.remove("hidden");
+            
+            // Auto-close after 5 seconds (optional)
+            setTimeout(() => {
+                this.hide();
+                setActiveTab("report");
+            }, 5000);
+        }
+    };
+
 
     // ---------- State ----------
     let config = null;
@@ -1441,61 +1556,116 @@ async function checkServiceStatusBackground() {
 // ========================================
 
 // Main orchestrator - runs ALL analysis steps
+
 async function runAnalysis() {
     const myOp = startReportOp();
 
     const reportGeom = getReportGeometry();
     if (!reportGeom) { endReportOp(myOp); return; }
 
+    // ✅ Show analysis modal
+    analysisModal.show();
+    analysisModal.setProgress(0);
+    analysisModal.setStep("Starting analysis...");
+    analysisModal.addLog("Analysis started");
+
     setBusy(true);
 
+    let layersQueried = 0;
+    let featuresFound = 0;
+    let mapsGenerated = 0;
+
     try {
-        // Step 1: Data Check
-        setStatus("Running analysis... (checking services)");
+        // Step 1: Data Check (10% progress)
+        analysisModal.setStep("Step 1/4: Checking services...");
+        analysisModal.setProgress(10);
+        analysisModal.addLog("Checking service availability");
+        
         await refreshServicesTab();
 
         if (isReportCanceled(myOp)) {
+            analysisModal.addLog("Analysis canceled by user", "error");
+            analysisModal.hide();
             setStatus("canceled");
             return;
         }
 
-        // Step 2: Query all layers
-        setStatus("Running analysis... (querying layers)");
-        await queryAllLayers(reportGeom, myOp);
+        analysisModal.addLog("Service check complete", "success");
+        analysisModal.setProgress(25);
+
+        // Step 2: Query all layers (25% → 60% progress)
+        analysisModal.setStep("Step 2/4: Querying layers...");
+        analysisModal.addLog("Starting layer queries");
+        
+        // Pass modal reference for live updates
+        await queryAllLayers(reportGeom, myOp, analysisModal);
 
         if (isReportCanceled(myOp)) {
+            analysisModal.addLog("Analysis canceled by user", "error");
+            analysisModal.hide();
             setStatus("canceled");
             return;
         }
 
-        // Step 3: Generate map screenshots
-        setStatus("Running analysis... (generating maps)");
-        await generateVisualReportData(myOp);
+        // Update stats from query results
+        layersQueried = lastReportRowsByLayer.length;
+        featuresFound = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+        analysisModal.updateStats(layersQueried, featuresFound, 0);
+        analysisModal.addLog(`Found ${featuresFound} features across ${layersQueried} layers`, "success");
+        analysisModal.setProgress(60);
+
+        // Step 3: Generate map screenshots (60% → 85% progress)
+        analysisModal.setStep("Step 3/4: Generating maps...");
+        analysisModal.addLog("Starting map generation");
+        
+        await generateVisualReportData(myOp, analysisModal);
 
         if (isReportCanceled(myOp)) {
+            analysisModal.addLog("Analysis canceled by user", "error");
+            analysisModal.hide();
             setStatus("canceled");
             return;
         }
 
-        // Step 4: Build final report HTML
-        setStatus("Running analysis... (building report)");
+        // Count maps generated
+        mapsGenerated = lastReportRowsByLayer.filter(x => (x?.count || 0) > 0 && x?._layer && x?._exportQuery).length;
+        analysisModal.updateStats(layersQueried, featuresFound, mapsGenerated);
+        analysisModal.addLog(`Generated ${mapsGenerated} maps`, "success");
+        analysisModal.setProgress(85);
+
+        // Step 4: Build final report HTML (85% → 100% progress)
+        analysisModal.setStep("Step 4/4: Building final report...");
+        analysisModal.addLog("Compiling final report");
+        
         await buildFinalReportHtml();
+
+        analysisModal.addLog("Final report ready", "success");
+        analysisModal.setProgress(100);
 
         // Enable "View Report" button
         if (viewReportBtn) viewReportBtn.disabled = false;
 
         setStatus("Analysis complete!");
+        
+        // ✅ Show success animation
+        analysisModal.showSuccess(layersQueried, featuresFound, mapsGenerated);
+
     } catch (e) {
         console.error(e);
+        analysisModal.addLog(`Error: ${e.message}`, "error");
+        analysisModal.setStep("Analysis failed");
         setStatus("Analysis failed (see console)");
+        
+        setTimeout(() => analysisModal.hide(), 3000);
     } finally {
         setBusy(false);
         endReportOp(myOp);
     }
 }
 
+
 // Extracted query logic (was: runReport)
-async function queryAllLayers(reportGeom, myOp) {
+async function queryAllLayers(reportGeom, myOp, modal = null) {
     const toolLabel = plssToolLabel(aoiSourcePlssTool);
 
     resultsEl.innerHTML = "";
@@ -1603,6 +1773,13 @@ async function queryAllLayers(reportGeom, myOp) {
 
         const t = expandedTargets[i];
 
+        if (modal) {
+            const progress = 25 + (35 * (i / expandedTargets.length)); // 25% → 60%
+            modal.setProgress(progress);
+            modal.setStep(`Step 2/4: Querying ${t.title}...`);
+            modal.addLog(`Querying: ${t.title}`);
+        }
+
         if (t.error) {
             cards.push(`
           <div class="result-card">
@@ -1682,7 +1859,7 @@ async function queryAllLayers(reportGeom, myOp) {
                 continue;
             }
 
-const r = await querySingleLayer(
+        const r = await querySingleLayer(
                 t.url,
                 t.title,
                 reportGeom,
@@ -1768,6 +1945,12 @@ const r = await querySingleLayer(
             <div class="small mono">${escapeHtml(String(e))}</div>
           </div>
         `);
+        }
+
+        // ✅ Update modal stats after each successful query
+        if (modal) {
+            const totalFeatures = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
+            modal.updateStats(lastReportRowsByLayer.length, totalFeatures, 0);
         }
 
         setStatus(`Running analysis... (querying ${i + 1}/${expandedTargets.length})`);
@@ -2157,7 +2340,7 @@ const r = await querySingleLayer(
         `;
     }
 
-async function generateVisualReportData(myOp) {
+async function generateVisualReportData(myOp, modal = null) {
 
         if (!view) return;
 
@@ -2249,6 +2432,14 @@ async function generateVisualReportData(myOp) {
                 }
 
                 const item = targets[i];
+
+                // ✅ Update modal progress
+                if (modal) {
+                    const progress = 60 + (25 * (i / targets.length)); // 60% → 85%
+                    modal.setProgress(progress);
+                    modal.setStep(`Step 3/4: Generating map ${i + 1}/${targets.length}...`);
+                    modal.addLog(`Generating map for: ${item.title}`);
+                }
 
                 setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
 
@@ -3379,6 +3570,9 @@ function buildDataSourcesSection() {
         setMode("select");
         setActiveTab("layers");
         setStatus("ready");
+
+        // Initialize analysis modal
+        analysisModal.init();
 
         // Preload service status once (optional). Keeps Services tab fast.
         if (servicesListEl) {

@@ -14,6 +14,70 @@
   <div id="viewDiv"></div>
   <div id="viewBlocker" class="view-blocker hidden" aria-hidden="true"></div>
   
+<!-- Analysis Progress Modal -->
+<div id="analysisModal" class="analysis-modal hidden">
+    <div class="analysis-modal-content">
+        <div class="analysis-header">
+            <h2>Running Analysis</h2>
+            <div class="analysis-progress-bar">
+                <div id="analysisProgressFill" class="analysis-progress-fill"></div>
+            </div>
+        </div>
+        
+        <div class="analysis-body">
+            <!-- Current Step -->
+            <div class="analysis-section">
+                <div class="analysis-step-label">Current Step</div>
+                <div id="analysisCurrentStep" class="analysis-step-value">Initializing...</div>
+            </div>
+            
+            <!-- Live Log -->
+            <div class="analysis-section">
+                <div class="analysis-step-label">Activity Log</div>
+                <div id="analysisLog" class="analysis-log"></div>
+            </div>
+            
+            <!-- Stats -->
+            <div class="analysis-stats">
+                <div class="analysis-stat">
+                    <div class="analysis-stat-value" id="analysisLayersQueried">0</div>
+                    <div class="analysis-stat-label">Layers Queried</div>
+                </div>
+                <div class="analysis-stat">
+                    <div class="analysis-stat-value" id="analysisFeaturesFound">0</div>
+                    <div class="analysis-stat-label">Features Found</div>
+                </div>
+                <div class="analysis-stat">
+                    <div class="analysis-stat-value" id="analysisMapsGenerated">0</div>
+                    <div class="analysis-stat-label">Maps Generated</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="analysis-footer">
+            <button id="analysisModalCancelBtn" class="btn btn-secondary">Cancel</button>
+        </div>
+        
+        <!-- Success State (hidden initially) -->
+        <div id="analysisSuccess" class="analysis-success hidden">
+            <div class="analysis-success-icon">
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                    <circle class="checkmark-circle" cx="40" cy="40" r="38" />
+                    <path class="checkmark-check" d="M20 40 L35 55 L60 25" />
+                </svg>
+            </div>
+            <h2>Analysis Complete!</h2>
+            <div class="analysis-success-summary">
+                <div><strong id="successLayersQueried">0</strong> layers queried</div>
+                <div><strong id="successFeaturesFound">0</strong> features found</div>
+                <div><strong id="successMapsGenerated">0</strong> maps generated</div>
+            </div>
+            <button id="analysisSuccessCloseBtn" class="btn btn-primary">View Results</button>
+        </div>
+    </div>
+</div>
+
+
   <aside id="panel">
     <div class="panel-header">
       <div class="title">Intersect Report</div>
