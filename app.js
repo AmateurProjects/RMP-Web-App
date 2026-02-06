@@ -998,42 +998,57 @@ function clearAll() {
 
             const key = normalizeUrlKey(l.url);
 
-            cb.addEventListener("change", async () => {
-                const spin = document.getElementById(`rptlayer_spin_${i}`);
-                const key = normalizeUrlKey(l.url);
+cb.addEventListener("change", async () => {
+    const spin = document.getElementById(`rptlayer_spin_${i}`);
+    const key = normalizeUrlKey(l.url);
 
-                // Get existing drawn layers for this report entry (single or array)
-                const existing = reportLayerViews.get(key);
+    // Get existing drawn layers for this report entry (single or array)
+    const existing = reportLayerViews.get(key);
 
-                // Helper to set visibility on single/array
-                const setVisible = (obj, vis) => {
-                    if (!obj) return;
-                    if (Array.isArray(obj)) obj.forEach(x => { try { x.visible = vis; } catch (e) { } });
-                    else { try { obj.visible = vis; } catch (e) { } }
-                };
+    // Helper to set visibility on single/array
+    const setVisible = (obj, vis) => {
+        if (!obj) return;
+        if (Array.isArray(obj)) obj.forEach(x => { try { x.visible = vis; } catch (e) { } });
+        else { try { obj.visible = vis; } catch (e) { } }
+    };
 
-                if (cb.checked) {
-                    if (spin) spin.classList.remove("hidden");
+    if (cb.checked) {
+        if (spin) spin.classList.remove("hidden");  // Show spinner
 
-                    // If we already created layers for this entry, just show them
-                    setVisible(existing, true);
+        // Show existing layers
+        setVisible(existing, true);
 
-                    // If nothing exists yet (first time), you can either:
-                    // (a) do nothing (since report layers are rendered via temp layers in Visual/Final)
-                    // OR (b) expand + add to map here.
-                    // Minimal approach: do nothing else.
+        // ✅ Wire spinner watches for report layers (THIS WAS MISSING!)
+        if (Array.isArray(existing)) {
+            for (const lyr of existing) {
+                clearSpinnerWatch(lyr);
+                wireLayerUpdatingSpinner(lyr, spin).then((h) => setSpinnerWatch(lyr, h));
+            }
+        } else if (existing) {
+            clearSpinnerWatch(existing);
+            wireLayerUpdatingSpinner(existing, spin).then((h) => setSpinnerWatch(existing, h));
+        }
 
-                    if (spin) spin.classList.add("hidden");
-                } else {
-                    if (spin) spin.classList.add("hidden");
-                    setVisible(existing, false);
-                }
-
-                ensureAoiOnTop(map);
-                try { view.requestRender(); } catch (e) { }
-            });
-        });
+        // Don't hide the spinner immediately - let the watch handle it
+    } else {
+        if (spin) spin.classList.add("hidden");
+        
+        // ✅ Clear spinner watches when hiding
+        if (Array.isArray(existing)) {
+            existing.forEach(lyr => clearSpinnerWatch(lyr));
+        } else if (existing) {
+            clearSpinnerWatch(existing);
+        }
+        
+        setVisible(existing, false);
     }
+
+    ensureAoiOnTop(map);
+    try { view.requestRender(); } catch (e) { }
+    });
+
+});
+}
 
     async function queryAllFeaturesPaged(layer, baseQuery, pageSize, maxExportFeatures) {
         const all = [];
