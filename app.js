@@ -916,49 +916,54 @@ function clearAll() {
             if (!cb) return;
 
             cb.addEventListener("change", async () => {
-                const spin = document.getElementById(`sellayer_spin_${i}`);
+                const spin = document.getElementById(`rptlayer_spin_${i}`);
+                const key = normalizeUrlKey(l.url);
+
+                // Get existing drawn layers for this report entry (single or array)
+                const existing = reportLayerViews.get(key);
+
+                // Helper to set visibility on single/array
+                const setVisible = (obj, vis) => {
+                    if (!obj) return;
+                    if (Array.isArray(obj)) obj.forEach(x => { try { x.visible = vis; } catch (e) { } });
+                    else { try { obj.visible = vis; } catch (e) { } }
+                };
 
                 if (cb.checked) {
-                    if (spin) spin.classList.remove("hidden");
+                    if (spin) spin.classList.remove("hidden");  // ✅ Show spinner
 
-                    const isOnMapNow = map.layers.includes(e.layer);
-                    if (!isOnMapNow) map.add(e.layer);
+                    // Show existing layers
+                    setVisible(existing, true);
 
-                    e.layer.visible = true;
-                    ensureAoiOnTop(map);
-                    await hardRefreshLayer(e.layer);
-
-                    clearSpinnerWatch(e.layer);
-                    wireLayerUpdatingSpinner(e.layer, spin).then((h) => setSpinnerWatch(e.layer, h));
-
-                    if (!activeSelectionLayer) {
-                        await setActiveSelectionLayerByIndex(i);
+                    // ✅ Wire spinner watches for report layers
+                    if (Array.isArray(existing)) {
+                        for (const lyr of existing) {
+                            clearSpinnerWatch(lyr);
+                            wireLayerUpdatingSpinner(lyr, spin).then((h) => setSpinnerWatch(lyr, h));
+                        }
+                    } else if (existing) {
+                        clearSpinnerWatch(existing);
+                        wireLayerUpdatingSpinner(existing, spin).then((h) => setSpinnerWatch(existing, h));
                     }
 
+                    if (spin) spin.classList.add("hidden");  // ✅ Hide after wiring
                 } else {
                     if (spin) spin.classList.add("hidden");
-
-                    clearSpinnerWatch(e.layer);
-
-                    // ✅ Don’t remove; just hide
-                    e.layer.visible = false;
-                    updateSelectionToggleCheckbox(i, false);
-
-                    if (activeSelectionLayer === e.layer) {
-                        activeSelectionLayer = null;
-                        activeSelectionLayerView = null;
-
-                        const nextIdx = (selectionLayers || []).findIndex(x => map.layers.includes(x.layer));
-                        if (nextIdx >= 0) {
-                            await setActiveSelectionLayerByIndex(nextIdx);
-                        } else {
-                            setGeometryFromSelection(null);
-                            setStatus("no selection layers visible (turn one on)");
-                        }
+                    
+                    // ✅ Clear spinner watches when hiding
+                    if (Array.isArray(existing)) {
+                        existing.forEach(lyr => clearSpinnerWatch(lyr));
+                    } else if (existing) {
+                        clearSpinnerWatch(existing);
                     }
+                    
+                    setVisible(existing, false);
                 }
-            });
-        });
+
+                ensureAoiOnTop(map);
+                try { view.requestRender(); } catch (e) { }
+            });        
+});
 
         // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
         // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
