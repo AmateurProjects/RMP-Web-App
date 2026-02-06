@@ -29,7 +29,6 @@ require([
     const exportAllBtn = document.getElementById("exportAllBtn");
 
     const cancelRunBtn = document.getElementById("cancelRunBtn");
-    const cancelVisualBtn = document.getElementById("cancelVisualBtn");
     const viewBlockerEl = document.getElementById("viewBlocker");
 
     const statusEl = document.getElementById("status");
@@ -41,25 +40,29 @@ require([
     const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
     const reportLayerTogglesEl = document.getElementById("reportLayerToggles");
 
-    // Tabs + Services + Visual DOM
+    // Tabs + Panels (NEW STRUCTURE)
+    const tabLayersBtn = document.getElementById("tabLayersBtn");
+    const tabServicesBtn = document.getElementById("tabServicesBtn");
     const tabReportBtn = document.getElementById("tabReportBtn");
     const tabVisualBtn = document.getElementById("tabVisualBtn");
-    const tabServicesBtn = document.getElementById("tabServicesBtn");
     const tabFinalReportBtn = document.getElementById("tabFinalReportBtn");
 
-    const tabReportPanel = document.getElementById("tabReportPanel");
-    const tabVisualPanel = document.getElementById("tabVisualPanel");
-    const tabServicesPanel = document.getElementById("tabServicesPanel");
+    const tabLayersPanel = document.getElementById("tabLayersPanel");
+    const tabServicesPanel = document.getElementById("tabServicesPanel");  
+    const tabReportPanel = document.getElementById("tabReportPanel");      
+    const tabVisualPanel = document.getElementById("tabVisualPanel");      
+    const tabReportFinalPanel = document.getElementById("tabReportFinalPanel");
 
     // Visual report DOM
-    const generateVisualBtn = document.getElementById("generateVisualBtn");
     const visualReportStatusEl = document.getElementById("visualReportStatus");
     const visualReportMapWrapEl = document.getElementById("visualReportMapWrap");
     // const visualReportImgEl = document.getElementById("visualReportImg"); // no longer used
     const visualReportOutputsEl = document.getElementById("visualReportOutputs");
     const visualReportSummaryEl = document.getElementById("visualReportSummary");
-    const downloadMapBtn = document.getElementById("downloadMapBtn");
-    const printVisualBtn = document.getElementById("printVisualBtn");
+
+    // Final report DOM
+    const viewReportBtn = document.getElementById("viewReportBtn");
+    const finalReportStatus = document.getElementById("finalReportStatus");
 
     const servicesListEl = document.getElementById("servicesList");
     const refreshServicesBtn = document.getElementById("refreshServicesBtn");
@@ -108,6 +111,9 @@ require([
     let lastReportRowsByLayer = []; // for export-all
     let reportLayerViews = new Map();
 
+    // Cached final report HTML
+    let cachedFinalReportHtml = null;
+
     // Track layerView "updating" watch handles so we can remove them (prevents leaks)
     const spinnerWatchByLayerUid = new Map(); // layer.uid -> watchHandle
 
@@ -153,7 +159,6 @@ require([
 
     // ---------- Operation lock + cancel (Report / Visual) ----------
     let reportOpToken = 0;
-    let visualOpToken = 0;
 
     const navDefaults = { captured: false, values: {} };
     const navProps = [
@@ -206,54 +211,41 @@ require([
         }
     }
 
-    function startVisualOp() {
-        const my = ++visualOpToken;
-        lockMapInteraction(true);
-        if (cancelVisualBtn) cancelVisualBtn.classList.remove("hidden");
-        return my;
-    }
-
-    function endVisualOp(myToken) {
-        if (myToken === visualOpToken) {
-            lockMapInteraction(false);
-            if (cancelVisualBtn) cancelVisualBtn.classList.add("hidden");
-        }
-    }
-
     function isReportCanceled(myToken) { return myToken !== reportOpToken; }
-    function isVisualCanceled(myToken) { return myToken !== visualOpToken; }
-
 
 
     // ---------- Helpers ----------
 
     // Tabs
-    function setActiveTab(tabName) {
-        const isReport = (tabName === "report");
-        const isVisual = (tabName === "visual");
-        const isServices = (tabName === "services");
+function setActiveTab(tabName) {
+    const isLayers = (tabName === "layers");
+    const isServices = (tabName === "services");
+    const isReport = (tabName === "report");
+    const isVisual = (tabName === "visual");
+    const isFinalReport = (tabName === "finalReport");
 
-        if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
-        if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
-        if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
+    // Panels
+    if (tabLayersPanel) tabLayersPanel.classList.toggle("active", isLayers);
+    if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
+    if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
+    if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
+    if (tabReportFinalPanel) tabReportFinalPanel.classList.toggle("active", isFinalReport);
 
-        if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
-        if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
-        if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
+    // Buttons
+    if (tabLayersBtn) tabLayersBtn.classList.toggle("active", isLayers);
+    if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
+    if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
+    if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
+    if (tabFinalReportBtn) tabFinalReportBtn.classList.toggle("active", isFinalReport);
 
-        // ✅ Hide Results + Export ALL on Map tab
-        if (resultsCardEl) resultsCardEl.classList.toggle("hidden", isVisual);
-        if (exportAllBtn) exportAllBtn.classList.toggle("hidden", isVisual);
-
-        // ✅ Force MapView to re-measure + redraw after layout changes
-        if (view) {
-            requestAnimationFrame(() => {
-                try { view.resize(); } catch (e) { }
-                try { view.requestRender(); } catch (e) { }
-            });
-        }
+    // Force MapView to re-measure + redraw after layout changes
+    if (view) {
+        requestAnimationFrame(() => {
+            try { view.resize(); } catch (e) { }
+            try { view.requestRender(); } catch (e) { }
+        });
     }
-
+}
 
     function plssToolLabel(which) {
         return (which === "intersected") ? "Parcel" :
@@ -823,27 +815,37 @@ async function buildReportDisplayLayers() {
 
 
 
-    function clearAll() {
-        selectionGeom = null;
-        aoiSourceObjectId = null;
-        aoiSourceObjectIdField = null;
-        aoiSource = null;
-        aoiSourceLayerTitle = null;
-        aoiSourceLayerUrl = null;
-        aoiSourceFeature = null; // ✅ clear cached AOI source feature
-        resultsEl.innerHTML = "";
-        exportAllBtn.disabled = true;
-        lastReportRowsByLayer = [];
+function clearAll() {
+    selectionGeom = null;
+    aoiSourceObjectId = null;
+    aoiSourceObjectIdField = null;
+    aoiSource = null;
+    aoiSourceLayerTitle = null;
+    aoiSourceLayerUrl = null;
+    aoiSourceFeature = null;
+    
+    // Clear results
+    resultsEl.innerHTML = "";
+    exportAllBtn.disabled = true;
+    lastReportRowsByLayer = [];
+    
+    // Clear map outputs
+    if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = "";
+    if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
+    
+    // Clear final report
+    cachedFinalReportHtml = null;
+    if (viewReportBtn) viewReportBtn.disabled = true;
 
-        if (aoiLayer) aoiLayer.removeAll();
-        aoiGraphic = null;
+    if (aoiLayer) aoiLayer.removeAll();
+    aoiGraphic = null;
 
-        runBtn.disabled = true;
-        setStatus("cleared");
-        coverageCache.clear();
-        coverageAoiKey = "";
-        setBusy(false);
-    }
+    runBtn.disabled = true;
+    setStatus("cleared");
+    coverageCache.clear();
+    coverageAoiKey = "";
+    setBusy(false);
+}
 
     function setGeometryFromSelection(geom) {
         selectionGeom = geom || null;
@@ -1377,142 +1379,175 @@ async function buildReportDisplayLayers() {
         return { title: layerTitle, url: layerUrl, count, features, layer, exportQuery: q };
     }
 
+// ========================================
+// REFACTORED ANALYSIS FUNCTIONS
+// ========================================
 
-    async function runReport() {
-        const myOp = startReportOp();
+// Main orchestrator - runs ALL analysis steps
+async function runAnalysis() {
+    const myOp = startReportOp();
 
-        const reportGeom = getReportGeometry();
-        if (!reportGeom) { endReportOp(myOp); return; }
+    const reportGeom = getReportGeometry();
+    if (!reportGeom) { endReportOp(myOp); return; }
 
-        const toolLabel = plssToolLabel(aoiSourcePlssTool);
+    setBusy(true);
 
-        setBusy(true);
-        setStatus("running report…");
-        resultsEl.innerHTML = "";
-        exportAllBtn.disabled = true;
-        lastReportRowsByLayer = [];
+    try {
+        // Step 1: Data Check
+        setStatus("Running analysis... (checking services)");
+        await refreshServicesTab();
 
-        try {
-            // Start with report layers only
-            const combinedCfgs = [
-                ...(config.reportLayers || [])
-            ];
+        if (isReportCanceled(myOp)) {
+            setStatus("canceled");
+            return;
+        }
 
-            // ✅ Ensure exactly ONE State Boundaries is included (prefer our captured URL)
-            if (plssStateLayerUrl) {
-                combinedCfgs.push({
-                    title: "PLSS: State Boundaries",
-                    url: plssStateLayerUrl
-                });
-            }
+        // Step 2: Query all layers
+        setStatus("Running analysis... (querying layers)");
+        await queryAllLayers(reportGeom, myOp);
 
-            // ✅ When AOI is DRAWN, include PLSS Parcel (Intersected) intersects
-            if (aoiSource === "draw" && plssParcelLayerUrl) {
-                combinedCfgs.push({
-                    title: "PLSS: Parcel",
-                    url: String(plssParcelLayerUrl).replace(/\/+$/, "")
-                });
-            }
+        if (isReportCanceled(myOp)) {
+            setStatus("canceled");
+            return;
+        }
 
+        // Step 3: Generate map screenshots
+        setStatus("Running analysis... (generating maps)");
+        await generateVisualReportData(myOp);
 
-            // De-duplicate by normalized URL (KEEP LAST so AOI-source overrides config report entry)
-            const byUrl = new Map(); // urlKey -> { title, url }
+        if (isReportCanceled(myOp)) {
+            setStatus("canceled");
+            return;
+        }
 
-            for (const l of combinedCfgs) {
-                const urlKey = String(l?.url || "").replace(/\/+$/, "");
-                if (!urlKey) continue;
+        // Step 4: Build final report HTML
+        setStatus("Running analysis... (building report)");
+        await buildFinalReportHtml();
 
-                // Keep the last occurrence for a given URL
-                byUrl.set(urlKey, { title: l.title, url: urlKey });
-            }
+        // Enable "View Report" button
+        if (viewReportBtn) viewReportBtn.disabled = false;
 
-            const reportCfgs = Array.from(byUrl.values());
-            const expandedTargets = [];
+        setStatus("Analysis complete!");
+    } catch (e) {
+        console.error(e);
+        setStatus("Analysis failed (see console)");
+    } finally {
+        setBusy(false);
+        endReportOp(myOp);
+    }
+}
 
-            // ============================================================
-            // ✅ PINNED AOI SOURCE TARGET (always show 1-row table)
-            // This bypasses dedupe/expansion/skipping and cannot disappear.
-            // ============================================================
-            if (aoiSource === "select" && aoiSourceLayerUrl) {
-                // We need an objectId. If it’s missing, this is a bug upstream.
-                if (aoiSourceObjectId == null) {
-                    console.warn("AOI source objectId is null; AOI source table will not be 1-row exact.");
-                }
+// Extracted query logic (was: runReport)
+async function queryAllLayers(reportGeom, myOp) {
+    const toolLabel = plssToolLabel(aoiSourcePlssTool);
 
-                const toolLabel =
-                    (aoiSourcePlssTool === "township") ? "Township" :
-                        (aoiSourcePlssTool === "section") ? "Section" :
-                            (aoiSourcePlssTool === "intersected") ? "Parcel" :
-                                "PLSS";
+    resultsEl.innerHTML = "";
+    exportAllBtn.disabled = true;
+    lastReportRowsByLayer = [];
 
+    const combinedCfgs = [
+        ...(config.reportLayers || [])
+    ];
+
+    if (plssStateLayerUrl) {
+        combinedCfgs.push({
+            title: "PLSS: State Boundaries",
+            url: plssStateLayerUrl
+        });
+    }
+
+    if (aoiSource === "draw" && plssParcelLayerUrl) {
+        combinedCfgs.push({
+            title: "PLSS: Parcel",
+            url: String(plssParcelLayerUrl).replace(/\/+$/, "")
+        });
+    }
+
+    const byUrl = new Map();
+
+    for (const l of combinedCfgs) {
+        const urlKey = String(l?.url || "").replace(/\/+$/, "");
+        if (!urlKey) continue;
+
+        byUrl.set(urlKey, { title: l.title, url: urlKey });
+    }
+
+    const reportCfgs = Array.from(byUrl.values());
+    const expandedTargets = [];
+
+    if (aoiSource === "select" && aoiSourceLayerUrl) {
+        if (aoiSourceObjectId == null) {
+            console.warn("AOI source objectId is null; AOI source table will not be 1-row exact.");
+        }
+
+        const toolLabel =
+            (aoiSourcePlssTool === "township") ? "Township" :
+                (aoiSourcePlssTool === "section") ? "Section" :
+                    (aoiSourcePlssTool === "intersected") ? "Parcel" :
+                        "PLSS";
+
+        expandedTargets.push({
+            title: `AOI Source (${toolLabel})`,
+            url: String(aoiSourceLayerUrl).replace(/\/+$/, ""),
+            __pinnedAoiFeature: aoiSourceFeature || null
+        });
+    }
+
+    for (const cfg of reportCfgs) {
+        const url = String(cfg.url || "");
+
+        if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
+            continue;
+        }
+
+        if (isFeatureServerRoot(url)) {
+            try {
+                const sublayers = await expandServiceToSublayers(url);
+                sublayers.forEach(sl => expandedTargets.push({
+                    title: `${cfg.title}: ${sl.title}`,
+                    url: sl.url
+                }));
+            } catch (e) {
                 expandedTargets.push({
-                    title: `AOI Source (${toolLabel})`,
-                    url: String(aoiSourceLayerUrl).replace(/\/+$/, ""),
-                    __pinnedAoiFeature: aoiSourceFeature || null
+                    title: `${cfg.title} (FAILED to expand)`,
+                    url,
+                    error: e
                 });
             }
+            continue;
+        }
 
-
-            // Expand service roots into sublayers
-            for (const cfg of reportCfgs) {
-                const url = String(cfg.url || "");
-
-                // ✅ Never expand the PLSS selection MapServer root into the report.
-                // We only ever want explicit PLSS sublayers: (AOI source OR Parcel) + State.
-                if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
-                    // If someone accidentally added a PLSS MapServer root to reportLayers,
-                    // skip it here so it can't flood the report with Township/Section/Intersected again.
-                    continue;
-                }
-
-                if (isFeatureServerRoot(url)) {
-                    try {
-                        const sublayers = await expandServiceToSublayers(url);
-                        sublayers.forEach(sl => expandedTargets.push({
-                            title: `${cfg.title}: ${sl.title}`,
-                            url: sl.url
-                        }));
-                    } catch (e) {
-                        expandedTargets.push({
-                            title: `${cfg.title} (FAILED to expand)`,
-                            url,
-                            error: e
-                        });
-                    }
-                    continue;
-                }
-
-                if (isMapServerRoot(url)) {
-                    try {
-                        const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
-                        subs.forEach(sl => expandedTargets.push({
-                            title: `${cfg.title}: ${sl.title}`,
-                            url: sl.url
-                        }));
-                    } catch (e) {
-                        expandedTargets.push({
-                            title: `${cfg.title} (FAILED to expand)`,
-                            url,
-                            error: e
-                        });
-                    }
-                    continue;
-                }
-
-                expandedTargets.push({ title: cfg.title, url });
+        if (isMapServerRoot(url)) {
+            try {
+                const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
+                subs.forEach(sl => expandedTargets.push({
+                    title: `${cfg.title}: ${sl.title}`,
+                    url: sl.url
+                }));
+            } catch (e) {
+                expandedTargets.push({
+                    title: `${cfg.title} (FAILED to expand)`,
+                    url,
+                    error: e
+                });
             }
+            continue;
+        }
 
-            const cards = [];
-            for (let i = 0; i < expandedTargets.length; i++) {
-                if (isReportCanceled(myOp)) {
-                    setStatus("canceled");
-                    break;
-                }
+        expandedTargets.push({ title: cfg.title, url });
+    }
 
-                const t = expandedTargets[i];
+    const cards = [];
+    for (let i = 0; i < expandedTargets.length; i++) {
+        if (isReportCanceled(myOp)) {
+            setStatus("canceled");
+            break;
+        }
 
-                if (t.error) {
-                    cards.push(`
+        const t = expandedTargets[i];
+
+        if (t.error) {
+            cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
@@ -1521,51 +1556,48 @@ async function buildReportDisplayLayers() {
             <div class="small mono">${escapeHtml(String(t.error))}</div>
           </div>
         `);
-                    continue;
-                }
+            continue;
+        }
 
-                try {
-                    const plss = isPlssLayerTitleOrUrl(t.title, t.url);
-                    const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
+        try {
+            const plss = isPlssLayerTitleOrUrl(t.title, t.url);
+            const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
 
-                    // Only tighten the relationship in the specific failing case:
-                    // AOI chosen from Township/Section, and target layer is PLSS Intersected.
-                    const spatialRel =
-                        (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
-                            ? "within"
-                            : "intersects";
+            const spatialRel =
+                (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
+                    ? "within"
+                    : "intersects";
 
-                    // ✅ AOI Source card: render from cached feature (no service re-query)
-                    if (t.__pinnedAoiFeature) {
-                        const f = t.__pinnedAoiFeature;
-                        const feats = f ? [f] : [];
-                        const r = {
-                            title: t.title,
-                            url: t.url,
-                            count: feats.length,
-                            features: feats,
-                            layer: null,
-                            exportQuery: null
-                        };
+            if (t.__pinnedAoiFeature) {
+                const f = t.__pinnedAoiFeature;
+                const feats = f ? [f] : [];
+                const r = {
+                    title: t.title,
+                    url: t.url,
+                    count: feats.length,
+                    features: feats,
+                    layer: null,
+                    exportQuery: null
+                };
 
-                        const rows = flattenAttributes(r.features);
+                const rows = flattenAttributes(r.features);
 
-                        lastReportRowsByLayer.push({
-                            title: r.title,
-                            url: r.url,
-                            count: r.count,
-                            rows,
-                            _layer: null,
-                            _exportQuery: null,
-                            fullRows: rows // ✅ allow FULL export to export this one cached row
-                        });
+                lastReportRowsByLayer.push({
+                    title: r.title,
+                    url: r.url,
+                    count: r.count,
+                    rows,
+                    _layer: null,
+                    _exportQuery: null,
+                    fullRows: rows
+                });
 
-                        const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
-                        const tableHtml = feats.length
-                            ? makeTable(feats, maxFields, r.count)
-                            : `<div class="small">No sample rows.</div>`;
+                const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
+                const tableHtml = feats.length
+                    ? makeTable(feats, maxFields, r.count)
+                    : `<div class="small">No sample rows.</div>`;
 
-                        cards.push(`
+                cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
@@ -1589,46 +1621,45 @@ async function buildReportDisplayLayers() {
           </div>
         `);
 
-                        setStatus(`running report… (${i + 1}/${expandedTargets.length})`);
-                        continue; // ✅ skip normal querySingleLayer path
-                    }
+                setStatus(`Running analysis... (querying ${i + 1}/${expandedTargets.length})`);
+                continue;
+            }
 
 
-                    const r = await querySingleLayer(
-                        t.url,
-                        t.title,
-                        reportGeom,           // ignored in objectId path
-                        spatialRel,
-                    );
-                    const rows = flattenAttributes(r.features);
+            const r = await querySingleLayer(
+                t.url,
+                t.title,
+                reportGeom,
+                spatialRel,
+            );
+            const rows = flattenAttributes(r.features);
 
-                    // Store sample rows PLUS the objects we need for FULL export paging
-                    lastReportRowsByLayer.push({
-                        title: r.title,
-                        url: r.url,
-                        count: r.count,       // <-- store count for summary stats
-                        rows,                 // sample rows shown in the UI table
-                        _layer: r.layer,      // FeatureLayer instance used for querying
-                        _exportQuery: r.exportQuery, // Query object (intersects geometry etc.)
-                        fullRows: null        // will be filled on-demand when user exports FULL
-                    });
+            lastReportRowsByLayer.push({
+                title: r.title,
+                url: r.url,
+                count: r.count,
+                rows,
+                _layer: r.layer,
+                _exportQuery: r.exportQuery,
+                fullRows: null
+            });
 
 
-                    const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
-                    const tableHtml = (r.features && r.features.length)
-                        ? makeTable(r.features, maxFields, r.count)
-                        : `<div class="small">No sample rows.</div>`;
+            const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
+            const tableHtml = (r.features && r.features.length)
+                ? makeTable(r.features, maxFields, r.count)
+                : `<div class="small">No sample rows.</div>`;
 
-                    cards.push(`
+            cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
                 <div class="badge">
                 count: <b>${r.count}</b>
                 ${(config.report?.maxExportFeatures && r.count > config.report.maxExportFeatures)
-                            ? `<span class="small" style="margin-left:8px; opacity:.85;">(FULL export capped at ${config.report.maxExportFeatures})</span>`
-                            : ``
-                        }
+                    ? `<span class="small" style="margin-left:8px; opacity:.85;">(FULL export capped at ${config.report.maxExportFeatures})</span>`
+                    : ``
+                }
                 </div>
             </div>
                 <div class="small mono">
@@ -1647,8 +1678,8 @@ async function buildReportDisplayLayers() {
             </div>
         </div>
         `);
-                } catch (e) {
-                    cards.push(`
+        } catch (e) {
+            cards.push(`
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
@@ -1657,25 +1688,18 @@ async function buildReportDisplayLayers() {
             <div class="small mono">${escapeHtml(String(e))}</div>
           </div>
         `);
-                }
-
-                setStatus(`running report… (${i + 1}/${expandedTargets.length})`);
-            }
-
-            renderResults(cards.join(""));
-            wireExportButtons();
-            exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
-            setStatus("done");
-            renderVisualSummary();
-
-        } catch (e) {
-            console.error(e);
-            setStatus("report failed (see console)");
-        } finally {
-            setBusy(false);
-            endReportOp(myOp);
         }
+
+        setStatus(`Running analysis... (querying ${i + 1}/${expandedTargets.length})`);
     }
+
+    renderResults(cards.join(""));
+    wireExportButtons();
+    exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
+    renderVisualSummary();
+}
+
+
 
 
     function wireExportButtons() {
@@ -2053,28 +2077,24 @@ async function buildReportDisplayLayers() {
         `;
     }
 
-    async function generateVisualReport() {
-        const myOp = startVisualOp();
+async function generateVisualReportData(myOp) {
 
-        if (!view) { endVisualOp(myOp); return; }
+        if (!view) return;
 
         if (!selectionGeom) {
-            setVisualStatus("Select or draw an AOI first.");
+            setVisualStatus("No AOI selected.");
             return;
         }
 
         if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-            setVisualStatus("Run the report first (Tables tab) so we know which layers intersect.");
+            setVisualStatus("No query results available.");
             return;
         }
 
-        setBusy(true);
         setVisualStatus("Generating maps for intersecting layers…");
 
         if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
         if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = "";
-        if (downloadMapBtn) downloadMapBtn.disabled = true;
-        if (printVisualBtn) printVisualBtn.disabled = true;
 
         try {
             // Only layers with real intersect hits AND usable query objects
@@ -2143,7 +2163,7 @@ async function buildReportDisplayLayers() {
             const outCards = [];
 
             for (let i = 0; i < targets.length; i++) {
-                if (isVisualCanceled(myOp)) {
+                if (isReportCanceled(myOp)) { 
                     setVisualStatus("canceled");
                     break;
                 }
@@ -2242,14 +2262,11 @@ async function buildReportDisplayLayers() {
             // Keep your existing summary panel behavior
             renderVisualSummary();
 
-            setVisualStatus("Done.");
+            setVisualStatus("Maps generated.");
         } catch (e) {
             console.error(e);
             setVisualStatus("Failed to generate maps (see console).");
-        } finally {
-            setBusy(false);
-            endVisualOp(myOp);
-        }
+        }    
     }
 
 
@@ -2351,7 +2368,7 @@ async function buildReportDisplayLayers() {
 </html>`;
     }
 
-    async function generateFinalReport() {
+    async function buildFinalReportHtml() {
         if (!view) return;
 
         if (!selectionGeom) {
@@ -2364,12 +2381,7 @@ async function buildReportDisplayLayers() {
             return;
         }
 
-        // Lock the view so users can't change extent mid-capture
-        const myOp = startVisualOp(); // reuse existing lock + overlay behavior
-
-        setBusy(true);
-        setStatus("building final report…");
-
+        if (finalReportStatus) finalReportStatus.textContent = "Building report...";
         try {
             // Only layers with real hits and usable query objects (skip pinned AOI source card)
             const targets = lastReportRowsByLayer
@@ -2447,11 +2459,6 @@ async function buildReportDisplayLayers() {
             `;
             } else {
                 for (let i = 0; i < targets.length; i++) {
-                    // Cancel support (reuses visual cancel)
-                    if (isVisualCanceled(myOp)) {
-                        setStatus("final report canceled");
-                        break;
-                    }
 
                     const item = targets[i];
                     setStatus(`building final report… (${i + 1}/${targets.length})`);
@@ -2502,7 +2509,6 @@ async function buildReportDisplayLayers() {
                             }
                         } catch (e) { }
 
-                        if (isVisualCanceled(myOp)) break;
 
                         // 🔒 Re-apply locked extent to guarantee identical framing
                         if (fixedExtent) {
@@ -2554,20 +2560,27 @@ async function buildReportDisplayLayers() {
                 totalsHtml,
                 sectionsHtml
             });
+        
+        cachedFinalReportHtml = htmlDoc;
 
-            openHtmlInNewTab(htmlDoc);
+        if (finalReportStatus) finalReportStatus.textContent = "Report ready.";
 
-            setStatus("final report opened in new tab");
         } catch (e) {
             console.error(e);
-            setStatus("final report failed (see console)");
-        } finally {
-            setBusy(false);
-            endVisualOp(myOp); // unlock map
+            if (finalReportStatus) finalReportStatus.textContent = "Failed to build report (see console).";
+        }        
+      }
+    
+
+
+    // Simple wrapper - opens cached HTML
+    function viewFinalReport() {
+        if (!cachedFinalReportHtml) {
+            alert("Run analysis first to generate the report.");
+            return;
         }
+        openHtmlInNewTab(cachedFinalReportHtml);
     }
-
-
 
     async function getFullFeatureGeometryFromLayer(layer, graphic) {
         if (!layer || !graphic) {
@@ -2697,8 +2710,6 @@ async function buildReportDisplayLayers() {
         layerCfgByUrl = buildLayerCfgIndex(config);
 
         map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
-
-        const plssCacheBuster = `?_cb=${Date.now()}`;
 
         // --- Always-on basemap overlay: BLM SMA (BLM Only) ---
         const smaBlmOnly = new TileLayer({
@@ -2837,7 +2848,6 @@ async function buildReportDisplayLayers() {
         selectionLayers = expandedSelectionCfgs.map(cfg => ({
             cfg,
             layer: new FeatureLayer({
-                url: cfg.url + (cfg.url.includes('PLSS') ? plssCacheBuster : ''),
                 url: cfg.url,
                 title: cfg.title,
                 outFields: ["*"],
@@ -2927,23 +2937,25 @@ async function buildReportDisplayLayers() {
 
 
         // Tab wiring
+        if (tabLayersBtn) tabLayersBtn.addEventListener("click", () => setActiveTab("layers"));
+
+        if (tabServicesBtn) tabServicesBtn.addEventListener("click", () => {
+            setActiveTab("services");
+        });
+
         if (tabReportBtn) tabReportBtn.addEventListener("click", () => setActiveTab("report"));
 
         if (tabVisualBtn) tabVisualBtn.addEventListener("click", () => {
             setActiveTab("visual");
             renderVisualSummary();
-            setVisualStatus(selectionGeom ? "Ready." : "Select or draw an AOI first.");
         });
 
-        if (tabServicesBtn) tabServicesBtn.addEventListener("click", async () => {
-            setActiveTab("services");
-            await refreshServicesTab();
+        if (tabFinalReportBtn) tabFinalReportBtn.addEventListener("click", () => {
+            setActiveTab("finalReport");
         });
-
-        if (tabFinalReportBtn) tabFinalReportBtn.addEventListener("click", generateFinalReport);
 
         if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
-        if (generateVisualBtn) generateVisualBtn.addEventListener("click", generateVisualReport);
+        if (viewReportBtn) viewReportBtn.addEventListener("click", viewFinalReport);
 
 
         // UI wiring
@@ -2966,8 +2978,8 @@ async function buildReportDisplayLayers() {
             });
         }
 
-        if (runBtn) runBtn.addEventListener("click", runReport);
-
+        if (runBtn) runBtn.addEventListener("click", runAnalysis);
+        
         if (cancelRunBtn) {
             cancelRunBtn.addEventListener("click", () => {
                 // bump token to cancel; unlock immediately
@@ -2977,16 +2989,6 @@ async function buildReportDisplayLayers() {
                 setStatus("cancel requested…");
             });
         }
-
-        if (cancelVisualBtn) {
-            cancelVisualBtn.addEventListener("click", () => {
-                visualOpToken++;
-                lockMapInteraction(false);
-                cancelVisualBtn.classList.add("hidden");
-                setVisualStatus("cancel requested…");
-            });
-        }
-
 
         if (clearBtn) clearBtn.addEventListener("click", clearAll);
 
@@ -3041,6 +3043,7 @@ async function buildReportDisplayLayers() {
 
 
         setMode("select");
+        setActiveTab("layers");
         setStatus("ready");
 
         // Preload service status once (optional). Keeps Services tab fast.

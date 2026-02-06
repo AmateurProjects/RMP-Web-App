@@ -22,13 +22,12 @@
       <div class="banner banner-warn">
         Pre-alpha: active development — outputs may change and results may be incomplete.
       </div>
-      <!-- NOTE: subtitle moved out of header -->
     </div>
 
-    <!-- AOI / Intersect controls (moved directly under header) -->
+    <!-- AOI / Intersect controls -->
     <div class="card">
-      <!-- Subtitle moved here (top of AOI card) -->
-      <div class="subtitle">Select a polygon or draw one, then run intersects against configured layers.</div>
+      <!-- Subtitle -->
+      <div class="subtitle">Select a polygon or draw one, then run analysis against configured layers.</div>
 
       <div class="row" style="margin-top:10px;">
         <label class="label">Area of Interest</label>
@@ -72,7 +71,7 @@
       </div>
 
       <div class="row">
-        <button id="runBtn" class="btn primary" disabled>Run report</button>
+        <button id="runBtn" class="btn primary" disabled>Run Analysis</button>
         <button id="cancelRunBtn" class="btn subtle hidden" type="button">Cancel</button>
         <button id="clearBtn" class="btn subtle" type="button">Clear</button>
       </div>
@@ -83,89 +82,95 @@
       </div>
     </div>
 
-    <!-- Tabs (moved under AOI; always visible) -->
+    <!-- Tabs (NEW ORDER: Layers | Data Check | Tables | Map | Report) -->
     <div class="tabs tabs-mid">
-      <button id="tabReportBtn" class="tab-btn active" type="button">Tables</button>
-      <button id="tabVisualBtn" class="tab-btn" type="button">Map</button>
+      <button id="tabLayersBtn" class="tab-btn active" type="button">Layers</button>
       <button id="tabServicesBtn" class="tab-btn" type="button">Data Check</button>
-      <!-- Placeholder for future work -->
-    <button id="tabFinalReportBtn" class="tab-btn" type="button">Report</button>
+      <button id="tabReportBtn" class="tab-btn" type="button">Tables</button>
+      <button id="tabVisualBtn" class="tab-btn" type="button">Map</button>
+      <button id="tabFinalReportBtn" class="tab-btn" type="button">Report</button>
     </div>
 
     <!-- Tab Panels -->
-    <section id="tabReportPanel" class="tab-panel active">
+    
+    <!-- NEW: Layers Tab (first tab, active by default) -->
+    <section id="tabLayersPanel" class="tab-panel active">
+      <div class="card small">
+        <div class="label">Selection Layers</div>
+        <div class="hint">Click-to-select layers (PLSS polygons)</div>
+        <div id="selectionLayerToggles"></div>
 
-    <div class="card small">
-      <div class="label">Layers</div>
+        <div class="label" style="margin-top:14px;">Report Layers</div>
+        <div class="hint">Queried during analysis (toggle for map display)</div>
+        <div id="reportLayerToggles"></div>
+      </div>
+    </section>
 
-      <div class="hint">Selection layers (click-to-select)</div>
-      <div id="selectionLayerToggles"></div>
+    <!-- Data Check Tab (second tab) -->
+    <section id="tabServicesPanel" class="tab-panel">
+      <div class="card">
+        <div class="row space-between">
+          <div class="label">Feature services used by this app</div>
+          <button id="refreshServicesBtn" class="btn subtle" type="button">Refresh</button>
+        </div>
 
-      <div class="hint" style="margin-top:10px;">Report layers (query-only unless toggled on)</div>
-      <div id="reportLayerToggles"></div>
-    </div>
+        <div class="hint">
+          Shows configured selection/report services, basic service info (from <span class="mono">?f=pjson</span>), and a simple UP/DOWN check.
+        </div>
 
-  </section>
+        <div id="servicesList" style="margin-top:10px;"></div>
+      </div>
+    </section>
+
+    <!-- Tables Tab (third tab) -->
+    <section id="tabReportPanel" class="tab-panel">
+      <div class="card">
+        <div class="row space-between">
+          <div class="label">Query Results</div>
+          <button id="exportAllBtn" class="btn subtle" type="button" disabled>Export all CSV</button>
+        </div>
+        <div id="results"></div>
+      </div>
+    </section>
   
-<!-- NEW: Visual Report Tab -->
-<section id="tabVisualPanel" class="tab-panel">
-  <div class="card">
-  <div class="row space-between">
-    <div class="label">Visual Report</div>
-    <div class="row" style="margin:0;">
-      <button id="generateVisualBtn" class="btn primary" type="button">Generate</button>
-      <button id="cancelVisualBtn" class="btn subtle hidden" type="button">Cancel</button>
-    </div>
-  </div>
+    <!-- Map Tab (fourth tab) -->
+    <section id="tabVisualPanel" class="tab-panel">
+      <div class="card">
+        <div class="label">Visual Report</div>
 
-    <div class="hint">
-      Creates a simple report view: AOI map + summary statistics. (Run the report first for best results.)
-    </div>
+        <div class="hint">
+          Map screenshots with coverage statistics for each intersecting layer.
+        </div>
 
-    <div id="visualReportStatus" class="small" style="margin-top:10px;"></div>
+        <div id="visualReportStatus" class="small" style="margin-top:10px;"></div>
 
-    <div id="visualReportMapWrap" class="visual-map-wrap hidden">
-      <div id="visualReportOutputs"></div>
+        <div id="visualReportMapWrap" class="visual-map-wrap hidden">
+          <div id="visualReportOutputs"></div>
+        </div>
 
-      <!-- Optional: keep these buttons for later; disabling them for now is fine -->
-      <div class="row" style="margin-top:10px;">
-        <button id="downloadMapBtn" class="btn subtle" type="button" disabled>Download map PNG</button>
-        <button id="printVisualBtn" class="btn subtle" type="button" disabled>Print</button>
+        <div class="card small" style="margin-top:10px;">
+          <div class="label">Summary</div>
+          <div id="visualReportSummary"></div>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <div class="card small" style="margin-top:10px;">
-      <div class="label">Summary</div>
-      <div id="visualReportSummary"></div>
-    </div>
-  </div>
-</section>
+    <!-- Report Tab (fifth tab) -->
+    <section id="tabReportFinalPanel" class="tab-panel">
+      <div class="card">
+        <div class="label">Final Report</div>
+        
+        <div class="hint">
+          Printable HTML report with all maps and statistics. Opens in new tab.
+        </div>
 
+        <div id="finalReportStatus" class="small" style="margin-top:10px;"></div>
 
-  <!-- NEW: Services Tab -->
-  <section id="tabServicesPanel" class="tab-panel">
-    <div class="card">
-      <div class="row space-between">
-        <div class="label">Feature services used by this app</div>
-        <button id="refreshServicesBtn" class="btn subtle" type="button">Refresh</button>
+        <div class="row" style="margin-top:10px;">
+          <button id="viewReportBtn" class="btn primary" type="button" disabled>View Report</button>
+        </div>
       </div>
-
-      <div class="hint">
-        Shows configured selection/report services, basic service info (from <span class="mono">?f=pjson</span>), and a simple UP/DOWN check.
-      </div>
-
-      <div id="servicesList" style="margin-top:10px;"></div>
-    </div>
-  </section>
-
-    <!-- Results (moved under tabs; still always visible) -->
-    <div class="card" id="resultsCard">
-      <div class="row space-between">
-        <div class="label">Results</div>
-        <button id="exportAllBtn" class="btn subtle" type="button" disabled>Export all CSV</button>
-      </div>
-      <div id="results"></div>
-    </div>
+    </section>
 
   </aside>
 
