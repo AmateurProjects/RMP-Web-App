@@ -87,6 +87,9 @@ require([
     let aoiSourceLayerTitle = null;  // optional: which selection layer was clicked
     let map = null; // <-- add (so PLSS buttons can add/remove selection layers)
 
+    // Track service status (url -> "UP" | "DOWN")
+    const serviceStatus = new Map();
+
     // AOI overlay (always on top)
     let aoiLayer = null;      // GraphicsLayer
     let aoiGraphic = null;    // Graphic (single AOI graphic)
@@ -901,13 +904,18 @@ function clearAll() {
         // ---- Selection layers (already on map): toggle visibility
         selectionLayerTogglesEl.innerHTML = (selectionLayers || []).map((e, i) => {
             const checked = e.layer.visible ? "checked" : "";
+            const status = serviceStatus.get(e.cfg.url);
+            const statusIcon = (status === "DOWN") 
+                ? `<span class="status-warning" title="Service is DOWN">⚠️</span>` 
+                : "";
+            
             return `
             <div class="toggle-row">
                 <input type="checkbox" id="sellayer_${i}" ${checked} />
                 <span class="layer-swatch layer-swatch-selection" aria-hidden="true" title="Selection layer"></span>
-                <label class="toggle-name" for="sellayer_${i}">${escapeHtml(e.cfg.title)}</label>
+                <label class="toggle-name" for="sellayer_${i}">${escapeHtml(e.cfg.title)}${statusIcon}</label>
                 <span id="sellayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
-            </div>
+            </div>            
         `;
         }).join("");
 
@@ -970,6 +978,11 @@ function clearAll() {
 
             // If existing is an array (expanded root), consider it checked if any layer exists
             const isChecked = false;
+            const status = serviceStatus.get(l.url);
+            const statusIcon = (status === "DOWN") 
+                ? `<span class="status-warning" title="Service is DOWN">⚠️</span>` 
+                : "";
+
                 Array.isArray(existing) ? (existing.length > 0) :
                     existing ? !!existing.visible :
                         false;
@@ -986,7 +999,7 @@ function clearAll() {
                 <div class="toggle-row">
                     <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
                     <span class="layer-swatch layer-swatch-report" aria-hidden="true" title="Report layer"></span>
-                    <label class="toggle-name" for="rptlayer_${i}">${escapeHtml(l.title)}${note}</label>
+                    <label class="toggle-name" for="rptlayer_${i}">${escapeHtml(l.title)}${statusIcon}${note}</label>
                     <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
                 </div>
             `;
@@ -1093,6 +1106,29 @@ cb.addEventListener("change", async () => {
         return out;
     }
 
+
+async function checkServiceStatusBackground() {
+    const items = getConfiguredServices();
+    const timeoutMs = config?.services?.timeoutMs ?? 8000;
+
+    for (const it of items) {
+        const pjsonUrl = normalizePjsonUrl(it.url);
+        
+        try {
+            await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+            serviceStatus.set(it.url, "UP");
+        } catch (e) {
+            serviceStatus.set(it.url, "DOWN");
+        }
+    }
+
+    // Re-render layer toggles to show status icons
+    renderLayerToggles(map);
+}
+
+
+
+
     async function refreshServicesTab() {
         if (!servicesListEl) return;
 
@@ -1132,6 +1168,7 @@ cb.addEventListener("change", async () => {
                 errText = String(e?.message || e);
             }
 
+            serviceStatus.set(it.url, status);
             const pillClass = (status === "UP") ? "pill pill-up" : "pill pill-down";
             const descHtml = desc
                 ? `
@@ -3065,6 +3102,9 @@ async function generateVisualReportData(myOp) {
         if (servicesListEl) {
             refreshServicesTab().catch(() => { });
         }
+
+        // Background service check on startup
+        checkServiceStatusBackground().catch(() => {});
     }
 
     init().catch((e) => {
