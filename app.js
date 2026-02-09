@@ -3030,17 +3030,19 @@ async function buildFinalReportHtml() {
                     // ✅ Switch to imagery basemap
                     try {
                         view.map.basemap = imageryBasemapId;
+                        // Wait for basemap to settle after switch
+                        await new Promise(r => setTimeout(r, 1500));
                     } catch (e) {
                         console.warn("Failed to switch to imagery basemap:", e);
                     }
 
-                    // ✅ After basemap change, wait for imagery tiles to load
-                    await waitForViewStationary(2500);
+                    // ✅ Extended wait for imagery tiles to load after basemap change
+                    await waitForViewStationary(3000);
 
                     // ✅ Zoom in tight on AOI (minimal padding)
                     const tightExtent = selectionGeom.extent.expand(1.2);
                     await view.goTo(tightExtent, { animate: false });
-                    await waitForViewStationary(2500);
+                    await waitForViewStationary(3000);
 
                     // ✅ Use improved screenshot capture with tile wait logic
                     const dataUrl = await captureScreenshotWithWait({ width });
@@ -3049,6 +3051,7 @@ async function buildFinalReportHtml() {
                     // ✅ Restore original basemap
                     try {
                         view.map.basemap = originalBasemap;
+                        await new Promise(r => setTimeout(r, 500));
                     } catch (e) {
                         console.warn("Failed to restore original basemap:", e);
                     }
@@ -3167,34 +3170,9 @@ async function generateAoiMapsWithCircles() {
     const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
 
     function setVisibilityForAoi() {
-        // Find and show PLSS State layer - search more broadly
-        let plssStateLayer = null;
-        
-        // First try: look by URL match
-        if (plssStateLayerUrl) {
-            for (const l of allLayers) {
-                if (l.url && String(l.url).includes(plssStateLayerUrl)) {
-                    plssStateLayer = l;
-                    break;
-                }
-            }
-        }
-        
-        // Second try: look by title
-        if (!plssStateLayer) {
-            for (const l of allLayers) {
-                if (l.title && l.title.toLowerCase().includes("state boundaries")) {
-                    plssStateLayer = l;
-                    break;
-                }
-            }
-        }
-
         for (const l of allLayers) {
             if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
             if (l?.type === "tile") { l.visible = true; continue; }
-            // ✅ Show PLSS State layer if found
-            if (plssStateLayer && l === plssStateLayer) { l.visible = true; continue; }
             l.visible = false;
         }
         ensureAoiOnTop(view.map);
@@ -3208,14 +3186,14 @@ async function generateAoiMapsWithCircles() {
     try {
         setVisibilityForAoi();
 
-        // ✅ Map 1: 1:500,000 scale (showing several states)
+        // ✅ Map 1: 1:900,000 scale (showing regional context)
         const ext1 = selectionGeom.extent;
-        await view.goTo({ target: ext1, scale: 500000 }, { animate: false });
+        await view.goTo({ target: ext1, scale: 900000 }, { animate: false });
         
         // ✅ Use improved screenshot capture
         const ss1 = await captureScreenshotWithWait({ width });
         if (ss1) {
-            maps.push(`<div class="aoi-map"><img src="${ss1}" alt="AOI Context (Regional 1:500,000)" /></div>`);
+            maps.push(`<div class="aoi-map"><img src="${ss1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
         }
 
         // ✅ Map 2: 1:250,000 scale (county-level zoom)
