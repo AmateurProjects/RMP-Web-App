@@ -687,20 +687,42 @@ async function autoZoomToLayerMinVisible(layer) {
         return m;
     }
 
-    function getPresetRenderer(kind, cfgObj) {
+    function getPresetRenderer(kind, cfgObj, geometryType) {
         const sym = config?.symbology || {};
         const defaults = sym.defaults || {};
         const presets = sym.presets || {};
 
         // Allow per-layer override later (optional)
-        const presetId =
+        let presetId =
             (cfgObj && cfgObj.symbologyPreset) ||
             (kind === "selection" ? defaults.selectionPreset :
                 kind === "report" ? defaults.reportPreset :
                     defaults.aoiPreset);
 
+        // For report layers, select point/line/polygon preset based on geometry type
+        if (kind === "report" && geometryType) {
+            const gt = String(geometryType).toLowerCase();
+            if (gt.includes("point")) {
+                presetId = "reportPoint";
+            } else if (gt.includes("line") || gt.includes("polyline")) {
+                presetId = "reportLine";
+            }
+            // polygons use default "report" preset
+        }
+
         const r = presetId ? presets[presetId] : null;
         return r || null;
+    }
+
+    // Helper to get geometry type from a layer URL via pjson
+    async function getLayerGeometryType(layerUrl) {
+        try {
+            const pjsonUrl = layerUrl.replace(/\/$/, "") + "?f=pjson";
+            const pjson = await fetchJsonWithTimeout(pjsonUrl, 5000);
+            return pjson?.geometryType || null;
+        } catch (e) {
+            return null;
+        }
     }
 
     function ensureAoiOnTop(map) {
@@ -972,13 +994,18 @@ async function buildReportDisplayLayers() {
         if (isFeatureServerRoot(key)) {
             const subs = await expandFeatureServerToPolygonSublayers(key);
 
-            const layers = subs.map(sl => new FeatureLayer({
-                url: sl.url,
-                title: `${cfg.title}: ${sl.title}`,
-                outFields: ["*"],
-                visible: false,
-                renderer: getPresetRenderer("report", cfg) || undefined
-            }));
+            const layers = [];
+            for (const sl of subs) {
+                const geomType = await getLayerGeometryType(sl.url);
+                const lyr = new FeatureLayer({
+                    url: sl.url,
+                    title: `${cfg.title}: ${sl.title}`,
+                    outFields: ["*"],
+                    visible: false,
+                    renderer: getPresetRenderer("report", cfg, geomType) || undefined
+                });
+                layers.push(lyr);
+            }
 
             layers.forEach(l => map.add(l));
             reportLayerViews.set(key, layers);
@@ -989,26 +1016,32 @@ async function buildReportDisplayLayers() {
         if (isMapServerRoot(key)) {
             const subs = await expandMapServerToSublayers(key, { polygonOnly: true });
 
-            const layers = subs.map(sl => new FeatureLayer({
-                url: sl.url,
-                title: `${cfg.title}: ${sl.title}`,
-                outFields: ["*"],
-                visible: false,
-                renderer: getPresetRenderer("report", cfg) || undefined
-            }));
+            const layers = [];
+            for (const sl of subs) {
+                const geomType = await getLayerGeometryType(sl.url);
+                const lyr = new FeatureLayer({
+                    url: sl.url,
+                    title: `${cfg.title}: ${sl.title}`,
+                    outFields: ["*"],
+                    visible: false,
+                    renderer: getPresetRenderer("report", cfg, geomType) || undefined
+                });
+                layers.push(lyr);
+            }
 
             layers.forEach(l => map.add(l));
             reportLayerViews.set(key, layers);
             continue;
         }
 
-        // Normal single layer
+        // Normal single layer - get geometry type
+        const geomType = await getLayerGeometryType(key);
         const lyr = new FeatureLayer({
             url: key,
             title: cfg.title,
             outFields: ["*"],
             visible: false,
-            renderer: getPresetRenderer("report", cfg) || undefined
+            renderer: getPresetRenderer("report", cfg, geomType) || undefined
         });
 
         map.add(lyr);
@@ -2531,12 +2564,14 @@ async function generateVisualReportData(myOp, modal = null) {
                 setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
 
                 // Create a temporary layer for this URL, regardless of toggle state
+                // Get geometry type for appropriate renderer
+                const tempGeomType = await getLayerGeometryType(item.url);
                 const temp = new FeatureLayer({
                     url: item.url,
                     title: item.title,
                     outFields: ["*"],
                     visible: true,
-                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
+                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType) || undefined
                 });
 
                 // 🔒 Prevent scale-based rendering rules from forcing view scale changes
@@ -2899,50 +2934,67 @@ async function generateVisualReportData(myOp, modal = null) {
         if (title.includes("land use plan") || title.includes("revision") && title.includes("development")) {
             const planNames = new Set();
             const statusCounts = new Map();
-            const officeCounts = new Map();
+            const epLinks = new Set();
+            const nepaNumbers = new Set();
+            const rodYears = new Set();
             
             for (const row of rows) {
-                // Try many field name variations for plan name
-                const name = row.PLAN_NAME || row.PLAN_NM || row.RMP_NAME || row.NAME || 
-                             row.LUP_NAME || row.DOC_NAME || row.DOCUMENT_NAME || 
-                             row.PLAN_TITLE || row.LUP_NM || row.PLANNAME || "";
+                // LUPName - plan name field
+                const name = row.LUPName || row.LUPNAME || row.PLAN_NAME || row.PLAN_NM || 
+                             row.RMP_NAME || row.NAME || row.LUP_NAME || "";
                 if (name) planNames.add(name);
                 
-                // Status variations
-                const status = row.PLAN_STATUS || row.STATUS || row.APPROVAL_STATUS || 
-                               row.LUP_STATUS || row.STAT || row.PLAN_STAT || "";
+                // Status field
+                const status = row.Status || row.STATUS || row.PLAN_STATUS || 
+                               row.APPROVAL_STATUS || row.LUP_STATUS || "";
                 if (status) {
                     statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
                 }
                 
-                // Office/Admin unit
-                const office = row.ADMIN_UNIT || row.ADM_UNIT || row.OFFICE || row.FIELD_OFFICE ||
-                               row.FO_NAME || row.ADMIN_ST || row.STATE || "";
-                if (office) {
-                    officeCounts.set(office, (officeCounts.get(office) || 0) + 1);
-                }
+                // ePLink - ePlanning link
+                const epLink = row.ePLink || row.EPLINK || row.EP_LINK || row.EPLANNING_LINK || "";
+                if (epLink) epLinks.add(epLink);
+                
+                // NEPAnum - NEPA number
+                const nepaNum = row.NEPAnum || row.NEPANUM || row.NEPA_NUM || row.NEPA_NUMBER || "";
+                if (nepaNum) nepaNumbers.add(nepaNum);
+                
+                // RODyear - Record of Decision year
+                const rodYear = row.RODyear || row.RODYEAR || row.ROD_YEAR || row.ROD_YR || "";
+                if (rodYear) rodYears.add(String(rodYear));
             }
             
-            if (planNames.size > 0 || statusCounts.size > 0 || officeCounts.size > 0) {
+            if (planNames.size > 0 || statusCounts.size > 0 || epLinks.size > 0 || nepaNumbers.size > 0 || rodYears.size > 0) {
                 summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Land Use Plan Details</b></td></tr>`;
                 
                 if (planNames.size > 0) {
                     const names = Array.from(planNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Plan Names</td><td>${names}${planNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                
-                if (officeCounts.size > 0) {
-                    const items = Array.from(officeCounts.entries())
-                        .map(([o, count]) => `${escapeHtml(o)} (${count})`)
-                        .join(", ");
-                    summaryHtml += `<tr><td>Admin Unit / Office</td><td>${items}</td></tr>`;
+                    summaryHtml += `<tr><td>LUP Name</td><td>${names}${planNames.size > 10 ? " ..." : ""}</td></tr>`;
                 }
                 
                 if (statusCounts.size > 0) {
                     const items = Array.from(statusCounts.entries())
                         .map(([s, count]) => `${escapeHtml(s)} (${count})`)
                         .join(", ");
-                    summaryHtml += `<tr><td>Plan Status</td><td>${items}</td></tr>`;
+                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
+                }
+                
+                if (epLinks.size > 0) {
+                    const links = Array.from(epLinks).slice(0, 5).map(link => {
+                        const escaped = escapeHtml(link);
+                        return `<a href="${escaped}" target="_blank">${escaped.length > 50 ? escaped.substring(0, 50) + "..." : escaped}</a>`;
+                    }).join("<br>");
+                    summaryHtml += `<tr><td>ePlanning Link</td><td>${links}${epLinks.size > 5 ? "<br>..." : ""}</td></tr>`;
+                }
+                
+                if (nepaNumbers.size > 0) {
+                    const nums = Array.from(nepaNumbers).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>NEPA Number</td><td>${nums}${nepaNumbers.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (rodYears.size > 0) {
+                    const years = Array.from(rodYears).sort().map(y => escapeHtml(y)).join(", ");
+                    summaryHtml += `<tr><td>ROD Year</td><td>${years}</td></tr>`;
                 }
             }
         }
@@ -3476,84 +3528,324 @@ function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, aoiSectionHtml,
             <meta charset="utf-8"/>
             <meta name="viewport" content="width=device-width,initial-scale=1"/>
             <title>${safeTitle}</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
             <style>
                 :root{
-                --fg:#111;
-                --muted:#666;
-                --border:#e6e6e6;
-                --bg:#fff;
+                    --blm-green: #1a472a;
+                    --blm-green-light: #2d5a3d;
+                    --blm-tan: #f5f0e6;
+                    --blm-gold: #c5a43e;
+                    --blm-brown: #5c4827;
+                    --fg: #2c2c2c;
+                    --muted: #5a5a5a;
+                    --border: #d4cfc4;
+                    --bg: #fdfcfa;
+                    --white: #ffffff;
                 }
-                html,body{ margin:0; padding:0; background:var(--bg); color:var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-                .wrap{ max-width: 980px; margin: 0 auto; padding: 28px 22px 60px; }
-                h1{ font-size: 22px; margin: 0 0 6px; }
-                h2{ font-size: 18px; margin: 24px 0 12px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
-                .meta{ font-size: 12px; color: var(--muted); margin-bottom: 14px; }
-                .totals{ margin-top: 12px; }
-                .totals .row{ display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
-                .pill{ border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size: 12px; background:#fff; }
+                html,body{ 
+                    margin:0; 
+                    padding:0; 
+                    background: var(--blm-tan); 
+                    color:var(--fg); 
+                    font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
                 
-                .aoi-map{ margin: 12px 0; border:1px solid var(--border); border-radius: 12px; overflow:hidden; }
+                /* Header Banner */
+                .report-header{
+                    background: linear-gradient(135deg, var(--blm-green) 0%, var(--blm-green-light) 100%);
+                    color: var(--white);
+                    padding: 28px 32px;
+                    margin-bottom: 0;
+                }
+                .report-header .agency-name{
+                    font-family: 'Merriweather', Georgia, serif;
+                    font-size: 13px;
+                    font-weight: 400;
+                    letter-spacing: 1.5px;
+                    text-transform: uppercase;
+                    opacity: 0.9;
+                    margin-bottom: 8px;
+                }
+                .report-header h1{
+                    font-family: 'Merriweather', Georgia, serif;
+                    font-size: 28px;
+                    font-weight: 700;
+                    margin: 0 0 6px 0;
+                    letter-spacing: 0.5px;
+                }
+                .report-header .meta{
+                    font-size: 13px;
+                    opacity: 0.85;
+                    margin: 0;
+                }
+                
+                /* Main Content Wrapper */
+                .wrap{ 
+                    max-width: 900px; 
+                    margin: 0 auto; 
+                    padding: 32px 40px 60px; 
+                    background: var(--bg);
+                    box-shadow: 0 0 40px rgba(0,0,0,0.08);
+                    min-height: 100vh;
+                }
+                
+                /* Section Headers */
+                h2{ 
+                    font-family: 'Merriweather', Georgia, serif;
+                    font-size: 20px; 
+                    font-weight: 700;
+                    color: var(--blm-green);
+                    margin: 36px 0 18px; 
+                    padding-bottom: 10px;
+                    border-bottom: 3px solid var(--blm-gold); 
+                }
+                h3{
+                    font-family: 'Source Sans Pro', sans-serif;
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: var(--blm-brown);
+                    margin: 24px 0 12px;
+                }
+                
+                /* Summary Totals */
+                .totals{ margin-top: 24px; }
+                .totals .row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; }
+                .pill{ 
+                    border: 1px solid var(--border); 
+                    border-radius: 6px; 
+                    padding: 10px 16px; 
+                    font-size: 13px; 
+                    font-weight: 600;
+                    background: var(--white);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+                }
+                
+                /* AOI Section */
+                .aoi-map{ 
+                    margin: 18px 0; 
+                    border: 2px solid var(--border); 
+                    border-radius: 8px; 
+                    overflow:hidden; 
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                }
                 .aoi-map img{ display:block; width:100%; height:auto; }
-                .aoi-details{ margin-top: 16px; }
-                .aoi-field{ margin: 8px 0; font-size: 14px; }
-                .aoi-label{ font-weight: 600; color: var(--muted); }
-                .legal-list{ margin: 4px 0 0 20px; padding: 0; }
-                .legal-list li{ margin: 4px 0; }
-                
-                .section{ margin-top: 18px; padding-top: 14px; }
-                .section .sub{ font-size: 12px; color: var(--muted); margin-bottom: 10px; }
-                .map{ width:100%; border:1px solid var(--border); border-radius: 12px; overflow:hidden; background:#fff; margin: 12px 0; }
-                .map img{ display:block; width:100%; height:auto; }
-                table.metaTbl{ width:100%; border-collapse: collapse; margin-top:10px; font-size: 12px; }
-                table.metaTbl td{ padding: 6px 8px; border-bottom: 1px solid var(--border); }
-                table.metaTbl td:first-child{ color: var(--muted); width: 220px; }
-
-                table.data-sources-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; table-layout: fixed; }
-                table.data-sources-table th{ background: #f5f5f5; padding: 8px; text-align: left; border-bottom: 2px solid var(--border); font-weight: 600; }
-                table.data-sources-table td{ padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; word-wrap: break-word; }
-                table.data-sources-table .service-desc-col{ white-space: normal; line-height: 1.4; }
-                table.data-sources-table .service-url-col{ font-family: monospace; font-size: 10px; word-break: break-all; }    
-
-                .mono{ font-family: monospace; font-size: 11px; }
-                .status-up{ color: #22c55e; font-weight: 600; }
-                .status-down{ color: #ef4444; font-weight: 600; }
-                
-                .actions{ margin-top: 14px; display:flex; gap:10px; flex-wrap: wrap; }
-                .btn{
-                display:inline-block; border:1px solid var(--border); background:#fff; border-radius: 10px;
-                padding:8px 10px; font-size:12px; text-decoration:none; color:var(--fg);
+                .aoi-details{ margin-top: 20px; }
+                .aoi-field{ margin: 10px 0; font-size: 14px; }
+                .aoi-label{ 
+                    font-weight: 600; 
+                    color: var(--blm-green);
+                    display: inline-block;
+                    min-width: 160px;
                 }
-                .btn:hover{ background:#f4f4f4; }
-                .hint{ font-size: 12px; color: var(--muted); margin-top: 8px; }
+                .legal-list{ margin: 6px 0 0 20px; padding: 0; }
+                .legal-list li{ margin: 5px 0; }
+                
+                /* Per-Layer Map Sections */
+                .section{ 
+                    margin-top: 32px; 
+                    padding: 24px;
+                    background: var(--white);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+                }
+                .section h3{
+                    margin-top: 0;
+                    padding-bottom: 8px;
+                    border-bottom: 1px solid var(--border);
+                }
+                .section .sub{ 
+                    font-size: 12px; 
+                    color: var(--muted); 
+                    margin-bottom: 14px;
+                    font-style: italic;
+                }
+                .map{ 
+                    width:100%; 
+                    border: 1px solid var(--border); 
+                    border-radius: 6px; 
+                    overflow:hidden; 
+                    background: var(--white); 
+                    margin: 16px 0;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+                }
+                .map img{ display:block; width:100%; height:auto; }
+                
+                /* Metadata Tables */
+                table.metaTbl{ 
+                    width:100%; 
+                    border-collapse: collapse; 
+                    margin-top: 16px; 
+                    font-size: 13px;
+                    background: var(--blm-tan);
+                    border-radius: 6px;
+                    overflow: hidden;
+                }
+                table.metaTbl td{ 
+                    padding: 10px 14px; 
+                    border-bottom: 1px solid var(--border); 
+                }
+                table.metaTbl tr:last-child td{
+                    border-bottom: none;
+                }
+                table.metaTbl td:first-child{ 
+                    color: var(--blm-green); 
+                    font-weight: 600;
+                    width: 200px;
+                    background: rgba(26,71,42,0.05);
+                }
 
+                /* Data Sources Table */
+                table.data-sources-table{ 
+                    width:100%; 
+                    border-collapse: collapse; 
+                    margin-top: 16px; 
+                    font-size: 12px; 
+                    table-layout: fixed;
+                    background: var(--white);
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    overflow: hidden;
+                }
+                table.data-sources-table th{ 
+                    background: var(--blm-green); 
+                    color: var(--white);
+                    padding: 12px 14px; 
+                    text-align: left; 
+                    font-weight: 600;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                table.data-sources-table td{ 
+                    padding: 10px 14px; 
+                    border-bottom: 1px solid var(--border); 
+                    vertical-align: top; 
+                    word-wrap: break-word; 
+                }
+                table.data-sources-table tr:nth-child(even){
+                    background: var(--blm-tan);
+                }
+                table.data-sources-table tr:last-child td{
+                    border-bottom: none;
+                }
+                table.data-sources-table .service-desc-col{ white-space: normal; line-height: 1.5; }
+                table.data-sources-table .service-url-col{ 
+                    font-family: 'Consolas', 'Monaco', monospace; 
+                    font-size: 10px; 
+                    word-break: break-all;
+                    color: var(--muted);
+                }    
+
+                .mono{ font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; }
+                .status-up{ color: #2e7d32; font-weight: 600; }
+                .status-down{ color: #c62828; font-weight: 600; }
+                
+                /* Action Buttons */
+                .actions{ 
+                    margin-top: 20px; 
+                    display:flex; 
+                    gap:12px; 
+                    flex-wrap: wrap; 
+                }
+                .btn{
+                    display:inline-block; 
+                    background: var(--blm-green); 
+                    color: var(--white);
+                    border: none;
+                    border-radius: 6px;
+                    padding: 12px 20px; 
+                    font-size: 14px; 
+                    font-weight: 600;
+                    text-decoration:none;
+                    cursor: pointer;
+                    transition: background 0.2s ease;
+                }
+                .btn:hover{ background: var(--blm-green-light); }
+                .hint{ 
+                    font-size: 12px; 
+                    color: var(--muted); 
+                    margin-top: 10px;
+                    font-style: italic;
+                }
+                
+                /* Footer */
+                .report-footer{
+                    margin-top: 48px;
+                    padding-top: 24px;
+                    border-top: 2px solid var(--border);
+                    font-size: 11px;
+                    color: var(--muted);
+                    text-align: center;
+                }
+                .report-footer .dept-name{
+                    font-weight: 600;
+                    color: var(--blm-green);
+                    margin-bottom: 4px;
+                }
+
+                /* Print Styles */
                 @media print{
-                .actions, .hint{ display:none !important; }
-                .wrap{ max-width: none; padding: 0.5in; }
-                .section{ break-inside: avoid; }
-                .pagebreak{ break-after: page; }
+                    html, body{ background: white; }
+                    .actions, .hint{ display:none !important; }
+                    .wrap{ 
+                        max-width: none; 
+                        padding: 0; 
+                        box-shadow: none;
+                        background: white;
+                    }
+                    .report-header{
+                        background: var(--blm-green) !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    .section{ 
+                        break-inside: avoid; 
+                        box-shadow: none;
+                        border: 1px solid #ccc;
+                    }
+                    .pagebreak{ break-after: page; }
+                    table.data-sources-table th{
+                        background: var(--blm-green) !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
                 }
             </style>
             </head>
             <body>
-            <div class="wrap">
+            <div class="report-header">
+                <div class="agency-name">U.S. Department of the Interior • Bureau of Land Management</div>
                 <h1>${safeTitle}</h1>
-                <div class="meta">Created: ${escapeHtml(createdAt || "")}</div>
-
+                <div class="meta">Report Generated: ${escapeHtml(createdAt || "")}</div>
+            </div>
+            <div class="wrap">
                 <div class="actions">
-                <a class="btn" href="javascript:window.print()">Print / Save as PDF</a>
+                    <a class="btn" href="javascript:window.print()">🖨️ Print / Save as PDF</a>
                 </div>
-                <div class="hint">Tip: Use your browser print dialog → "Save as PDF" later, when you're ready.</div>
+                <div class="hint">Use your browser's print dialog and select "Save as PDF" to create a permanent copy of this report.</div>
 
+                <h2>Report Summary</h2>
                 <div class="totals">
                 ${totalsHtml || ""}
                 </div>
 
                 ${aoiSectionHtml || ""}
 
-                <h2>Maps</h2>
+                <h2>Layer Analysis Maps</h2>
                 ${sectionsHtml || ""}
 
                 ${dataSourcesHtml || ""}
+                
+                <div class="report-footer">
+                    <div class="dept-name">Bureau of Land Management</div>
+                    <div>U.S. Department of the Interior</div>
+                    <div style="margin-top:8px;">This report was generated using geospatial data from BLM and partner agency web services.</div>
+                </div>
             </div>
             </body>
             </html>`;
@@ -3703,8 +3995,8 @@ async function buildFinalReportHtml() {
         if (!targets.length) {
             sectionsHtml = `
               <div class="section">
-                <h2>No intersecting layers</h2>
-                <div class="sub">(All layer counts are 0.)</div>
+                <h3>No Intersecting Layers Found</h3>
+                <p style="color: var(--muted); font-style: italic;">The analysis found no layers with features intersecting the selected Area of Interest.</p>
               </div>
             `;
         } else {
@@ -3757,12 +4049,14 @@ async function buildFinalReportHtml() {
                 const item = targets[i];
                 setStatus(`building final report… (${i + 1}/${targets.length})`);
 
+                // Get geometry type for appropriate renderer
+                const tempGeomType = await getLayerGeometryType(item.url);
                 const temp = new FeatureLayer({
                     url: item.url,
                     title: item.title,
                     outFields: ["*"],
                     visible: true,
-                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null) || undefined
+                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType) || undefined
                 });
 
                 temp.minScale = 0;
@@ -3792,17 +4086,17 @@ async function buildFinalReportHtml() {
 
                     sectionsHtml += `
                     <div class="section">
-                        <h2>${escapeHtml(item.title)}</h2>
+                        <h3>${escapeHtml(item.title)}</h3>
 
                         <div class="map">
                             <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
                         </div>
 
                         <table class="metaTbl">
-                            <tr><td>AOI area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
-                            <tr><td>Intersecting features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
-                            <tr><td>AOI covered by layer</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
-                            <tr><td>% AOI covered</td><td><b>${formatNumber(pctCovered, 2)}</b>%</td></tr>
+                            <tr><td>AOI Area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
+                            <tr><td>Intersecting Features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
+                            <tr><td>Layer Coverage</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
+                            <tr><td>Percent of AOI Covered</td><td><b>${formatNumber(pctCovered, 2)}%</b></td></tr>
                             ${layerAttrSummary}
                         </table>
                     </div>
@@ -3873,7 +4167,7 @@ async function buildFinalReportHtml() {
         `;
 
         const htmlDoc = buildFinalReportHtmlDoc({
-            title: "Lands Explorer — Final Report",
+            title: "Land & Resource Intersection Analysis Report",
             createdAt: formatDateTimeForReport(new Date()),
             totalsHtml,
             aoiSectionHtml,
@@ -4022,8 +4316,11 @@ function buildDataSourcesSection() {
     }).join("");
 
     return `
-        <div class="section">
-            <h2>Data Used in this Report</h2>
+        <div class="section" style="background: transparent; border: none; box-shadow: none; padding: 0;">
+            <h2>Data Sources</h2>
+            <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
+                The following geospatial web services were used to generate this report. Service availability was verified at the time of report generation.
+            </p>
             <table class="data-sources-table">
                 <thead>
                     <tr>
@@ -4317,16 +4614,29 @@ function buildDataSourcesSection() {
             }
         }
 
-        selectionLayers = expandedSelectionCfgs.map(cfg => ({
-            cfg,
-            layer: new FeatureLayer({
-                url: cfg.url,
-                title: cfg.title,
-                outFields: ["*"],
-                visible: cfg.visible !== false,
-                renderer: getPresetRenderer("selection", cfg) || undefined
-            })
-        }));
+        selectionLayers = expandedSelectionCfgs.map(cfg => {
+            // Check if this is a PLSS layer (may need extra reliability settings)
+            const isPLSS = (cfg.title || cfg.url || "").toLowerCase().includes("plss") ||
+                           (cfg.title || cfg.url || "").toLowerCase().includes("township") ||
+                           (cfg.title || cfg.url || "").toLowerCase().includes("section") ||
+                           (cfg.title || cfg.url || "").toLowerCase().includes("parcel");
+            
+            return {
+                cfg,
+                layer: new FeatureLayer({
+                    url: cfg.url,
+                    title: cfg.title,
+                    outFields: ["*"],
+                    visible: cfg.visible !== false,
+                    renderer: getPresetRenderer("selection", cfg) || undefined,
+                    // Override server min/max scale to ensure visibility
+                    minScale: 0,
+                    maxScale: 0,
+                    // For PLSS and similar layers: refresh more aggressively
+                    refreshInterval: isPLSS ? 0.5 : 0  // PLSS: refresh every 30 seconds when stationary
+                })
+            };
+        });
 
         selectionLayers.forEach(e => map.add(e.layer));
 
@@ -4339,6 +4649,33 @@ function buildDataSourcesSection() {
 
         await view.when();
         attachClickToSelect();
+
+        // ---------- PLSS layer refresh on view stationary ----------
+        // PLSS MapServer sublayers can sometimes fail to load all tiles.
+        // This watcher refreshes visible PLSS layers when view becomes stationary.
+        let plssRefreshDebounce = null;
+        view.watch("stationary", (stationary) => {
+            if (stationary) {
+                clearTimeout(plssRefreshDebounce);
+                plssRefreshDebounce = setTimeout(async () => {
+                    for (const entry of selectionLayers) {
+                        const title = (entry.cfg?.title || "").toLowerCase();
+                        const isPLSS = title.includes("plss") || title.includes("township") ||
+                                        title.includes("section") || title.includes("parcel");
+                        if (isPLSS && entry.layer?.visible) {
+                            try {
+                                const lv = await view.whenLayerView(entry.layer);
+                                if (lv && typeof lv.refresh === "function") {
+                                    lv.refresh();
+                                }
+                            } catch (e) {
+                                // ignore refresh errors
+                            }
+                        }
+                    }
+                }, 500); // debounce 500ms after view stops
+            }
+        });
 
         // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
         const townshipIdx = findSelectionLayerIndexByNameIncludes("township");

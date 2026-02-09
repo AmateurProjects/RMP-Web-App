@@ -43,6 +43,28 @@
         }
       }
     },
+    "reportPoint": {
+      "type": "simple",
+      "symbol": {
+        "type": "simple-marker",
+        "style": "circle",
+        "color": [138, 43, 226, 0.85],
+        "size": 10,
+        "outline": {
+          "color": [255, 255, 255, 1],
+          "width": 2
+        }
+      }
+    },
+    "reportLine": {
+      "type": "simple",
+      "symbol": {
+        "type": "simple-line",
+        "color": [138, 43, 226, 0.95],
+        "width": 3,
+        "style": "solid"
+      }
+    },
       "aoi": {
         "type": "simple",
         "symbol": {
