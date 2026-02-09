@@ -12,6 +12,23 @@
 </head>
 <body>
   <div id="viewDiv"></div>
+  
+  <!-- Feature Search Widget -->
+  <div id="featureSearchWidget" class="feature-search-widget">
+    <div class="feature-search-container">
+      <input type="text" id="featureSearchInput" class="feature-search-input" 
+             placeholder="Search features across all layers..." 
+             autocomplete="off" spellcheck="false">
+      <button id="featureSearchClear" class="feature-search-clear" title="Clear search">&times;</button>
+      <svg class="feature-search-icon" id="featureSearchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="M21 21l-4.35-4.35"></path>
+      </svg>
+      <div id="featureSearchSpinner" class="feature-search-spinner" style="display:none;"></div>
+      <div id="featureSearchResults" class="feature-search-results"></div>
+    </div>
+  </div>
+  
   <div id="viewBlocker" class="view-blocker hidden" aria-hidden="true"></div>
   
 <!-- Analysis Progress Modal -->
@@ -81,11 +98,11 @@
   <aside id="panel">
     <div class="panel-header">
       <div class="title">Intersect Report</div>
+    </div>
 
-      <!-- pre-alpha banner -->
-      <div class="banner banner-warn">
-        Pre-alpha: active development — outputs may change and results may be incomplete.
-      </div>
+    <!-- pre-alpha banner -->
+    <div class="banner banner-warn">
+      ⚠️ Pre-alpha: active development — outputs may change and results may be incomplete.
     </div>
 
     <!-- AOI / Intersect controls -->
@@ -139,11 +156,11 @@
         <button id="cancelRunBtn" class="btn subtle hidden" type="button">Cancel</button>
         <button id="clearBtn" class="btn subtle" type="button">Clear</button>
       </div>
+    </div>
 
-      <div id="status" class="status">
-        <span id="statusText">Status: ready</span>
-        <span id="busyIndicator" class="spinner hidden" aria-label="busy"></span>
-      </div>
+    <div id="status" class="status">
+      <span id="statusText">Status: ready</span>
+      <span id="busyIndicator" class="spinner hidden" aria-label="busy"></span>
     </div>
 
     <!-- Tabs (NEW ORDER: Layers | Data Check | Tables | Map | Report) -->
@@ -159,14 +176,20 @@
     
     <!-- NEW: Layers Tab (first tab, active by default) -->
     <section id="tabLayersPanel" class="tab-panel active">
-      <div class="card small">
-        <div class="label">Selection Layers</div>
-        <div class="hint">Click-to-select layers (PLSS polygons)</div>
-        <div id="selectionLayerToggles"></div>
-
-        <div class="label" style="margin-top:14px;">Report Layers</div>
-        <div class="hint">Queried during analysis (toggle for map display)</div>
-        <div id="reportLayerToggles"></div>
+      <div class="layers-section">
+        <div class="layers-section-header">
+          <span class="layers-section-title">Selection Layers</span>
+          <span class="layers-section-subtitle">Click-to-select layers (PLSS polygons)</span>
+        </div>
+        <div id="selectionLayerToggles" class="layers-list"></div>
+      </div>
+      
+      <div class="layers-section">
+        <div class="layers-section-header">
+          <span class="layers-section-title">Report Layers</span>
+          <span class="layers-section-subtitle">Queried during analysis (toggle for map display)</span>
+        </div>
+        <div id="reportLayerToggles" class="layers-list"></div>
       </div>
     </section>
 
@@ -174,12 +197,12 @@
     <section id="tabServicesPanel" class="tab-panel">
       <div class="card">
         <div class="row space-between">
-          <div class="label">Feature services used by this app</div>
-          <button id="refreshServicesBtn" class="btn subtle" type="button">Refresh</button>
+          <div class="label">Feature Services</div>
+          <button id="refreshServicesBtn" class="btn subtle" type="button">↻ Refresh</button>
         </div>
 
         <div class="hint">
-          Shows configured selection/report services, basic service info (from <span class="mono">?f=pjson</span>), and a simple UP/DOWN check.
+          Shows configured selection/report services, basic service info, and a simple UP/DOWN check.
         </div>
 
         <div id="servicesList" style="margin-top:10px;"></div>
@@ -191,7 +214,7 @@
       <div class="card">
         <div class="row space-between">
           <div class="label">Query Results</div>
-          <button id="exportAllBtn" class="btn subtle" type="button" disabled>Export all CSV</button>
+          <button id="exportAllBtn" class="btn subtle" type="button" disabled>📥 Export CSV</button>
         </div>
         <div id="results"></div>
       </div>
@@ -200,20 +223,22 @@
     <!-- Map Tab (fourth tab) -->
     <section id="tabVisualPanel" class="tab-panel">
       <div class="card">
-        <div class="label">Visual Report</div>
-
-        <div class="hint">
-          Map screenshots with coverage statistics for each intersecting layer.
+        <div class="row space-between">
+          <div class="label">Visual Report</div>
         </div>
 
-        <div id="visualReportStatus" class="small" style="margin-top:10px;"></div>
+        <div class="hint">
+          🗺️ Map screenshots with coverage statistics for each intersecting layer.
+        </div>
+
+        <div id="visualReportStatus" class="small" style="margin-top:12px;"></div>
 
         <div id="visualReportMapWrap" class="visual-map-wrap hidden">
           <div id="visualReportOutputs"></div>
         </div>
 
-        <div class="card small" style="margin-top:10px;">
-          <div class="label">Summary</div>
+        <div class="summary-card" style="margin-top:14px;">
+          <div class="summary-card-header">Summary</div>
           <div id="visualReportSummary"></div>
         </div>
       </div>
@@ -222,16 +247,18 @@
     <!-- Report Tab (fifth tab) -->
     <section id="tabReportFinalPanel" class="tab-panel">
       <div class="card">
-        <div class="label">Final Report</div>
+        <div class="row space-between">
+          <div class="label">Final Report</div>
+        </div>
         
         <div class="hint">
-          Printable HTML report with all maps and statistics. Opens in new tab.
+          📄 Printable HTML report with all maps and statistics. Opens in new tab.
         </div>
 
-        <div id="finalReportStatus" class="small" style="margin-top:10px;"></div>
+        <div id="finalReportStatus" class="small" style="margin-top:12px;"></div>
 
-        <div class="row" style="margin-top:10px;">
-          <button id="viewReportBtn" class="btn primary" type="button" disabled>View Report</button>
+        <div class="row" style="margin-top:14px;">
+          <button id="viewReportBtn" class="btn primary" type="button" disabled>📋 View Report</button>
         </div>
       </div>
     </section>

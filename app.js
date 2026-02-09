@@ -4614,29 +4614,16 @@ function buildDataSourcesSection() {
             }
         }
 
-        selectionLayers = expandedSelectionCfgs.map(cfg => {
-            // Check if this is a PLSS layer (may need extra reliability settings)
-            const isPLSS = (cfg.title || cfg.url || "").toLowerCase().includes("plss") ||
-                           (cfg.title || cfg.url || "").toLowerCase().includes("township") ||
-                           (cfg.title || cfg.url || "").toLowerCase().includes("section") ||
-                           (cfg.title || cfg.url || "").toLowerCase().includes("parcel");
-            
-            return {
-                cfg,
-                layer: new FeatureLayer({
-                    url: cfg.url,
-                    title: cfg.title,
-                    outFields: ["*"],
-                    visible: cfg.visible !== false,
-                    renderer: getPresetRenderer("selection", cfg) || undefined,
-                    // Override server min/max scale to ensure visibility
-                    minScale: 0,
-                    maxScale: 0,
-                    // For PLSS and similar layers: refresh more aggressively
-                    refreshInterval: isPLSS ? 0.5 : 0  // PLSS: refresh every 30 seconds when stationary
-                })
-            };
-        });
+        selectionLayers = expandedSelectionCfgs.map(cfg => ({
+            cfg,
+            layer: new FeatureLayer({
+                url: cfg.url,
+                title: cfg.title,
+                outFields: ["*"],
+                visible: cfg.visible !== false,
+                renderer: getPresetRenderer("selection", cfg) || undefined
+            })
+        }));
 
         selectionLayers.forEach(e => map.add(e.layer));
 
@@ -4649,33 +4636,6 @@ function buildDataSourcesSection() {
 
         await view.when();
         attachClickToSelect();
-
-        // ---------- PLSS layer refresh on view stationary ----------
-        // PLSS MapServer sublayers can sometimes fail to load all tiles.
-        // This watcher refreshes visible PLSS layers when view becomes stationary.
-        let plssRefreshDebounce = null;
-        view.watch("stationary", (stationary) => {
-            if (stationary) {
-                clearTimeout(plssRefreshDebounce);
-                plssRefreshDebounce = setTimeout(async () => {
-                    for (const entry of selectionLayers) {
-                        const title = (entry.cfg?.title || "").toLowerCase();
-                        const isPLSS = title.includes("plss") || title.includes("township") ||
-                                        title.includes("section") || title.includes("parcel");
-                        if (isPLSS && entry.layer?.visible) {
-                            try {
-                                const lv = await view.whenLayerView(entry.layer);
-                                if (lv && typeof lv.refresh === "function") {
-                                    lv.refresh();
-                                }
-                            } catch (e) {
-                                // ignore refresh errors
-                            }
-                        }
-                    }
-                }, 500); // debounce 500ms after view stops
-            }
-        });
 
         // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
         const townshipIdx = findSelectionLayerIndexByNameIncludes("township");
@@ -4849,6 +4809,386 @@ function buildDataSourcesSection() {
                 exportAllBtn.disabled = false;
             }
         });
+
+
+        // ========================================
+        // FEATURE SEARCH WIDGET
+        // ========================================
+        const searchInput = document.getElementById("featureSearchInput");
+        const searchResults = document.getElementById("featureSearchResults");
+        const searchClear = document.getElementById("featureSearchClear");
+        const searchIcon = document.getElementById("featureSearchIcon");
+        const searchSpinner = document.getElementById("featureSearchSpinner");
+
+        let searchDebounceTimer = null;
+        let searchAbortController = null;
+
+        // Get all searchable layer URLs from config
+        function getSearchableLayers() {
+            const layers = [];
+            
+            // Add report layers
+            (config.reportLayers || []).forEach(cfg => {
+                if (cfg?.url) {
+                    layers.push({ title: cfg.title || "Unknown Layer", url: cfg.url, type: "report" });
+                }
+            });
+            
+            // Add selection layers (expanded version already in selectionLayers array)
+            (selectionLayers || []).forEach(entry => {
+                if (entry?.cfg?.url) {
+                    // Avoid duplicates
+                    const exists = layers.some(l => l.url === entry.cfg.url);
+                    if (!exists) {
+                        layers.push({ title: entry.cfg.title || "Unknown Layer", url: entry.cfg.url, type: "selection" });
+                    }
+                }
+            });
+            
+            return layers;
+        }
+
+        // Get string field names from a layer's field metadata
+        async function getStringFieldsForLayer(url) {
+            try {
+                const pjsonUrl = url.replace(/\/$/, "") + "?f=pjson";
+                const info = await fetchJson(pjsonUrl);
+                const fields = info?.fields || [];
+                
+                // Get string fields that are likely to contain searchable names
+                const stringFields = fields
+                    .filter(f => f.type === "esriFieldTypeString")
+                    .map(f => f.name);
+                
+                return stringFields;
+            } catch (e) {
+                console.warn("Failed to get fields for", url, e);
+                return [];
+            }
+        }
+
+        // Search a single layer for matching features
+        async function searchLayer(layerInfo, searchTerm, signal, maxResults = 5) {
+            try {
+                const stringFields = await getStringFieldsForLayer(layerInfo.url);
+                if (!stringFields.length) return [];
+
+                // Build WHERE clause with LIKE for each string field
+                const escapedTerm = searchTerm.replace(/'/g, "''");
+                const whereClauses = stringFields.map(f => `UPPER(${f}) LIKE '%${escapedTerm.toUpperCase()}%'`);
+                const where = whereClauses.join(" OR ");
+
+                const queryUrl = layerInfo.url.replace(/\/$/, "") + "/query";
+                const params = new URLSearchParams({
+                    where,
+                    outFields: "*",
+                    returnGeometry: "true",
+                    resultRecordCount: String(maxResults),
+                    f: "json"
+                });
+
+                const response = await fetch(`${queryUrl}?${params.toString()}`, { signal, credentials: "omit" });
+                if (!response.ok) return [];
+                
+                const data = await response.json();
+                const features = data?.features || [];
+
+                return features.map(f => ({
+                    layerTitle: layerInfo.title,
+                    layerUrl: layerInfo.url,
+                    attributes: f.attributes || {},
+                    geometry: f.geometry
+                }));
+            } catch (e) {
+                if (e.name === "AbortError") throw e;
+                console.warn("Search failed for layer:", layerInfo.title, e);
+                return [];
+            }
+        }
+
+        // Get a display name for a feature from its attributes
+        function getFeatureDisplayName(attributes) {
+            // Common name fields in priority order
+            const nameFields = [
+                "NAME", "Name", "name",
+                "PLAN_NAME", "LUPName", "LUPNAME",
+                "ALLOT_NAME", "ALLOTMENT_NAME",
+                "COMNAME", "SCINAME", "comname", "sciname",
+                "UNIT_NAME", "AREA_NAME", "SITE_NAME",
+                "PROJ_NAME", "PROJECT_NAME",
+                "CASEFILE_N", "CASE_FILE",
+                "LABEL", "Label", "TITLE", "Title",
+                "DESCRIPTION", "DESC"
+            ];
+
+            for (const field of nameFields) {
+                if (attributes[field] && String(attributes[field]).trim()) {
+                    return String(attributes[field]).trim();
+                }
+            }
+
+            // Fallback: use first non-ID string attribute
+            for (const [key, val] of Object.entries(attributes)) {
+                if (typeof val === "string" && val.trim() && 
+                    !key.toLowerCase().includes("objectid") &&
+                    !key.toLowerCase().includes("globalid") &&
+                    !key.toLowerCase().includes("shape")) {
+                    return val.trim().substring(0, 80);
+                }
+            }
+
+            return "Unnamed Feature";
+        }
+
+        // Get additional details for display
+        function getFeatureDetails(attributes) {
+            const details = [];
+            const skipFields = ["OBJECTID", "GLOBALID", "SHAPE", "SHAPE_LENGTH", "SHAPE_AREA", "SHAPE.LEN", "SHAPE.AREA"];
+            
+            let count = 0;
+            for (const [key, val] of Object.entries(attributes)) {
+                if (count >= 2) break;
+                if (skipFields.some(s => key.toUpperCase().includes(s))) continue;
+                if (val && String(val).trim()) {
+                    details.push(`${key}: ${String(val).trim().substring(0, 40)}`);
+                    count++;
+                }
+            }
+            
+            return details.join(" | ");
+        }
+
+        // Perform the search across all layers
+        async function performSearch(searchTerm) {
+            if (!searchTerm || searchTerm.length < 2) {
+                searchResults.innerHTML = '<div class="search-hint">Type at least 2 characters to search</div>';
+                searchResults.classList.add("visible");
+                return;
+            }
+
+            // Cancel previous search
+            if (searchAbortController) {
+                searchAbortController.abort();
+            }
+            searchAbortController = new AbortController();
+            const signal = searchAbortController.signal;
+
+            // Show loading state
+            searchIcon.style.display = "none";
+            searchSpinner.style.display = "block";
+
+            try {
+                const layers = getSearchableLayers();
+                
+                // Search all layers in parallel (limit to first 15 to avoid too many requests)
+                const searchPromises = layers.slice(0, 15).map(layerInfo => 
+                    searchLayer(layerInfo, searchTerm, signal, 5)
+                );
+
+                const results = await Promise.all(searchPromises);
+                
+                if (signal.aborted) return;
+
+                // Group results by layer
+                const groupedResults = new Map();
+                results.forEach((layerResults, idx) => {
+                    if (layerResults.length > 0) {
+                        const layerTitle = layers[idx].title;
+                        groupedResults.set(layerTitle, layerResults);
+                    }
+                });
+
+                // Build results HTML
+                if (groupedResults.size === 0) {
+                    searchResults.innerHTML = '<div class="search-no-results">No matching features found</div>';
+                } else {
+                    let html = "";
+                    for (const [layerTitle, features] of groupedResults) {
+                        html += `<div class="search-result-group">`;
+                        html += `<div class="search-result-group-title">${escapeHtml(layerTitle)}</div>`;
+                        
+                        features.forEach((feature, idx) => {
+                            const name = getFeatureDisplayName(feature.attributes);
+                            const details = getFeatureDetails(feature.attributes);
+                            const dataAttr = `data-layer="${escapeHtml(feature.layerUrl)}" data-idx="${idx}"`;
+                            
+                            html += `<div class="search-result-item" ${dataAttr}>`;
+                            html += `<div class="search-result-name">${escapeHtml(name)}</div>`;
+                            if (details) {
+                                html += `<div class="search-result-details">${escapeHtml(details)}</div>`;
+                            }
+                            html += `</div>`;
+                        });
+                        
+                        html += `</div>`;
+                    }
+                    searchResults.innerHTML = html;
+
+                    // Attach click handlers to results
+                    const resultItems = searchResults.querySelectorAll(".search-result-item");
+                    resultItems.forEach((item, globalIdx) => {
+                        item.addEventListener("click", () => {
+                            // Find the feature in our results
+                            let featureIdx = 0;
+                            for (const [, features] of groupedResults) {
+                                for (const feature of features) {
+                                    if (featureIdx === globalIdx) {
+                                        zoomToFeature(feature);
+                                        searchResults.classList.remove("visible");
+                                        return;
+                                    }
+                                    featureIdx++;
+                                }
+                            }
+                        });
+                    });
+                }
+
+                searchResults.classList.add("visible");
+
+            } catch (e) {
+                if (e.name === "AbortError") return;
+                console.error("Search error:", e);
+                searchResults.innerHTML = '<div class="search-no-results">Search failed</div>';
+                searchResults.classList.add("visible");
+            } finally {
+                searchIcon.style.display = "block";
+                searchSpinner.style.display = "none";
+            }
+        }
+
+        // Zoom to a feature on the map
+        async function zoomToFeature(feature) {
+            if (!view || !feature.geometry) {
+                console.warn("Cannot zoom: no geometry");
+                return;
+            }
+
+            try {
+                // Convert ArcGIS REST geometry to ArcGIS JS geometry
+                let geom = null;
+                
+                if (feature.geometry.rings) {
+                    // Polygon
+                    geom = {
+                        type: "polygon",
+                        rings: feature.geometry.rings,
+                        spatialReference: feature.geometry.spatialReference || { wkid: 4326 }
+                    };
+                } else if (feature.geometry.paths) {
+                    // Polyline
+                    geom = {
+                        type: "polyline",
+                        paths: feature.geometry.paths,
+                        spatialReference: feature.geometry.spatialReference || { wkid: 4326 }
+                    };
+                } else if (feature.geometry.x !== undefined && feature.geometry.y !== undefined) {
+                    // Point
+                    geom = {
+                        type: "point",
+                        x: feature.geometry.x,
+                        y: feature.geometry.y,
+                        spatialReference: feature.geometry.spatialReference || { wkid: 4326 }
+                    };
+                }
+
+                if (!geom) {
+                    console.warn("Unknown geometry type");
+                    return;
+                }
+
+                // Zoom to the feature with some padding
+                await view.goTo({
+                    target: geom,
+                    zoom: geom.type === "point" ? 14 : undefined
+                }, {
+                    duration: 1000,
+                    easing: "ease-in-out"
+                });
+
+                // Briefly highlight the feature
+                const highlightLayer = new GraphicsLayer({ title: "Search Highlight" });
+                map.add(highlightLayer);
+
+                const highlightSymbol = geom.type === "point" 
+                    ? { type: "simple-marker", color: [255, 255, 0, 0.8], size: 16, outline: { color: [255, 100, 0], width: 3 } }
+                    : geom.type === "polyline"
+                    ? { type: "simple-line", color: [255, 255, 0], width: 6 }
+                    : { type: "simple-fill", color: [255, 255, 0, 0.4], outline: { color: [255, 100, 0], width: 3 } };
+
+                const highlightGraphic = new Graphic({
+                    geometry: geom,
+                    symbol: highlightSymbol
+                });
+
+                highlightLayer.add(highlightGraphic);
+
+                // Remove highlight after 3 seconds
+                setTimeout(() => {
+                    try { map.remove(highlightLayer); } catch (e) { }
+                }, 3000);
+
+            } catch (e) {
+                console.error("Zoom to feature failed:", e);
+            }
+        }
+
+        // Event handlers
+        if (searchInput) {
+            searchInput.addEventListener("input", (e) => {
+                const val = e.target.value.trim();
+                
+                // Show/hide clear button
+                if (searchClear) {
+                    searchClear.style.display = val ? "flex" : "none";
+                }
+
+                // Debounce search
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = setTimeout(() => {
+                    performSearch(val);
+                }, 400);
+            });
+
+            searchInput.addEventListener("focus", () => {
+                const val = searchInput.value.trim();
+                if (val.length >= 2) {
+                    searchResults.classList.add("visible");
+                } else if (val.length > 0) {
+                    searchResults.innerHTML = '<div class="search-hint">Type at least 2 characters to search</div>';
+                    searchResults.classList.add("visible");
+                }
+            });
+
+            // Close results when clicking outside
+            document.addEventListener("click", (e) => {
+                const widget = document.getElementById("featureSearchWidget");
+                if (widget && !widget.contains(e.target)) {
+                    searchResults.classList.remove("visible");
+                }
+            });
+
+            // Clear button
+            if (searchClear) {
+                searchClear.addEventListener("click", () => {
+                    searchInput.value = "";
+                    searchClear.style.display = "none";
+                    searchResults.classList.remove("visible");
+                    searchResults.innerHTML = "";
+                    if (searchAbortController) {
+                        searchAbortController.abort();
+                    }
+                });
+            }
+
+            // Escape key to close
+            searchInput.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") {
+                    searchResults.classList.remove("visible");
+                    searchInput.blur();
+                }
+            });
+        }
 
 
         setMode("select");
