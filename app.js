@@ -2632,54 +2632,497 @@ async function generateVisualReportData(myOp, modal = null) {
     function formatLegalDescription(row) {
         if (!row) return "";
         
-        // Try individual components first for maximum detail
-        const twpNum = row.TWNSHPNUM || row.TWPNUM || row.T || (row.TWNSHPLAB ? row.TWNSHPLAB.match(/\d+/) : null)?.[0] || "";
-        const twpDir = row.TWNSHPDIR || row.TWPDIR || (row.TWNSHPLAB ? (row.TWNSHPLAB.includes("S") ? "S" : row.TWNSHPLAB.includes("N") ? "N" : "") : "");
+        // Required fields from PLSS: Parcel table
+        const twnshpNo = row.TWNSHPNO || "";
+        const twnshpDir = row.TWNSHPDIR || "";
+        const rangeNo = row.RANGENO || "";
+        const rangeDir = row.RANGEDIR || "";
+        const frstDivTxt = row.FRSTDIVTXT || "";
+        const frstDivNo = row.FRSTDIVNO || "";
         
-        const rngNum = row.RANGENUM || row.RNGNUM || row.R || (row.RANGLAB ? row.RANGLAB.match(/\d+/) : null)?.[0] || "";
-        const rngDir = row.RANGEDIR || row.RNGDIR || (row.RANGLAB ? (row.RANGLAB.includes("E") ? "E" : row.RANGLAB.includes("W") ? "W" : "") : "");
+        // Optional fields - only include if not NULL
+        const secDivTyp = row.SECDIVTYP || "";
+        const secDivNo = row.SECDIVNO || "";
         
-        const secNum = row.SECNUM || row.SECTIONNUM || row.SECTION || row.S || (row.SECLAB ? row.SECLAB.match(/\d+/) : null)?.[0] || "";
-        
-        // Quarter sections (QQ = quarter-quarter, Q = quarter)
-        const qq = row.QQ || row.QUARTER_QUARTER || "";
-        const q = row.Q || row.QUARTER || "";
-        
+        // Build the Legal Land Description
         let desc = "";
         
-        // Build main part - try individual components first
-        if (twpNum && twpDir && rngNum && rngDir && secNum) {
-            desc = `T. ${twpNum} ${twpDir}., R. ${rngNum} ${rngDir}., Section ${secNum}`;
-        } else if (row.TWNSHPLAB && row.RANGLAB && row.SECLAB) {
-            // Fallback to labels if available
-            desc = `${row.TWNSHPLAB}, ${row.RANGLAB}, ${row.SECLAB}`;
-        } else if (row.PLSSID && typeof row.PLSSID === 'string') {
-            // Try to parse compressed PLSSID format like "NV210210N0580E0"
-            // Format: [STATE:2][TWP:2][RNG:2][SEC:2][TWPDIR:1][...][RNGDIR:1]
-            const plssid = row.PLSSID.trim();
+        // Township and Range are required
+        if (twnshpNo && twnshpDir && rangeNo && rangeDir) {
+            desc = `Township ${twnshpNo} ${twnshpDir} Range: ${rangeNo} ${rangeDir}`;
             
-            // Extract state (2 letters), then three 2-digit numbers, then directions
-            const match = plssid.match(/^([A-Z]{2})(\d{2})(\d{2})(\d{2})([NS]).*?([EW])/i);
-            if (match) {
-                const [, state, twp, rng, sec, twpDir, rngDir] = match;
-                desc = `T. ${parseInt(twp)} ${twpDir}., R. ${parseInt(rng)} ${rngDir}., Section ${parseInt(sec)}`;
-            } else {
-                // If parsing fails, just return the PLSSID as-is
-                desc = plssid;
+            // Add first division info
+            if (frstDivTxt || frstDivNo) {
+                desc += ` ${frstDivTxt} ${frstDivNo}`.trim();
+            }
+            
+            // Add second division info only if present
+            if (secDivTyp && secDivNo) {
+                desc += ` ${secDivTyp} ${secDivNo}`;
+            } else if (secDivTyp) {
+                desc += ` ${secDivTyp}`;
+            } else if (secDivNo) {
+                desc += ` ${secDivNo}`;
             }
         }
         
-        // Add quarter information if available
-        if (desc) {
-            const quarterParts = [];
-            if (qq) quarterParts.push(qq);
-            if (q && q !== qq) quarterParts.push(q);
-            if (quarterParts.length > 0) {
-                desc += `, ${quarterParts.join(", ")} 1/4`;
+        return desc.trim();
+    }
+
+    // ---------- Helper: Generate layer-specific attribute summary for Final Report ----------
+    function generateLayerAttributeSummary(item) {
+        if (!item) return "";
+        
+        const title = (item.title || "").toLowerCase();
+        const rows = item.fullRows || item.rows || [];
+        
+        if (!rows.length) return "";
+        
+        let summaryHtml = "";
+        
+        // BLM National Visual Resource Inventory Classes
+        if (title.includes("visual resource inventory") || title.includes("vri")) {
+            const vriClassCounts = new Map();
+            const scenicRatingCounts = new Map();
+            
+            for (const row of rows) {
+                // VRI Class Code
+                const vriClass = row.VRI_CLASS_CODE || row.VRI_CLASS || row.CLASS_CODE || "";
+                if (vriClass) {
+                    vriClassCounts.set(vriClass, (vriClassCounts.get(vriClass) || 0) + 1);
+                }
+                
+                // Scenic Quality Rating
+                const scenicRating = row.SL_OVRL_RT || row.SCENIC_QUALITY || row.SQ_RATING || "";
+                if (scenicRating) {
+                    scenicRatingCounts.set(scenicRating, (scenicRatingCounts.get(scenicRating) || 0) + 1);
+                }
+            }
+            
+            if (vriClassCounts.size > 0 || scenicRatingCounts.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>VRI Attributes</b></td></tr>`;
+                
+                if (vriClassCounts.size > 0) {
+                    const classItems = Array.from(vriClassCounts.entries())
+                        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+                        .map(([cls, count]) => `${escapeHtml(cls)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>VRI Class Codes</td><td>${classItems}</td></tr>`;
+                }
+                
+                if (scenicRatingCounts.size > 0) {
+                    const ratingItems = Array.from(scenicRatingCounts.entries())
+                        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+                        .map(([rating, count]) => `${escapeHtml(rating)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Scenic Quality Ratings</td><td>${ratingItems}</td></tr>`;
+                }
             }
         }
         
-        return desc || "";
+        // USFWS Critical Habitat
+        if (title.includes("critical habitat")) {
+            const speciesCounts = new Map();
+            const statusCounts = new Map();
+            
+            for (const row of rows) {
+                const species = row.COMNAME || row.SCINAME || row.SPECIES || "";
+                if (species) {
+                    speciesCounts.set(species, (speciesCounts.get(species) || 0) + 1);
+                }
+                
+                const status = row.STATUS || row.LISTING_STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+            }
+            
+            if (speciesCounts.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Critical Habitat Details</b></td></tr>`;
+                const speciesItems = Array.from(speciesCounts.entries())
+                    .sort((a, b) => b[1] - a[1]) // Sort by count descending
+                    .slice(0, 10) // Limit to top 10
+                    .map(([sp, count]) => `${escapeHtml(sp)} (${count})`)
+                    .join(", ");
+                summaryHtml += `<tr><td>Species</td><td>${speciesItems}${speciesCounts.size > 10 ? " ..." : ""}</td></tr>`;
+            }
+        }
+        
+        // BLM Grazing Allotments
+        if (title.includes("grazing allotment")) {
+            const allotmentNames = new Set();
+            
+            for (const row of rows) {
+                const name = row.ALLOT_NAME || row.ALLOTMENT_NAME || row.NAME || "";
+                if (name) allotmentNames.add(name);
+            }
+            
+            if (allotmentNames.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Grazing Allotment Details</b></td></tr>`;
+                const names = Array.from(allotmentNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                summaryHtml += `<tr><td>Allotment Names</td><td>${names}${allotmentNames.size > 10 ? " ..." : ""}</td></tr>`;
+            }
+        }
+        
+        // BLM Wilderness Areas / WSA
+        if (title.includes("wilderness")) {
+            const areaNames = new Set();
+            
+            for (const row of rows) {
+                const name = row.NLCS_NAME || row.WSA_NAME || row.NAME || row.UNIT_NAME || "";
+                if (name) areaNames.add(name);
+            }
+            
+            if (areaNames.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Wilderness Area Details</b></td></tr>`;
+                const names = Array.from(areaNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                summaryHtml += `<tr><td>Area Names</td><td>${names}${areaNames.size > 10 ? " ..." : ""}</td></tr>`;
+            }
+        }
+        
+        // BLM ACEC
+        if (title.includes("acec") || title.includes("critical environmental concern")) {
+            const acecNames = new Set();
+            
+            for (const row of rows) {
+                const name = row.ACEC_NAME || row.NAME || row.UNIT_NAME || "";
+                if (name) acecNames.add(name);
+            }
+            
+            if (acecNames.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>ACEC Details</b></td></tr>`;
+                const names = Array.from(acecNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                summaryHtml += `<tr><td>ACEC Names</td><td>${names}${acecNames.size > 10 ? " ..." : ""}</td></tr>`;
+            }
+        }
+        
+        // Wild Horse and Burro Areas
+        if (title.includes("wild horse") || title.includes("burro")) {
+            const herdNames = new Set();
+            
+            for (const row of rows) {
+                const name = row.HA_NAME || row.HMA_NAME || row.NAME || "";
+                if (name) herdNames.add(name);
+            }
+            
+            if (herdNames.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Herd Area Details</b></td></tr>`;
+                const names = Array.from(herdNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                summaryHtml += `<tr><td>Herd Area Names</td><td>${names}${herdNames.size > 10 ? " ..." : ""}</td></tr>`;
+            }
+        }
+        
+        // Ungulate Migration
+        if (title.includes("ungulate") || title.includes("migration")) {
+            const speciesCounts = new Map();
+            const useCounts = new Map();
+            
+            for (const row of rows) {
+                const species = row.SPECIES || row.COMMON_NAME || "";
+                if (species) {
+                    speciesCounts.set(species, (speciesCounts.get(species) || 0) + 1);
+                }
+                
+                const use = row.USE_TYPE || row.SEASON || row.MOVEMENT_TYPE || "";
+                if (use) {
+                    useCounts.set(use, (useCounts.get(use) || 0) + 1);
+                }
+            }
+            
+            if (speciesCounts.size > 0 || useCounts.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Migration Corridor Details</b></td></tr>`;
+                
+                if (speciesCounts.size > 0) {
+                    const speciesItems = Array.from(speciesCounts.entries())
+                        .map(([sp, count]) => `${escapeHtml(sp)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Species</td><td>${speciesItems}</td></tr>`;
+                }
+                
+                if (useCounts.size > 0) {
+                    const useItems = Array.from(useCounts.entries())
+                        .map(([u, count]) => `${escapeHtml(u)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Use Type / Season</td><td>${useItems}</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM MLRS LUA ROW (Rights of Way)
+        if (title.includes("mlrs") && (title.includes("row") || title.includes("lua"))) {
+            const authTypes = new Map();
+            const statusCounts = new Map();
+            const caseNumbers = new Set();
+            
+            for (const row of rows) {
+                const authType = row.AUTH_TYPE || row.AUTHORIZATION_TYPE || row.TYPE || "";
+                if (authType) {
+                    authTypes.set(authType, (authTypes.get(authType) || 0) + 1);
+                }
+                
+                const status = row.CASE_STATUS || row.STATUS || row.AUTH_STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+                
+                const caseNo = row.CASE_NR || row.SERIAL_NR || row.CASE_NUMBER || "";
+                if (caseNo) caseNumbers.add(caseNo);
+            }
+            
+            if (authTypes.size > 0 || statusCounts.size > 0 || caseNumbers.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>ROW Authorization Details</b></td></tr>`;
+                
+                if (authTypes.size > 0) {
+                    const items = Array.from(authTypes.entries())
+                        .map(([t, count]) => `${escapeHtml(t)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Authorization Types</td><td>${items}</td></tr>`;
+                }
+                
+                if (statusCounts.size > 0) {
+                    const items = Array.from(statusCounts.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
+                }
+                
+                if (caseNumbers.size > 0 && caseNumbers.size <= 10) {
+                    const items = Array.from(caseNumbers).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Case Numbers</td><td>${items}</td></tr>`;
+                } else if (caseNumbers.size > 10) {
+                    summaryHtml += `<tr><td>Case Numbers</td><td>${caseNumbers.size} cases</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM National Land Use Plans
+        if (title.includes("land use plan")) {
+            const planNames = new Set();
+            const statusCounts = new Map();
+            
+            for (const row of rows) {
+                const name = row.PLAN_NAME || row.RMP_NAME || row.NAME || row.LUP_NAME || "";
+                if (name) planNames.add(name);
+                
+                const status = row.PLAN_STATUS || row.STATUS || row.APPROVAL_STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+            }
+            
+            if (planNames.size > 0 || statusCounts.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Land Use Plan Details</b></td></tr>`;
+                
+                if (planNames.size > 0) {
+                    const names = Array.from(planNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Plan Names</td><td>${names}${planNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (statusCounts.size > 0) {
+                    const items = Array.from(statusCounts.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Plan Status</td><td>${items}</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM National Conservation Areas (NLCS) - NM/NCA
+        if (title.includes("nlcs") || title.includes("conservation area") || title.includes("national monument")) {
+            const areaNames = new Set();
+            const designations = new Map();
+            
+            for (const row of rows) {
+                const name = row.NLCS_NAME || row.NCA_NAME || row.NM_NAME || row.NAME || row.UNIT_NAME || "";
+                if (name) areaNames.add(name);
+                
+                const desig = row.DESIGNATION || row.NLCS_TYPE || row.TYPE || "";
+                if (desig) {
+                    designations.set(desig, (designations.get(desig) || 0) + 1);
+                }
+            }
+            
+            if (areaNames.size > 0 || designations.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Conservation Area Details</b></td></tr>`;
+                
+                if (areaNames.size > 0) {
+                    const names = Array.from(areaNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Area Names</td><td>${names}${areaNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (designations.size > 0) {
+                    const items = Array.from(designations.entries())
+                        .map(([d, count]) => `${escapeHtml(d)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Designation Type</td><td>${items}</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM Locatable Mineral Allocations
+        if (title.includes("locatable") || title.includes("mineral allocation")) {
+            const allocations = new Map();
+            const statusCounts = new Map();
+            
+            for (const row of rows) {
+                const alloc = row.LOC_ALLOC || row.ALLOCATION || row.ALLOC_TYPE || row.MINERAL_ALLOCATION || "";
+                if (alloc) {
+                    allocations.set(alloc, (allocations.get(alloc) || 0) + 1);
+                }
+                
+                const status = row.STATUS || row.ALLOC_STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+            }
+            
+            if (allocations.size > 0 || statusCounts.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Mineral Allocation Details</b></td></tr>`;
+                
+                if (allocations.size > 0) {
+                    const items = Array.from(allocations.entries())
+                        .map(([a, count]) => `${escapeHtml(a)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Allocation Types</td><td>${items}</td></tr>`;
+                }
+                
+                if (statusCounts.size > 0) {
+                    const items = Array.from(statusCounts.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM Timber Allocations
+        if (title.includes("timber")) {
+            const allocations = new Map();
+            const statusCounts = new Map();
+            
+            for (const row of rows) {
+                const alloc = row.TIMBER_ALLOC || row.ALLOCATION || row.ALLOC_TYPE || row.HARVEST_TYPE || "";
+                if (alloc) {
+                    allocations.set(alloc, (allocations.get(alloc) || 0) + 1);
+                }
+                
+                const status = row.STATUS || row.ALLOC_STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+            }
+            
+            if (allocations.size > 0 || statusCounts.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Timber Allocation Details</b></td></tr>`;
+                
+                if (allocations.size > 0) {
+                    const items = Array.from(allocations.entries())
+                        .map(([a, count]) => `${escapeHtml(a)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Allocation Types</td><td>${items}</td></tr>`;
+                }
+                
+                if (statusCounts.size > 0) {
+                    const items = Array.from(statusCounts.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
+                }
+            }
+        }
+        
+        // USFWS Regions
+        if (title.includes("usfws") && title.includes("region")) {
+            const regionNames = new Set();
+            
+            for (const row of rows) {
+                const region = row.REGNAME || row.REGION_NAME || row.REGION || row.NAME || "";
+                if (region) regionNames.add(region);
+            }
+            
+            if (regionNames.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>USFWS Region Details</b></td></tr>`;
+                const names = Array.from(regionNames).map(n => escapeHtml(n)).join(", ");
+                summaryHtml += `<tr><td>Regions</td><td>${names}</td></tr>`;
+            }
+        }
+        
+        // BLM Grazing Pasture
+        if (title.includes("grazing pasture") || title.includes("pasture polygon")) {
+            const pastureNames = new Set();
+            const allotmentNames = new Set();
+            
+            for (const row of rows) {
+                const pasture = row.PASTURE_NAME || row.PAST_NAME || row.NAME || "";
+                if (pasture) pastureNames.add(pasture);
+                
+                const allotment = row.ALLOT_NAME || row.ALLOTMENT_NAME || "";
+                if (allotment) allotmentNames.add(allotment);
+            }
+            
+            if (pastureNames.size > 0 || allotmentNames.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Grazing Pasture Details</b></td></tr>`;
+                
+                if (pastureNames.size > 0) {
+                    const names = Array.from(pastureNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Pasture Names</td><td>${names}${pastureNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (allotmentNames.size > 0) {
+                    const names = Array.from(allotmentNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Allotment Names</td><td>${names}${allotmentNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM Oil and Gas Leases (MLRS)
+        if (title.includes("oil") && title.includes("gas")) {
+            const statusCounts = new Map();
+            const typeCounts = new Map();
+            const caseNumbers = new Set();
+            
+            for (const row of rows) {
+                const status = row.CASE_STATUS || row.LEASE_STATUS || row.STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+                
+                const type = row.LEASE_TYPE || row.AUTH_TYPE || row.TYPE || "";
+                if (type) {
+                    typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
+                }
+                
+                const caseNo = row.CASE_NR || row.SERIAL_NR || row.LEASE_NUMBER || "";
+                if (caseNo) caseNumbers.add(caseNo);
+            }
+            
+            if (statusCounts.size > 0 || typeCounts.size > 0 || caseNumbers.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Oil & Gas Lease Details</b></td></tr>`;
+                
+                if (statusCounts.size > 0) {
+                    const items = Array.from(statusCounts.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Lease Status</td><td>${items}</td></tr>`;
+                }
+                
+                if (typeCounts.size > 0) {
+                    const items = Array.from(typeCounts.entries())
+                        .map(([t, count]) => `${escapeHtml(t)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Lease Type</td><td>${items}</td></tr>`;
+                }
+                
+                if (caseNumbers.size > 0 && caseNumbers.size <= 10) {
+                    const items = Array.from(caseNumbers).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Case/Serial Numbers</td><td>${items}</td></tr>`;
+                } else if (caseNumbers.size > 10) {
+                    summaryHtml += `<tr><td>Case/Serial Numbers</td><td>${caseNumbers.size} leases</td></tr>`;
+                }
+            }
+        }
+        
+        return summaryHtml;
     }
 
     // ✅ NEW: Robust query with retry logic for better data reliability
@@ -2887,7 +3330,7 @@ async function buildFinalReportHtml() {
         
         if (stateItem && stateItem.fullRows && stateItem.fullRows.length > 0) {
             const stateNames = stateItem.fullRows
-                .map(r => r.STUSPS || r.STATE_NAME || r.STATE || "")
+                .map(r => r.NAME || r.STATE_NAME || r.STATE || r.STUSPS || "")
                 .filter(Boolean);
             
             if (stateNames.length > 0) {
@@ -3012,6 +3455,15 @@ async function buildFinalReportHtml() {
             // ✅ Calculate consistent extent for all per-layer maps (AOI with small buffer)
             const consistentExtent = selectionGeom.extent.expand(1.2);
 
+            // ✅ Switch to imagery basemap ONCE before all per-layer maps
+            try {
+                view.map.basemap = imageryBasemapId;
+                await new Promise(r => setTimeout(r, 2000));
+                await waitForViewStationary(3500);
+            } catch (e) {
+                console.warn("Failed to switch to imagery basemap:", e);
+            }
+
             for (let i = 0; i < targets.length; i++) {
                 const item = targets[i];
                 setStatus(`building final report… (${i + 1}/${targets.length})`);
@@ -3034,37 +3486,20 @@ async function buildFinalReportHtml() {
                     // ✅ IMPROVED: Use comprehensive layer ready check
                     await waitForLayerReadyToCapture(temp, view, { timeoutMs: 8000 });
 
-                    // ✅ Switch to imagery basemap
-                    try {
-                        view.map.basemap = imageryBasemapId;
-                        // Wait for basemap to settle after switch
-                        await new Promise(r => setTimeout(r, 2000));
-                    } catch (e) {
-                        console.warn("Failed to switch to imagery basemap:", e);
-                    }
-
-                    // ✅ Extended wait for imagery tiles to load after basemap change
-                    await waitForViewStationary(3500);
-
                     // ✅ Zoom in to consistent extent (AOI with small buffer) for all per-layer maps
                     await view.goTo(consistentExtent, { animate: false });
-                    await waitForViewStationary(3500);
+                    await waitForViewStationary(2000);
 
                     // ✅ Use improved screenshot capture with tile wait logic
                     const dataUrl = await captureScreenshotWithWait({ width });
                     if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
-                    // ✅ Restore original basemap
-                    try {
-                        view.map.basemap = originalBasemap;
-                        await new Promise(r => setTimeout(r, 1000));
-                    } catch (e) {
-                        console.warn("Failed to restore original basemap:", e);
-                    }
-
                     const cov = await computeLayerCoverageStats(item, selectionGeom);
                     const acresCovered = cov ? cov.acresCovered : 0;
                     const pctCovered = cov ? cov.pctAoiCovered : 0;
+
+                    // Generate layer-specific attribute summary
+                    const layerAttrSummary = generateLayerAttributeSummary(item);
 
                     sectionsHtml += `
                     <div class="section">
@@ -3079,6 +3514,7 @@ async function buildFinalReportHtml() {
                             <tr><td>Intersecting features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
                             <tr><td>AOI covered by layer</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
                             <tr><td>% AOI covered</td><td><b>${formatNumber(pctCovered, 2)}</b>%</td></tr>
+                            ${layerAttrSummary}
                         </table>
                     </div>
                     <div class="pagebreak"></div>
@@ -3086,11 +3522,15 @@ async function buildFinalReportHtml() {
                 } finally {
                     try { view.map.remove(temp); } catch (e) { }
                     restoreVisibility();
-                    // Ensure basemap is restored in case of error
-                    try {
-                        view.map.basemap = originalBasemap;
-                    } catch (e) { }
                 }
+            }
+
+            // ✅ Restore original basemap ONCE after all per-layer maps are done
+            try {
+                view.map.basemap = originalBasemap;
+                await new Promise(r => setTimeout(r, 1000));
+            } catch (e) {
+                console.warn("Failed to restore original basemap:", e);
             }
         }
 
@@ -3175,10 +3615,21 @@ async function generateAoiMapsWithCircles() {
     const allLayers = view.map.layers.toArray();
     const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
 
+    // Find PLSS Township layer to show on AOI maps
+    let plssTownshipLayer = null;
+    for (const l of allLayers) {
+        if (l.title && l.title.toLowerCase().includes("township")) {
+            plssTownshipLayer = l;
+            break;
+        }
+    }
+
     function setVisibilityForAoi() {
         for (const l of allLayers) {
             if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
             if (l?.type === "tile") { l.visible = true; continue; }
+            // ✅ Show PLSS Township layer on AOI maps
+            if (plssTownshipLayer && l === plssTownshipLayer) { l.visible = true; continue; }
             l.visible = false;
         }
         ensureAoiOnTop(view.map);
