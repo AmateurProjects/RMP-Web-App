@@ -2895,27 +2895,47 @@ async function generateVisualReportData(myOp, modal = null) {
             }
         }
         
-        // BLM National Land Use Plans
-        if (title.includes("land use plan")) {
+        // BLM National Land Use Plans (including Revision/Development)
+        if (title.includes("land use plan") || title.includes("revision") && title.includes("development")) {
             const planNames = new Set();
             const statusCounts = new Map();
+            const officeCounts = new Map();
             
             for (const row of rows) {
-                const name = row.PLAN_NAME || row.RMP_NAME || row.NAME || row.LUP_NAME || "";
+                // Try many field name variations for plan name
+                const name = row.PLAN_NAME || row.PLAN_NM || row.RMP_NAME || row.NAME || 
+                             row.LUP_NAME || row.DOC_NAME || row.DOCUMENT_NAME || 
+                             row.PLAN_TITLE || row.LUP_NM || row.PLANNAME || "";
                 if (name) planNames.add(name);
                 
-                const status = row.PLAN_STATUS || row.STATUS || row.APPROVAL_STATUS || "";
+                // Status variations
+                const status = row.PLAN_STATUS || row.STATUS || row.APPROVAL_STATUS || 
+                               row.LUP_STATUS || row.STAT || row.PLAN_STAT || "";
                 if (status) {
                     statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
                 }
+                
+                // Office/Admin unit
+                const office = row.ADMIN_UNIT || row.ADM_UNIT || row.OFFICE || row.FIELD_OFFICE ||
+                               row.FO_NAME || row.ADMIN_ST || row.STATE || "";
+                if (office) {
+                    officeCounts.set(office, (officeCounts.get(office) || 0) + 1);
+                }
             }
             
-            if (planNames.size > 0 || statusCounts.size > 0) {
+            if (planNames.size > 0 || statusCounts.size > 0 || officeCounts.size > 0) {
                 summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Land Use Plan Details</b></td></tr>`;
                 
                 if (planNames.size > 0) {
                     const names = Array.from(planNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Plan Names</td><td>${names}${planNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (officeCounts.size > 0) {
+                    const items = Array.from(officeCounts.entries())
+                        .map(([o, count]) => `${escapeHtml(o)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Admin Unit / Office</td><td>${items}</td></tr>`;
                 }
                 
                 if (statusCounts.size > 0) {
@@ -3080,23 +3100,48 @@ async function generateVisualReportData(myOp, modal = null) {
             const statusCounts = new Map();
             const typeCounts = new Map();
             const caseNumbers = new Set();
+            const lesseeNames = new Set();
+            const commodityCounts = new Map();
             
             for (const row of rows) {
-                const status = row.CASE_STATUS || row.LEASE_STATUS || row.STATUS || "";
+                // Status variations
+                const status = row.CASE_STATUS || row.LEASE_STATUS || row.STATUS || 
+                               row.CASE_STAT || row.STAT || row.DISP_STATUS || 
+                               row.CASE_TYP || row.AUTH_STAT || "";
                 if (status) {
                     statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
                 }
                 
-                const type = row.LEASE_TYPE || row.AUTH_TYPE || row.TYPE || "";
+                // Type variations
+                const type = row.LEASE_TYPE || row.AUTH_TYPE || row.TYPE || 
+                             row.CASE_TYPE || row.TYP || row.DISP_TYPE ||
+                             row.AUTH_TYP || row.CASETYPE || "";
                 if (type) {
                     typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
                 }
                 
-                const caseNo = row.CASE_NR || row.SERIAL_NR || row.LEASE_NUMBER || "";
+                // Case/Serial number variations
+                const caseNo = row.CASE_NR || row.SERIAL_NR || row.LEASE_NUMBER || 
+                               row.CASE_NO || row.SERIAL_NO || row.CASENR || 
+                               row.SERIALNR || row.CASE_ID || row.AUTH_NR || "";
                 if (caseNo) caseNumbers.add(caseNo);
+                
+                // Lessee/Holder name
+                const lessee = row.HOLDER_NAME || row.LESSEE || row.LESSEE_NAME ||
+                               row.HOLDER || row.COMPANY || row.OPERATOR ||
+                               row.CUSTOMER_NAME || row.CUST_NAME || "";
+                if (lessee) lesseeNames.add(lessee);
+                
+                // Commodity
+                const commodity = row.COMMODITY || row.CMDTY || row.RESOURCE ||
+                                  row.MINERAL || row.PRODUCT || "";
+                if (commodity) {
+                    commodityCounts.set(commodity, (commodityCounts.get(commodity) || 0) + 1);
+                }
             }
             
-            if (statusCounts.size > 0 || typeCounts.size > 0 || caseNumbers.size > 0) {
+            if (statusCounts.size > 0 || typeCounts.size > 0 || caseNumbers.size > 0 || 
+                lesseeNames.size > 0 || commodityCounts.size > 0) {
                 summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Oil & Gas Lease Details</b></td></tr>`;
                 
                 if (statusCounts.size > 0) {
@@ -3113,11 +3158,255 @@ async function generateVisualReportData(myOp, modal = null) {
                     summaryHtml += `<tr><td>Lease Type</td><td>${items}</td></tr>`;
                 }
                 
+                if (commodityCounts.size > 0) {
+                    const items = Array.from(commodityCounts.entries())
+                        .map(([c, count]) => `${escapeHtml(c)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Commodity</td><td>${items}</td></tr>`;
+                }
+                
+                if (lesseeNames.size > 0) {
+                    const names = Array.from(lesseeNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Lessee/Holder</td><td>${names}${lesseeNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
                 if (caseNumbers.size > 0 && caseNumbers.size <= 10) {
                     const items = Array.from(caseNumbers).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Case/Serial Numbers</td><td>${items}</td></tr>`;
                 } else if (caseNumbers.size > 10) {
                     summaryHtml += `<tr><td>Case/Serial Numbers</td><td>${caseNumbers.size} leases</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM National Recreation Sites
+        if (title.includes("recreation site") || title.includes("recreation_site")) {
+            const siteNames = new Set();
+            const siteTypes = new Map();
+            const feeCounts = new Map();
+            const activityTypes = new Set();
+            
+            for (const row of rows) {
+                // Site name variations
+                const name = row.SITE_NAME || row.REC_SITE_NAME || row.NAME || 
+                             row.SITENAME || row.SITE_NM || row.REC_NAME || "";
+                if (name) siteNames.add(name);
+                
+                // Site type variations
+                const type = row.SITE_TYPE || row.REC_SITE_TYPE || row.TYPE || 
+                             row.SITETYPE || row.REC_TYPE || row.FACILITY_TYPE || "";
+                if (type) {
+                    siteTypes.set(type, (siteTypes.get(type) || 0) + 1);
+                }
+                
+                // Fee status
+                const fee = row.FEE_YN || row.FEE || row.FEE_STATUS || 
+                            row.USER_FEE || row.FEES || "";
+                if (fee) {
+                    feeCounts.set(fee, (feeCounts.get(fee) || 0) + 1);
+                }
+                
+                // Activities
+                const activity = row.ACTIVITIES || row.ACTIVITY || row.REC_ACTIVITY ||
+                                 row.PRIMARY_ACTIVITY || row.USE_TYPE || "";
+                if (activity) activityTypes.add(activity);
+            }
+            
+            if (siteNames.size > 0 || siteTypes.size > 0 || feeCounts.size > 0 || activityTypes.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Recreation Site Details</b></td></tr>`;
+                
+                if (siteNames.size > 0) {
+                    const names = Array.from(siteNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Site Names</td><td>${names}${siteNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (siteTypes.size > 0) {
+                    const items = Array.from(siteTypes.entries())
+                        .map(([t, count]) => `${escapeHtml(t)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Site Types</td><td>${items}</td></tr>`;
+                }
+                
+                if (feeCounts.size > 0) {
+                    const items = Array.from(feeCounts.entries())
+                        .map(([f, count]) => `${escapeHtml(f)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Fee Status</td><td>${items}</td></tr>`;
+                }
+                
+                if (activityTypes.size > 0) {
+                    const activities = Array.from(activityTypes).slice(0, 10).map(a => escapeHtml(a)).join(", ");
+                    summaryHtml += `<tr><td>Activities</td><td>${activities}${activityTypes.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM Land and Water Conservation Fund (LWCF)
+        if (title.includes("lwcf") || title.includes("land and water conservation") || title.includes("conservation fund")) {
+            const projectNames = new Set();
+            const statusCounts = new Map();
+            const purposeCounts = new Map();
+            const fiscalYears = new Set();
+            
+            for (const row of rows) {
+                // Project/tract name variations
+                const name = row.PROJECT_NAME || row.PROJ_NAME || row.NAME || 
+                             row.TRACT_NAME || row.LWCF_NAME || row.UNIT_NAME || "";
+                if (name) projectNames.add(name);
+                
+                // Status variations
+                const status = row.STATUS || row.PROJ_STATUS || row.PROJECT_STATUS ||
+                               row.LWCF_STATUS || row.ACQ_STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+                
+                // Purpose/use
+                const purpose = row.PURPOSE || row.LWCF_PURPOSE || row.USE || 
+                                row.PROJECT_TYPE || row.PROJ_TYPE || row.ACQ_TYPE || "";
+                if (purpose) {
+                    purposeCounts.set(purpose, (purposeCounts.get(purpose) || 0) + 1);
+                }
+                
+                // Fiscal year
+                const fy = row.FISCAL_YEAR || row.FY || row.YEAR || row.ACQ_YEAR || "";
+                if (fy) fiscalYears.add(fy);
+            }
+            
+            if (projectNames.size > 0 || statusCounts.size > 0 || purposeCounts.size > 0 || fiscalYears.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>LWCF Project Details</b></td></tr>`;
+                
+                if (projectNames.size > 0) {
+                    const names = Array.from(projectNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Project/Tract Names</td><td>${names}${projectNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (purposeCounts.size > 0) {
+                    const items = Array.from(purposeCounts.entries())
+                        .map(([p, count]) => `${escapeHtml(p)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Purpose/Type</td><td>${items}</td></tr>`;
+                }
+                
+                if (statusCounts.size > 0) {
+                    const items = Array.from(statusCounts.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
+                }
+                
+                if (fiscalYears.size > 0) {
+                    const years = Array.from(fiscalYears).sort().slice(0, 10).map(y => escapeHtml(String(y))).join(", ");
+                    summaryHtml += `<tr><td>Fiscal Years</td><td>${years}${fiscalYears.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+            }
+        }
+        
+        // BLM ePlanning Projects
+        if (title.includes("eplanning") || title.includes("epl_comment") || title.includes("nepa")) {
+            const projectNames = new Set();
+            const statusCounts = new Map();
+            const typeCounts = new Map();
+            const nepaNumbers = new Set();
+            
+            for (const row of rows) {
+                const name = row.PROJECT_NAME || row.PROJ_NAME || row.NAME || "";
+                if (name) projectNames.add(name);
+                
+                const status = row.NEPA_STATUS || row.PROJECT_STATUS || row.STATUS || "";
+                if (status) {
+                    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+                }
+                
+                const type = row.PROJECT_TYPE || row.NEPA_TYPE || row.TYPE || "";
+                if (type) {
+                    typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
+                }
+                
+                const nepaNo = row.NEPA_NUMBER || row.NEPA_NO || row.DOI_NUMBER || "";
+                if (nepaNo) nepaNumbers.add(nepaNo);
+            }
+            
+            if (projectNames.size > 0 || statusCounts.size > 0 || typeCounts.size > 0 || nepaNumbers.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>ePlanning Project Details</b></td></tr>`;
+                
+                if (projectNames.size > 0) {
+                    const names = Array.from(projectNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Project Names</td><td>${names}${projectNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (typeCounts.size > 0) {
+                    const items = Array.from(typeCounts.entries())
+                        .map(([t, count]) => `${escapeHtml(t)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Project Type</td><td>${items}</td></tr>`;
+                }
+                
+                if (statusCounts.size > 0) {
+                    const items = Array.from(statusCounts.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>NEPA Status</td><td>${items}</td></tr>`;
+                }
+                
+                if (nepaNumbers.size > 0 && nepaNumbers.size <= 10) {
+                    const items = Array.from(nepaNumbers).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>NEPA Numbers</td><td>${items}</td></tr>`;
+                } else if (nepaNumbers.size > 10) {
+                    summaryHtml += `<tr><td>NEPA Numbers</td><td>${nepaNumbers.size} projects</td></tr>`;
+                }
+            }
+        }
+        
+        // Generic fallback: If no specific handler generated content, scan for common name/status fields
+        if (!summaryHtml && rows.length > 0) {
+            const genericNames = new Set();
+            const genericStatus = new Map();
+            const genericTypes = new Map();
+            
+            // Common field name patterns that typically contain useful values
+            const namePatterns = /^(.*_)?(NAME|NM|TITLE|LABEL|DESCRIPTION|DESC)(_.*)?$/i;
+            const statusPatterns = /^(.*_)?(STATUS|STAT|STATE|CONDITION)(_.*)?$/i;
+            const typePatterns = /^(.*_)?(TYPE|TYP|CLASS|CATEGORY|CAT|KIND)(_.*)?$/i;
+            
+            for (const row of rows) {
+                for (const [key, val] of Object.entries(row)) {
+                    if (val == null || val === "" || typeof val === "number") continue;
+                    const strVal = String(val).trim();
+                    if (!strVal || strVal.length > 200) continue; // Skip very long values
+                    
+                    if (namePatterns.test(key)) {
+                        genericNames.add(strVal);
+                    } else if (statusPatterns.test(key)) {
+                        genericStatus.set(strVal, (genericStatus.get(strVal) || 0) + 1);
+                    } else if (typePatterns.test(key)) {
+                        genericTypes.set(strVal, (genericTypes.get(strVal) || 0) + 1);
+                    }
+                }
+            }
+            
+            if (genericNames.size > 0 || genericStatus.size > 0 || genericTypes.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Feature Details</b></td></tr>`;
+                
+                if (genericNames.size > 0) {
+                    const names = Array.from(genericNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Names</td><td>${names}${genericNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (genericTypes.size > 0) {
+                    const items = Array.from(genericTypes.entries())
+                        .slice(0, 10)
+                        .map(([t, count]) => `${escapeHtml(t)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Types</td><td>${items}</td></tr>`;
+                }
+                
+                if (genericStatus.size > 0) {
+                    const items = Array.from(genericStatus.entries())
+                        .slice(0, 10)
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
                 }
             }
         }

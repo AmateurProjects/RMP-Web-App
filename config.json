@@ -143,6 +143,22 @@
     {
       "title": "BLM Wild Horse and Burro Heard Management Areas",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Wild_Horse_and_Burro_Heard_Mgmt_Area_Polygons/FeatureServer/5"
+    },
+    {
+      "title": "BLM ePlanning Projects",
+      "url": "https://gis.blm.gov/arcgis/rest/services/eplanning/BLM_Natl_Epl_Comment/FeatureServer/0"
+    },
+    {
+      "title": "BLM National Recreation Sites",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_National_Recreation_Site_Points/FeatureServer/1"
+    },
+    {
+      "title": "BLM Natl Revision Development Land Use Plans",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Revision_Development_Land_Use_Plans/FeatureServer/0"
+    },
+    {
+      "title": "BLM Land and Water Conservation Fund (LWCF)",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Land_and_Water_Conservation_Fund_LWCF_Polygons/FeatureServer/2"
     }
   ],
   "report": {
