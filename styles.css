@@ -536,8 +536,7 @@ th{
 
 .analysis-body {
     padding: 20px 24px;
-    max-height: 400px;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .analysis-section {
@@ -581,8 +580,7 @@ th{
     background: #f8f9fa;
     border-radius: 8px;
     padding: 12px;
-    max-height: 200px;
-    overflow-y: auto;
+    overflow: hidden;
     font-size: 13px;
     font-family: monospace;
     color: #444;

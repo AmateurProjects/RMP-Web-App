@@ -2536,7 +2536,49 @@ async function generateVisualReportData(myOp, modal = null) {
     }
 
 
-    // ---------- Final Report (printable HTML in new tab) ----------
+    // ---------- Helper: Format PLSS Legal Description ----------
+    function formatLegalDescription(row) {
+        if (!row) return "";
+        
+        // Try individual components first for maximum detail
+        const twpNum = row.TWNSHPNUM || row.TWPNUM || (row.TWNSHPLAB ? row.TWNSHPLAB.match(/\d+/) : null)?.[0] || "";
+        const twpDir = row.TWNSHPDIR || (row.TWNSHPLAB ? (row.TWNSHPLAB.includes("S") ? "S" : row.TWNSHPLAB.includes("N") ? "N" : "") : "");
+        
+        const rngNum = row.RANGENUM || row.RNGNUM || (row.RANGLAB ? row.RANGLAB.match(/\d+/) : null)?.[0] || "";
+        const rngDir = row.RANGEDIR || (row.RANGLAB ? (row.RANGLAB.includes("E") ? "E" : row.RANGLAB.includes("W") ? "W" : "") : "");
+        
+        const secNum = row.SECNUM || row.SECTIONNUM || row.SECTION || (row.SECLAB ? row.SECLAB.match(/\d+/) : null)?.[0] || "";
+        
+        // Quarter sections (QQ = quarter-quarter, Q = quarter)
+        const qq = row.QQ || row.QUARTER_QUARTER || "";
+        const q = row.Q || row.QUARTER || "";
+        
+        let desc = "";
+        
+        // Build main part
+        if (twpNum && twpDir && rngNum && rngDir && secNum) {
+            desc = `T. ${twpNum} ${twpDir}., R. ${rngNum} ${rngDir}., Section ${secNum}`;
+        } else if (row.TWNSHPLAB && row.RANGLAB && row.SECLAB) {
+            // Fallback to labels if available
+            desc = `${row.TWNSHPLAB}, ${row.RANGLAB}, ${row.SECLAB}`;
+        } else if (row.PLSSID) {
+            desc = row.PLSSID;
+        }
+        
+        // Add quarter information if available
+        if (desc) {
+            const quarterParts = [];
+            if (qq) quarterParts.push(qq);
+            if (q && q !== qq) quarterParts.push(q);
+            if (quarterParts.length > 0) {
+                desc += `, ${quarterParts.join(", ")} 1/4`;
+            }
+        }
+        
+        return desc || "";
+    }
+
+    // ---------- Final Report HTML Generation ----------
     function openHtmlInNewTab(htmlString) {
         const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
         const url = URL.createObjectURL(blob);
@@ -2750,14 +2792,9 @@ async function buildFinalReportHtml() {
         
         if (parcelItem && parcelItem.fullRows && parcelItem.fullRows.length > 0) {
             for (const row of parcelItem.fullRows) {
-                const twp = row.TWNSHPLAB || row.TOWNSHIP || "";
-                const rng = row.RANGLAB || row.RANGE || "";
-                const sec = row.SECLAB || row.SECTION || "";
-                
-                if (twp && rng && sec) {
-                    legalDescriptions.push(`${twp} ${rng} Section ${sec}`);
-                } else if (row.PLSSID) {
-                    legalDescriptions.push(row.PLSSID);
+                const legalDesc = formatLegalDescription(row);
+                if (legalDesc) {
+                    legalDescriptions.push(legalDesc);
                 }
             }
         }
@@ -2806,17 +2843,12 @@ async function buildFinalReportHtml() {
               </div>
             `;
         } else {
-            // ✅ For Final Report, we regenerate screenshots (ensures fresh rendering)
-            // But we use the SAME extent as Visual Report
+            // ✅ For Final Report, use imagery basemap and tight zoom on AOI only
             
-            if (fixedExtent) {
-                await view.goTo(fixedExtent, { animate: false });
-            } else {
-                await view.goTo(selectionGeom, { animate: false });
-            }
-
             const allLayers = view.map.layers.toArray();
             const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+            const originalBasemap = view.map.basemap;
+            const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
 
             function setVisibilityForScreenshot(tempLayer) {
                 for (const l of allLayers) {
@@ -2875,14 +2907,28 @@ async function buildFinalReportHtml() {
                         }
                     } catch (e) { }
 
-                    // ✅ CRITICAL: Re-apply the SAME extent used in Visual Report
-                    if (fixedExtent) {
-                        await view.goTo(fixedExtent, { animate: false });
+                    // ✅ Switch to imagery basemap
+                    try {
+                        view.map.basemap = imageryBasemapId;
+                    } catch (e) {
+                        console.warn("Failed to switch to imagery basemap:", e);
                     }
+
+                    // ✅ Zoom in tight on AOI (minimal padding)
+                    const tightExtent = selectionGeom.extent.expand(1.2);
+                    await view.goTo(tightExtent, { animate: false });
+                    await waitForViewStationary(1000);
 
                     const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
                     const dataUrl = ss?.dataUrl;
                     if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+                    // ✅ Restore original basemap
+                    try {
+                        view.map.basemap = originalBasemap;
+                    } catch (e) {
+                        console.warn("Failed to restore original basemap:", e);
+                    }
 
                     const cov = await computeLayerCoverageStats(item, selectionGeom);
                     const acresCovered = cov ? cov.acresCovered : 0;
@@ -2908,6 +2954,10 @@ async function buildFinalReportHtml() {
                 } finally {
                     try { view.map.remove(temp); } catch (e) { }
                     restoreVisibility();
+                    // Ensure basemap is restored in case of error
+                    try {
+                        view.map.basemap = originalBasemap;
+                    } catch (e) { }
                 }
             }
         }
@@ -2994,9 +3044,22 @@ async function generateAoiMapsWithCircles() {
     const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
 
     function setVisibilityForAoi() {
+        // Find and show PLSS State layer
+        let plssStateLayer = null;
+        for (const l of allLayers) {
+            // Match by URL or title
+            if ((l.url && l.url.includes(plssStateLayerUrl)) || 
+                (l.title && l.title.toLowerCase().includes("state boundaries"))) {
+                plssStateLayer = l;
+                break;
+            }
+        }
+
         for (const l of allLayers) {
             if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
             if (l?.type === "tile") { l.visible = true; continue; }
+            // ✅ Show PLSS State layer
+            if (plssStateLayer && l === plssStateLayer) { l.visible = true; continue; }
             l.visible = false;
         }
         ensureAoiOnTop(view.map);
@@ -3010,26 +3073,26 @@ async function generateAoiMapsWithCircles() {
     try {
         setVisibilityForAoi();
 
-        // ✅ Map 1: VERY zoomed out (show several states) WITH red circle
-        const ext1 = selectionGeom.extent.expand(20); // Much wider zoom to show multiple states
-        await view.goTo(ext1, { animate: false });
+        // ✅ Map 1: 1:500,000 scale (showing several states) WITH red circle
+        const ext1 = selectionGeom.extent;
+        await view.goTo({ target: ext1, scale: 500000 }, { animate: false });
         await waitForViewStationary(1000);
         
         const ss1 = await view.takeScreenshot({ format: "png", quality: 100, width });
         if (ss1?.dataUrl) {
-            const withCircle1 = await addRedCircleToScreenshot(ss1.dataUrl, selectionGeom.extent, ext1);
-            maps.push(`<div class="aoi-map"><img src="${withCircle1}" alt="AOI Context (Regional)" /></div>`);
+            const withCircle1 = await addRedCircleToScreenshot(ss1.dataUrl, selectionGeom.extent, view.extent);
+            maps.push(`<div class="aoi-map"><img src="${withCircle1}" alt="AOI Context (Regional 1:500,000)" /></div>`);
         }
 
-        // ✅ Map 2: County-level zoom (4-8 counties visible) WITH red circle
-        const ext2 = selectionGeom.extent.expand(4); // County-level zoom
-        await view.goTo(ext2, { animate: false });
+        // ✅ Map 2: 1:250,000 scale (county-level zoom) WITH red circle
+        const ext2 = selectionGeom.extent;
+        await view.goTo({ target: ext2, scale: 250000 }, { animate: false });
         await waitForViewStationary(1000);
         
         const ss2 = await view.takeScreenshot({ format: "png", quality: 100, width });
         if (ss2?.dataUrl) {
-            const withCircle2 = await addRedCircleToScreenshot(ss2.dataUrl, selectionGeom.extent, ext2);
-            maps.push(`<div class="aoi-map"><img src="${withCircle2}" alt="AOI Context (County)" /></div>`);
+            const withCircle2 = await addRedCircleToScreenshot(ss2.dataUrl, selectionGeom.extent, view.extent);
+            maps.push(`<div class="aoi-map"><img src="${withCircle2}" alt="AOI Context (County 1:250,000)" /></div>`);
         }
 
     } finally {
