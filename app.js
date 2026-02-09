@@ -4958,6 +4958,9 @@ function buildDataSourcesSection() {
             return details.join(" | ");
         }
 
+        // Store all search results for click handling
+        let allSearchResults = [];
+
         // Perform the search across all layers
         async function performSearch(searchTerm) {
             if (!searchTerm || searchTerm.length < 2) {
@@ -4989,12 +4992,14 @@ function buildDataSourcesSection() {
                 
                 if (signal.aborted) return;
 
-                // Group results by layer
+                // Flatten all results into a single array for easy access
+                allSearchResults = [];
                 const groupedResults = new Map();
                 results.forEach((layerResults, idx) => {
                     if (layerResults.length > 0) {
                         const layerTitle = layers[idx].title;
                         groupedResults.set(layerTitle, layerResults);
+                        layerResults.forEach(f => allSearchResults.push(f));
                     }
                 });
 
@@ -5003,21 +5008,22 @@ function buildDataSourcesSection() {
                     searchResults.innerHTML = '<div class="search-no-results">No matching features found</div>';
                 } else {
                     let html = "";
+                    let globalIdx = 0;
                     for (const [layerTitle, features] of groupedResults) {
                         html += `<div class="search-result-group">`;
                         html += `<div class="search-result-group-title">${escapeHtml(layerTitle)}</div>`;
                         
-                        features.forEach((feature, idx) => {
+                        features.forEach((feature) => {
                             const name = getFeatureDisplayName(feature.attributes);
                             const details = getFeatureDetails(feature.attributes);
-                            const dataAttr = `data-layer="${escapeHtml(feature.layerUrl)}" data-idx="${idx}"`;
                             
-                            html += `<div class="search-result-item" ${dataAttr}>`;
+                            html += `<div class="search-result-item" data-result-idx="${globalIdx}">`;
                             html += `<div class="search-result-name">${escapeHtml(name)}</div>`;
                             if (details) {
                                 html += `<div class="search-result-details">${escapeHtml(details)}</div>`;
                             }
                             html += `</div>`;
+                            globalIdx++;
                         });
                         
                         html += `</div>`;
@@ -5026,20 +5032,17 @@ function buildDataSourcesSection() {
 
                     // Attach click handlers to results
                     const resultItems = searchResults.querySelectorAll(".search-result-item");
-                    resultItems.forEach((item, globalIdx) => {
-                        item.addEventListener("click", () => {
-                            // Find the feature in our results
-                            let featureIdx = 0;
-                            for (const [, features] of groupedResults) {
-                                for (const feature of features) {
-                                    if (featureIdx === globalIdx) {
-                                        zoomToFeature(feature);
-                                        searchResults.classList.remove("visible");
-                                        return;
-                                    }
-                                    featureIdx++;
-                                }
+                    resultItems.forEach((item) => {
+                        item.addEventListener("click", async () => {
+                            const idx = parseInt(item.getAttribute("data-result-idx"), 10);
+                            const feature = allSearchResults[idx];
+                            if (feature) {
+                                // Enable the layer if it's not visible
+                                await enableLayerByUrl(feature.layerUrl);
+                                // Zoom to the feature
+                                await zoomToFeature(feature);
                             }
+                            searchResults.classList.remove("visible");
                         });
                     });
                 }
@@ -5054,6 +5057,52 @@ function buildDataSourcesSection() {
             } finally {
                 searchIcon.style.display = "block";
                 searchSpinner.style.display = "none";
+            }
+        }
+
+        // Enable a layer by its URL (for search results)
+        async function enableLayerByUrl(layerUrl) {
+            if (!layerUrl) return;
+            
+            const normalizedUrl = String(layerUrl).replace(/\/+$/, "").toLowerCase();
+            
+            // Check selection layers
+            for (let i = 0; i < (selectionLayers || []).length; i++) {
+                const entry = selectionLayers[i];
+                const entryUrl = String(entry?.cfg?.url || "").replace(/\/+$/, "").toLowerCase();
+                if (entryUrl === normalizedUrl) {
+                    if (!entry.layer.visible) {
+                        await enableSelectionLayer(i);
+                    }
+                    return;
+                }
+            }
+            
+            // Check report layers by matching URL in reportLayerViews
+            // reportLayerViews is keyed by root URL, but we might have a sublayer URL
+            for (const [key, layerOrArray] of reportLayerViews.entries()) {
+                const layers = Array.isArray(layerOrArray) ? layerOrArray : [layerOrArray];
+                for (const lyr of layers) {
+                    const lyrUrl = String(lyr?.url || "").replace(/\/+$/, "").toLowerCase();
+                    if (lyrUrl === normalizedUrl) {
+                        if (!lyr.visible) {
+                            lyr.visible = true;
+                            // Find the config index to update checkbox
+                            const cfgIdx = (config.reportLayers || []).findIndex(cfg => 
+                                normalizeUrlKey(cfg.url) === key
+                            );
+                            if (cfgIdx >= 0) {
+                                const checkbox = document.getElementById(`rptlayer_${cfgIdx}`);
+                                if (checkbox && !checkbox.checked) {
+                                    checkbox.checked = true;
+                                    // Also show all other layers from this root
+                                    layers.forEach(l => { l.visible = true; });
+                                }
+                            }
+                        }
+                        return;
+                    }
+                }
             }
         }
 
@@ -5098,13 +5147,30 @@ function buildDataSourcesSection() {
                 }
 
                 // Zoom to the feature with some padding
-                await view.goTo({
-                    target: geom,
-                    zoom: geom.type === "point" ? 14 : undefined
-                }, {
+                const goToOptions = {
                     duration: 1000,
                     easing: "ease-in-out"
-                });
+                };
+
+                if (geom.type === "point") {
+                    // For points, zoom to a specific level
+                    await view.goTo({
+                        target: geom,
+                        zoom: 14
+                    }, goToOptions);
+                } else {
+                    // For lines and polygons, use extent with padding
+                    await view.goTo({
+                        target: geom
+                    }, goToOptions);
+                    
+                    // Add a bit more padding by zooming out slightly
+                    if (view.zoom > 4) {
+                        await view.goTo({
+                            zoom: view.zoom - 0.5
+                        }, { duration: 300 });
+                    }
+                }
 
                 // Briefly highlight the feature
                 const highlightLayer = new GraphicsLayer({ title: "Search Highlight" });

@@ -1189,13 +1189,18 @@ th{
     position: absolute;
     right: 14px;
     top: 50%;
-    transform: translateY(-50%);
+    margin-top: -9px; /* Half of height to center vertically */
     width: 18px;
     height: 18px;
     border: 2px solid #eee;
     border-top-color: #666;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: searchSpin 0.8s linear infinite;
+}
+
+@keyframes searchSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .feature-search-clear {
