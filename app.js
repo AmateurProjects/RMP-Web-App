@@ -5065,8 +5065,9 @@ function buildDataSourcesSection() {
             if (!layerUrl) return;
             
             const normalizedUrl = String(layerUrl).replace(/\/+$/, "").toLowerCase();
+            const normalizedKey = normalizeUrlKey(layerUrl);
             
-            // Check selection layers
+            // Check selection layers first
             for (let i = 0; i < (selectionLayers || []).length; i++) {
                 const entry = selectionLayers[i];
                 const entryUrl = String(entry?.cfg?.url || "").replace(/\/+$/, "").toLowerCase();
@@ -5078,124 +5079,124 @@ function buildDataSourcesSection() {
                 }
             }
             
-            // Check report layers by matching URL in reportLayerViews
-            // reportLayerViews is keyed by root URL, but we might have a sublayer URL
+            // Check report layers - match by config URL key or actual layer URL
             for (const [key, layerOrArray] of reportLayerViews.entries()) {
                 const layers = Array.isArray(layerOrArray) ? layerOrArray : [layerOrArray];
-                for (const lyr of layers) {
+                
+                // Check if the config key matches the search URL
+                const keyMatch = key === normalizedKey;
+                
+                // Also check if any sublayer URL matches
+                const urlMatch = layers.some(lyr => {
                     const lyrUrl = String(lyr?.url || "").replace(/\/+$/, "").toLowerCase();
-                    if (lyrUrl === normalizedUrl) {
-                        if (!lyr.visible) {
-                            lyr.visible = true;
-                            // Find the config index to update checkbox
-                            const cfgIdx = (config.reportLayers || []).findIndex(cfg => 
-                                normalizeUrlKey(cfg.url) === key
-                            );
-                            if (cfgIdx >= 0) {
-                                const checkbox = document.getElementById(`rptlayer_${cfgIdx}`);
-                                if (checkbox && !checkbox.checked) {
-                                    checkbox.checked = true;
-                                    // Also show all other layers from this root
-                                    layers.forEach(l => { l.visible = true; });
-                                }
-                            }
+                    return lyrUrl === normalizedUrl;
+                });
+                
+                if (keyMatch || urlMatch) {
+                    // Enable all layers in this group
+                    layers.forEach(lyr => { lyr.visible = true; });
+                    
+                    // Find the config index to update checkbox
+                    const cfgIdx = (config.reportLayers || []).findIndex(cfg => 
+                        normalizeUrlKey(cfg.url) === key
+                    );
+                    if (cfgIdx >= 0) {
+                        const checkbox = document.getElementById(`rptlayer_${cfgIdx}`);
+                        if (checkbox && !checkbox.checked) {
+                            checkbox.checked = true;
                         }
-                        return;
                     }
+                    return;
                 }
             }
+            
+            console.warn("Could not find layer to enable:", layerUrl);
         }
 
         // Zoom to a feature on the map
         async function zoomToFeature(feature) {
             if (!view || !feature.geometry) {
-                console.warn("Cannot zoom: no geometry");
+                console.warn("Cannot zoom: no geometry", feature);
                 return;
             }
 
             try {
-                // Convert ArcGIS REST geometry to ArcGIS JS geometry
-                let geom = null;
+                const geomJson = feature.geometry;
                 
-                if (feature.geometry.rings) {
+                // Determine geometry type and create a proper graphic
+                let graphic = null;
+                let geomType = null;
+                
+                if (geomJson.rings && geomJson.rings.length > 0) {
                     // Polygon
-                    geom = {
-                        type: "polygon",
-                        rings: feature.geometry.rings,
-                        spatialReference: feature.geometry.spatialReference || { wkid: 4326 }
-                    };
-                } else if (feature.geometry.paths) {
+                    geomType = "polygon";
+                    graphic = new Graphic({
+                        geometry: {
+                            type: "polygon",
+                            rings: geomJson.rings,
+                            spatialReference: geomJson.spatialReference || { wkid: 102100 }
+                        },
+                        symbol: { type: "simple-fill", color: [255, 255, 0, 0.4], outline: { color: [255, 100, 0], width: 3 } }
+                    });
+                } else if (geomJson.paths && geomJson.paths.length > 0) {
                     // Polyline
-                    geom = {
-                        type: "polyline",
-                        paths: feature.geometry.paths,
-                        spatialReference: feature.geometry.spatialReference || { wkid: 4326 }
-                    };
-                } else if (feature.geometry.x !== undefined && feature.geometry.y !== undefined) {
+                    geomType = "polyline";
+                    graphic = new Graphic({
+                        geometry: {
+                            type: "polyline",
+                            paths: geomJson.paths,
+                            spatialReference: geomJson.spatialReference || { wkid: 102100 }
+                        },
+                        symbol: { type: "simple-line", color: [255, 255, 0], width: 6 }
+                    });
+                } else if (geomJson.x !== undefined && geomJson.y !== undefined) {
                     // Point
-                    geom = {
-                        type: "point",
-                        x: feature.geometry.x,
-                        y: feature.geometry.y,
-                        spatialReference: feature.geometry.spatialReference || { wkid: 4326 }
-                    };
+                    geomType = "point";
+                    graphic = new Graphic({
+                        geometry: {
+                            type: "point",
+                            x: geomJson.x,
+                            y: geomJson.y,
+                            spatialReference: geomJson.spatialReference || { wkid: 102100 }
+                        },
+                        symbol: { type: "simple-marker", color: [255, 255, 0, 0.8], size: 16, outline: { color: [255, 100, 0], width: 3 } }
+                    });
                 }
 
-                if (!geom) {
-                    console.warn("Unknown geometry type");
+                if (!graphic) {
+                    console.warn("Could not create graphic from geometry", geomJson);
                     return;
                 }
 
-                // Zoom to the feature with some padding
+                // Use the graphic as the target for zoom - this is more reliable
                 const goToOptions = {
-                    duration: 1000,
+                    duration: 800,
                     easing: "ease-in-out"
                 };
 
-                if (geom.type === "point") {
-                    // For points, zoom to a specific level
+                if (geomType === "point") {
+                    // For points, zoom to a specific level centered on the point
                     await view.goTo({
-                        target: geom,
+                        target: graphic,
                         zoom: 14
                     }, goToOptions);
                 } else {
-                    // For lines and polygons, use extent with padding
-                    await view.goTo({
-                        target: geom
-                    }, goToOptions);
-                    
-                    // Add a bit more padding by zooming out slightly
-                    if (view.zoom > 4) {
-                        await view.goTo({
-                            zoom: view.zoom - 0.5
-                        }, { duration: 300 });
-                    }
+                    // For lines and polygons, zoom to the graphic's extent
+                    await view.goTo(graphic, goToOptions);
                 }
 
                 // Briefly highlight the feature
                 const highlightLayer = new GraphicsLayer({ title: "Search Highlight" });
                 map.add(highlightLayer);
+                highlightLayer.add(graphic);
 
-                const highlightSymbol = geom.type === "point" 
-                    ? { type: "simple-marker", color: [255, 255, 0, 0.8], size: 16, outline: { color: [255, 100, 0], width: 3 } }
-                    : geom.type === "polyline"
-                    ? { type: "simple-line", color: [255, 255, 0], width: 6 }
-                    : { type: "simple-fill", color: [255, 255, 0, 0.4], outline: { color: [255, 100, 0], width: 3 } };
-
-                const highlightGraphic = new Graphic({
-                    geometry: geom,
-                    symbol: highlightSymbol
-                });
-
-                highlightLayer.add(highlightGraphic);
-
-                // Remove highlight after 3 seconds
+                // Remove highlight after 4 seconds
                 setTimeout(() => {
                     try { map.remove(highlightLayer); } catch (e) { }
-                }, 3000);
+                }, 4000);
 
             } catch (e) {
-                console.error("Zoom to feature failed:", e);
+                console.error("Zoom to feature failed:", e, feature);
             }
         }
 
