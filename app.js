@@ -746,14 +746,103 @@ async function autoZoomToLayerMinVisible(layer) {
         });
     }
 
+    // ✅ NEW: Comprehensive layer view ready check - waits for layer to be fully rendered
+    async function waitForLayerReadyToCapture(layer, view, { timeoutMs = 8000 } = {}) {
+        if (!view || !layer) return;
+
+        try { await layer.when(); } catch (e) { console.warn("Layer.when() failed:", e); }
+
+        let lv = null;
+        try {
+            lv = await view.whenLayerView(layer);
+        } catch (e) {
+            console.warn("whenLayerView failed:", e);
+            return;
+        }
+
+        if (!lv) return;
+
+        // Wait for suspended state to resolve
+        if (lv.suspended) {
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, 3000);
+                const h = lv.watch("suspended", (s) => {
+                    if (!s) {
+                        clearTimeout(t);
+                        h.remove();
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        // Wait for initial updating to complete
+        if (lv.updating) {
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, timeoutMs);
+                const h = lv.watch("updating", (u) => {
+                    if (!u) {
+                        clearTimeout(t);
+                        h.remove();
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        // Force a final render
+        try {
+            view.requestRender();
+            await new Promise(r => setTimeout(r, 200)); // Brief pause for render to process
+        } catch (e) { }
+    }
+
+    // ✅ NEW: Improved screenshot capture with proper wait for tiles and basemap changes
+    async function captureScreenshotWithWait(screenConfig = {}) {
+        if (!view) return null;
+
+        const width = screenConfig.width || (config?.visualReport?.screenshotWidth ?? 1400);
+        
+        // ✅ Wait for view to be completely stationary and rendered
+        await waitForViewStationary(2500);
+
+        // ✅ Force multiple render cycles for tile loading
+        for (let i = 0; i < 3; i++) {
+            try {
+                view.requestRender();
+            } catch (e) { }
+            await new Promise(r => setTimeout(r, 150)); // Small delay between renders
+        }
+
+        // ✅ Wait one more time after renders
+        await waitForViewStationary(1500);
+
+        // ✅ Capture with improved settings
+        try {
+            const ss = await view.takeScreenshot({
+                format: "png",
+                quality: 100,
+                width: width,
+                height: Math.round(width * 0.5625) // 16:9 aspect ratio
+            });
+            return ss?.dataUrl || null;
+        } catch (e) {
+            console.error("Screenshot capture failed:", e);
+            return null;
+        }
+    }
+
 
 async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
     if (!view || !layer) return;
 
-    try { await layer.when(); } catch (e) { }
+    try { await layer.when(); } catch (e) { console.warn("Layer.when() error:", e); }
 
     let lv = null;
-    try { lv = await view.whenLayerView(layer); } catch (e) { return; }
+    try { lv = await view.whenLayerView(layer); } catch (e) {
+        console.warn("whenLayerView error:", e);
+        return;
+    }
     if (!lv) return;
 
     // Wait for view to stop moving
@@ -762,11 +851,11 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
     // If suspended, wait for resume
     if (lv.suspended) {
         await new Promise(resolve => {
-            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 2000);
+            const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, 2000);
             const h = lv.watch("suspended", (s) => {
                 if (!s) {
-                    window.clearTimeout(t);
-                    try { h.remove(); } catch (e) { }
+                    clearTimeout(t);
+                    h.remove();
                     resolve();
                 }
             });
@@ -774,26 +863,36 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
     }
 
     // Single refresh
-    if (typeof lv.refresh === "function") lv.refresh();
+    if (typeof lv.refresh === "function") {
+        try {
+            lv.refresh();
+        } catch (e) {
+            console.warn("Layer refresh failed:", e);
+        }
+    }
 
     // Wait for updating to finish
     await new Promise(resolve => {
-        const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
+        const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, timeoutMs);
         const h = lv.watch("updating", (u) => {
             if (!u) {
-                window.clearTimeout(t);
-                try { h.remove(); } catch (e) { }
+                clearTimeout(t);
+                h.remove();
                 resolve();
             }
         });
         if (!lv.updating) {
-            window.clearTimeout(t);
-            try { h.remove(); } catch (e) { }
+            clearTimeout(t);
+            h.remove();
             resolve();
         }
     });
 
-    try { view.requestRender(); } catch (e) { }
+    try {
+        view.requestRender();
+    } catch (e) {
+        console.warn("requestRender error:", e);
+    }
 }
 
 
@@ -2561,16 +2660,19 @@ async function generateVisualReportData(myOp, modal = null) {
         } else if (row.TWNSHPLAB && row.RANGLAB && row.SECLAB) {
             // Fallback to labels if available
             desc = `${row.TWNSHPLAB}, ${row.RANGLAB}, ${row.SECLAB}`;
-        } else if (row.PLSSID) {
-            desc = row.PLSSID;
-        } else {
-            // Last resort - try to build from whatever we can find
-            const parts = [];
-            if (row.TWNSHPLAB) parts.push(row.TWNSHPLAB);
-            if (row.RANGLAB) parts.push(row.RANGLAB);
-            if (row.SECLAB) parts.push(row.SECLAB);
-            if (parts.length > 0) {
-                desc = parts.join(", ");
+        } else if (row.PLSSID && typeof row.PLSSID === 'string') {
+            // Try to parse compressed PLSSID format like "NV210210N0580E0"
+            // Format: [STATE:2][TWP:2][RNG:2][SEC:2][TWPDIR:1][...][RNGDIR:1]
+            const plssid = row.PLSSID.trim();
+            
+            // Extract state (2 letters), then three 2-digit numbers, then directions
+            const match = plssid.match(/^([A-Z]{2})(\d{2})(\d{2})(\d{2})([NS]).*?([EW])/i);
+            if (match) {
+                const [, state, twp, rng, sec, twpDir, rngDir] = match;
+                desc = `T. ${parseInt(twp)} ${twpDir}., R. ${parseInt(rng)} ${rngDir}., Section ${parseInt(sec)}`;
+            } else {
+                // If parsing fails, just return the PLSSID as-is
+                desc = plssid;
             }
         }
         
@@ -2587,7 +2689,33 @@ async function generateVisualReportData(myOp, modal = null) {
         return desc || "";
     }
 
-    // ---------- Final Report HTML Generation ----------
+    // ✅ NEW: Robust query with retry logic for better data reliability
+    async function queryFeaturesWithRetry(layer, query, { maxRetries = 2, retryDelayMs = 500 } = {}) {
+        if (!layer) return { features: [] };
+
+        let lastError = null;
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                const result = await layer.queryFeatures(query);
+                return result;
+            } catch (e) {
+                lastError = e;
+                console.warn(`Query attempt ${attempt + 1} failed:`, e);
+                
+                // Don't retry after last attempt
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, retryDelayMs));
+                }
+            }
+        }
+
+        // All retries exhausted
+        console.error("All query retries failed:", lastError);
+        return { features: [] };
+    }
+
+
     function openHtmlInNewTab(htmlString) {
         const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
         const url = URL.createObjectURL(blob);
@@ -2895,29 +3023,9 @@ async function buildFinalReportHtml() {
                 view.map.add(temp);
                 try {
                     setVisibilityForScreenshot(temp);
-                    try { await temp.when(); } catch (e) { }
-
-                    try {
-                        const lv = await view.whenLayerView(temp);
-
-                        if (lv?.suspended) {
-                            await new Promise(resolve => {
-                                const h = lv.watch("suspended", (s) => {
-                                    if (!s) { h.remove(); resolve(); }
-                                });
-                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
-                            });
-                        }
-
-                        if (lv?.updating) {
-                            await new Promise(resolve => {
-                                const h = lv.watch("updating", (u) => {
-                                    if (!u) { h.remove(); resolve(); }
-                                });
-                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 6000);
-                            });
-                        }
-                    } catch (e) { }
+                    
+                    // ✅ IMPROVED: Use comprehensive layer ready check
+                    await waitForLayerReadyToCapture(temp, view, { timeoutMs: 8000 });
 
                     // ✅ Switch to imagery basemap
                     try {
@@ -2926,16 +3034,16 @@ async function buildFinalReportHtml() {
                         console.warn("Failed to switch to imagery basemap:", e);
                     }
 
-                    // ✅ Wait longer for imagery basemap tiles to load
-                    await waitForViewStationary(2000);
+                    // ✅ After basemap change, wait for imagery tiles to load
+                    await waitForViewStationary(2500);
 
                     // ✅ Zoom in tight on AOI (minimal padding)
                     const tightExtent = selectionGeom.extent.expand(1.2);
                     await view.goTo(tightExtent, { animate: false });
-                    await waitForViewStationary(2000);  // Extra time for layer tiles to load
+                    await waitForViewStationary(2500);
 
-                    const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
-                    const dataUrl = ss?.dataUrl;
+                    // ✅ Use improved screenshot capture with tile wait logic
+                    const dataUrl = await captureScreenshotWithWait({ width });
                     if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
                     // ✅ Restore original basemap
@@ -3103,21 +3211,21 @@ async function generateAoiMapsWithCircles() {
         // ✅ Map 1: 1:500,000 scale (showing several states)
         const ext1 = selectionGeom.extent;
         await view.goTo({ target: ext1, scale: 500000 }, { animate: false });
-        await waitForViewStationary(1500);
         
-        const ss1 = await view.takeScreenshot({ format: "png", quality: 100, width });
-        if (ss1?.dataUrl) {
-            maps.push(`<div class="aoi-map"><img src="${ss1.dataUrl}" alt="AOI Context (Regional 1:500,000)" /></div>`);
+        // ✅ Use improved screenshot capture
+        const ss1 = await captureScreenshotWithWait({ width });
+        if (ss1) {
+            maps.push(`<div class="aoi-map"><img src="${ss1}" alt="AOI Context (Regional 1:500,000)" /></div>`);
         }
 
         // ✅ Map 2: 1:250,000 scale (county-level zoom)
         const ext2 = selectionGeom.extent;
         await view.goTo({ target: ext2, scale: 250000 }, { animate: false });
-        await waitForViewStationary(1500);
         
-        const ss2 = await view.takeScreenshot({ format: "png", quality: 100, width });
-        if (ss2?.dataUrl) {
-            maps.push(`<div class="aoi-map"><img src="${ss2.dataUrl}" alt="AOI Context (County 1:250,000)" /></div>`);
+        // ✅ Use improved screenshot capture
+        const ss2 = await captureScreenshotWithWait({ width });
+        if (ss2) {
+            maps.push(`<div class="aoi-map"><img src="${ss2}" alt="AOI Context (County 1:250,000)" /></div>`);
         }
 
     } finally {
