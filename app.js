@@ -2541,13 +2541,13 @@ async function generateVisualReportData(myOp, modal = null) {
         if (!row) return "";
         
         // Try individual components first for maximum detail
-        const twpNum = row.TWNSHPNUM || row.TWPNUM || (row.TWNSHPLAB ? row.TWNSHPLAB.match(/\d+/) : null)?.[0] || "";
-        const twpDir = row.TWNSHPDIR || (row.TWNSHPLAB ? (row.TWNSHPLAB.includes("S") ? "S" : row.TWNSHPLAB.includes("N") ? "N" : "") : "");
+        const twpNum = row.TWNSHPNUM || row.TWPNUM || row.T || (row.TWNSHPLAB ? row.TWNSHPLAB.match(/\d+/) : null)?.[0] || "";
+        const twpDir = row.TWNSHPDIR || row.TWPDIR || (row.TWNSHPLAB ? (row.TWNSHPLAB.includes("S") ? "S" : row.TWNSHPLAB.includes("N") ? "N" : "") : "");
         
-        const rngNum = row.RANGENUM || row.RNGNUM || (row.RANGLAB ? row.RANGLAB.match(/\d+/) : null)?.[0] || "";
-        const rngDir = row.RANGEDIR || (row.RANGLAB ? (row.RANGLAB.includes("E") ? "E" : row.RANGLAB.includes("W") ? "W" : "") : "");
+        const rngNum = row.RANGENUM || row.RNGNUM || row.R || (row.RANGLAB ? row.RANGLAB.match(/\d+/) : null)?.[0] || "";
+        const rngDir = row.RANGEDIR || row.RNGDIR || (row.RANGLAB ? (row.RANGLAB.includes("E") ? "E" : row.RANGLAB.includes("W") ? "W" : "") : "");
         
-        const secNum = row.SECNUM || row.SECTIONNUM || row.SECTION || (row.SECLAB ? row.SECLAB.match(/\d+/) : null)?.[0] || "";
+        const secNum = row.SECNUM || row.SECTIONNUM || row.SECTION || row.S || (row.SECLAB ? row.SECLAB.match(/\d+/) : null)?.[0] || "";
         
         // Quarter sections (QQ = quarter-quarter, Q = quarter)
         const qq = row.QQ || row.QUARTER_QUARTER || "";
@@ -2555,7 +2555,7 @@ async function generateVisualReportData(myOp, modal = null) {
         
         let desc = "";
         
-        // Build main part
+        // Build main part - try individual components first
         if (twpNum && twpDir && rngNum && rngDir && secNum) {
             desc = `T. ${twpNum} ${twpDir}., R. ${rngNum} ${rngDir}., Section ${secNum}`;
         } else if (row.TWNSHPLAB && row.RANGLAB && row.SECLAB) {
@@ -2563,6 +2563,15 @@ async function generateVisualReportData(myOp, modal = null) {
             desc = `${row.TWNSHPLAB}, ${row.RANGLAB}, ${row.SECLAB}`;
         } else if (row.PLSSID) {
             desc = row.PLSSID;
+        } else {
+            // Last resort - try to build from whatever we can find
+            const parts = [];
+            if (row.TWNSHPLAB) parts.push(row.TWNSHPLAB);
+            if (row.RANGLAB) parts.push(row.RANGLAB);
+            if (row.SECLAB) parts.push(row.SECLAB);
+            if (parts.length > 0) {
+                desc = parts.join(", ");
+            }
         }
         
         // Add quarter information if available
@@ -2795,6 +2804,9 @@ async function buildFinalReportHtml() {
                 const legalDesc = formatLegalDescription(row);
                 if (legalDesc) {
                     legalDescriptions.push(legalDesc);
+                } else {
+                    // Debug: if format returned empty, log the row to see what fields exist
+                    console.warn("Empty legal description for parcel row:", row);
                 }
             }
         }
@@ -2914,10 +2926,13 @@ async function buildFinalReportHtml() {
                         console.warn("Failed to switch to imagery basemap:", e);
                     }
 
+                    // ✅ Wait longer for imagery basemap tiles to load
+                    await waitForViewStationary(2000);
+
                     // ✅ Zoom in tight on AOI (minimal padding)
                     const tightExtent = selectionGeom.extent.expand(1.2);
                     await view.goTo(tightExtent, { animate: false });
-                    await waitForViewStationary(1000);
+                    await waitForViewStationary(2000);  // Extra time for layer tiles to load
 
                     const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
                     const dataUrl = ss?.dataUrl;
@@ -3031,7 +3046,7 @@ async function buildFinalReportHtml() {
 }
 
 // ========================================
-// HELPER: Generate AOI maps WITH red circles at different zoom levels
+// HELPER: Generate AOI maps at different zoom levels
 // ========================================
 async function generateAoiMapsWithCircles() {
     if (!view || !selectionGeom) return "";
@@ -3044,21 +3059,33 @@ async function generateAoiMapsWithCircles() {
     const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
 
     function setVisibilityForAoi() {
-        // Find and show PLSS State layer
+        // Find and show PLSS State layer - search more broadly
         let plssStateLayer = null;
-        for (const l of allLayers) {
-            // Match by URL or title
-            if ((l.url && l.url.includes(plssStateLayerUrl)) || 
-                (l.title && l.title.toLowerCase().includes("state boundaries"))) {
-                plssStateLayer = l;
-                break;
+        
+        // First try: look by URL match
+        if (plssStateLayerUrl) {
+            for (const l of allLayers) {
+                if (l.url && String(l.url).includes(plssStateLayerUrl)) {
+                    plssStateLayer = l;
+                    break;
+                }
+            }
+        }
+        
+        // Second try: look by title
+        if (!plssStateLayer) {
+            for (const l of allLayers) {
+                if (l.title && l.title.toLowerCase().includes("state boundaries")) {
+                    plssStateLayer = l;
+                    break;
+                }
             }
         }
 
         for (const l of allLayers) {
             if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
             if (l?.type === "tile") { l.visible = true; continue; }
-            // ✅ Show PLSS State layer
+            // ✅ Show PLSS State layer if found
             if (plssStateLayer && l === plssStateLayer) { l.visible = true; continue; }
             l.visible = false;
         }
@@ -3073,26 +3100,24 @@ async function generateAoiMapsWithCircles() {
     try {
         setVisibilityForAoi();
 
-        // ✅ Map 1: 1:500,000 scale (showing several states) WITH red circle
+        // ✅ Map 1: 1:500,000 scale (showing several states)
         const ext1 = selectionGeom.extent;
         await view.goTo({ target: ext1, scale: 500000 }, { animate: false });
-        await waitForViewStationary(1000);
+        await waitForViewStationary(1500);
         
         const ss1 = await view.takeScreenshot({ format: "png", quality: 100, width });
         if (ss1?.dataUrl) {
-            const withCircle1 = await addRedCircleToScreenshot(ss1.dataUrl, selectionGeom.extent, view.extent);
-            maps.push(`<div class="aoi-map"><img src="${withCircle1}" alt="AOI Context (Regional 1:500,000)" /></div>`);
+            maps.push(`<div class="aoi-map"><img src="${ss1.dataUrl}" alt="AOI Context (Regional 1:500,000)" /></div>`);
         }
 
-        // ✅ Map 2: 1:250,000 scale (county-level zoom) WITH red circle
+        // ✅ Map 2: 1:250,000 scale (county-level zoom)
         const ext2 = selectionGeom.extent;
         await view.goTo({ target: ext2, scale: 250000 }, { animate: false });
-        await waitForViewStationary(1000);
+        await waitForViewStationary(1500);
         
         const ss2 = await view.takeScreenshot({ format: "png", quality: 100, width });
         if (ss2?.dataUrl) {
-            const withCircle2 = await addRedCircleToScreenshot(ss2.dataUrl, selectionGeom.extent, view.extent);
-            maps.push(`<div class="aoi-map"><img src="${withCircle2}" alt="AOI Context (County 1:250,000)" /></div>`);
+            maps.push(`<div class="aoi-map"><img src="${ss2.dataUrl}" alt="AOI Context (County 1:250,000)" /></div>`);
         }
 
     } finally {
