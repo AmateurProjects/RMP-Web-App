@@ -624,7 +624,7 @@ th{
     grid-template-columns: repeat(3, 1fr);
     gap: 16px;
     margin-top: 20px;
-    margin-bottom: 40px;
+    margin-bottom: 0;
     flex-shrink: 0;
 }
 
@@ -648,7 +648,8 @@ th{
 }
 
 .analysis-footer {
-    padding: 16px 24px;
+    padding: 24px 24px 16px;
+    margin-top: auto;
     border-top: 1px solid #e6e6e6;
     text-align: right;
 }

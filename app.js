@@ -355,7 +355,6 @@ function setActiveTab(tabName) {
     if (view) {
         requestAnimationFrame(() => {
             try { view.resize(); } catch (e) { }
-            try { view.requestRender(); } catch (e) { }
         });
     }
 }
@@ -790,10 +789,9 @@ async function autoZoomToLayerMinVisible(layer) {
             });
         }
 
-        // Force a final render
+        // Force a final render by clearing and reapplying visibility
         try {
-            view.requestRender();
-            await new Promise(r => setTimeout(r, 200)); // Brief pause for render to process
+            await new Promise(r => setTimeout(r, 300));
         } catch (e) { }
     }
 
@@ -804,18 +802,15 @@ async function autoZoomToLayerMinVisible(layer) {
         const width = screenConfig.width || (config?.visualReport?.screenshotWidth ?? 1400);
         
         // ✅ Wait for view to be completely stationary and rendered
-        await waitForViewStationary(2500);
+        await waitForViewStationary(3000);
 
-        // ✅ Force multiple render cycles for tile loading
-        for (let i = 0; i < 3; i++) {
-            try {
-                view.requestRender();
-            } catch (e) { }
-            await new Promise(r => setTimeout(r, 150)); // Small delay between renders
+        // ✅ Wait for tile loading in cycles with longer delays
+        for (let i = 0; i < 4; i++) {
+            await new Promise(r => setTimeout(r, 300)); // Longer delay for tiles to load
         }
 
         // ✅ Wait one more time after renders
-        await waitForViewStationary(1500);
+        await waitForViewStationary(2000);
 
         // ✅ Capture with improved settings
         try {
@@ -888,11 +883,10 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
         }
     });
 
-    try {
-        view.requestRender();
-    } catch (e) {
-        console.warn("requestRender error:", e);
-    }
+    // Automatic render happens after state changes
+        try {
+            await new Promise(r => setTimeout(r, 200));
+        } catch (e) { }
 }
 
 
@@ -1266,7 +1260,6 @@ cb.addEventListener("change", async () => {
     }
 
     ensureAoiOnTop(map);
-    try { view.requestRender(); } catch (e) { }
     });
 
 });
@@ -2990,10 +2983,21 @@ async function buildFinalReportHtml() {
             const originalBasemap = view.map.basemap;
             const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
 
+            // Find PLSS Section layer to show on all per-layer maps
+            let plssSectionLayer = null;
+            for (const l of allLayers) {
+                if (l.title && l.title.toLowerCase().includes("section")) {
+                    plssSectionLayer = l;
+                    break;
+                }
+            }
+
             function setVisibilityForScreenshot(tempLayer) {
                 for (const l of allLayers) {
                     if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
                     if (l?.type === "tile") { l.visible = true; continue; }
+                    // ✅ Show PLSS Section layer on all per-layer maps
+                    if (plssSectionLayer && l === plssSectionLayer) { l.visible = true; continue; }
                     l.visible = false;
                 }
                 if (tempLayer) tempLayer.visible = true;
@@ -3004,6 +3008,9 @@ async function buildFinalReportHtml() {
                 visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
                 ensureAoiOnTop(view.map);
             }
+
+            // ✅ Calculate consistent extent for all per-layer maps (AOI with small buffer)
+            const consistentExtent = selectionGeom.extent.expand(1.2);
 
             for (let i = 0; i < targets.length; i++) {
                 const item = targets[i];
@@ -3031,18 +3038,17 @@ async function buildFinalReportHtml() {
                     try {
                         view.map.basemap = imageryBasemapId;
                         // Wait for basemap to settle after switch
-                        await new Promise(r => setTimeout(r, 1500));
+                        await new Promise(r => setTimeout(r, 2000));
                     } catch (e) {
                         console.warn("Failed to switch to imagery basemap:", e);
                     }
 
                     // ✅ Extended wait for imagery tiles to load after basemap change
-                    await waitForViewStationary(3000);
+                    await waitForViewStationary(3500);
 
-                    // ✅ Zoom in tight on AOI (minimal padding)
-                    const tightExtent = selectionGeom.extent.expand(1.2);
-                    await view.goTo(tightExtent, { animate: false });
-                    await waitForViewStationary(3000);
+                    // ✅ Zoom in to consistent extent (AOI with small buffer) for all per-layer maps
+                    await view.goTo(consistentExtent, { animate: false });
+                    await waitForViewStationary(3500);
 
                     // ✅ Use improved screenshot capture with tile wait logic
                     const dataUrl = await captureScreenshotWithWait({ width });
@@ -3051,7 +3057,7 @@ async function buildFinalReportHtml() {
                     // ✅ Restore original basemap
                     try {
                         view.map.basemap = originalBasemap;
-                        await new Promise(r => setTimeout(r, 500));
+                        await new Promise(r => setTimeout(r, 1000));
                     } catch (e) {
                         console.warn("Failed to restore original basemap:", e);
                     }
