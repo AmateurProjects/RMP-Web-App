@@ -5168,21 +5168,21 @@ function buildDataSourcesSection() {
                     return;
                 }
 
-                // Use the graphic as the target for zoom - this is more reliable
+                // Use the geometry for zoom - view.goTo expects geometry, not graphic
                 const goToOptions = {
-                    duration: 800,
-                    easing: "ease-in-out"
+                    animate: true,
+                    duration: 800
                 };
 
                 if (geomType === "point") {
                     // For points, zoom to a specific level centered on the point
                     await view.goTo({
-                        target: graphic,
+                        target: graphic.geometry,
                         zoom: 14
                     }, goToOptions);
                 } else {
-                    // For lines and polygons, zoom to the graphic's extent
-                    await view.goTo(graphic, goToOptions);
+                    // For lines and polygons, zoom to the geometry's extent
+                    await view.goTo(graphic.geometry, goToOptions);
                 }
 
                 // Briefly highlight the feature
