@@ -7,7 +7,6 @@ require([
     "esri/layers/GraphicsLayer",
     "esri/widgets/Sketch",
     "esri/Graphic",
-    "esri/Graphic",
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer"
 ], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer) {
