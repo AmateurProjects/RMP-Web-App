@@ -12,6 +12,13 @@
 </head>
 <body>
   <div id="viewDiv"></div>
+
+  <!-- Mini overview map (lower-left) -->
+  <div id="miniMapContainer">
+    <div id="miniMapView"></div>
+    <div id="miniMapExtentBox"></div>
+    <div id="miniMapLabel">Click to swap basemap</div>
+  </div>
   
   <!-- Feature Search Widget -->
   <div id="featureSearchWidget" class="feature-search-widget">
@@ -153,7 +160,6 @@
 
       <div class="row">
         <button id="runBtn" class="btn primary" disabled>Run Analysis</button>
-        <button id="cancelRunBtn" class="btn subtle hidden" type="button">Cancel</button>
         <button id="clearBtn" class="btn subtle" type="button">Clear</button>
       </div>
     </div>

@@ -6,11 +6,11 @@ require([
     "esri/layers/FeatureLayer",
     "esri/layers/GraphicsLayer",
     "esri/widgets/Sketch",
-    "esri/widgets/BasemapToggle",
+    "esri/Graphic",
     "esri/Graphic",
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer"
-], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, BasemapToggle, Graphic, geometryEngine, TileLayer) {
+], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer) {
 
 
     // ---------- DOM ----------
@@ -28,7 +28,6 @@ require([
     const clearBtn = document.getElementById("clearBtn");
     const exportAllBtn = document.getElementById("exportAllBtn");
 
-    const cancelRunBtn = document.getElementById("cancelRunBtn");
     const viewBlockerEl = document.getElementById("viewBlocker");
 
     const statusEl = document.getElementById("status");
@@ -106,6 +105,9 @@ function setBusy(isBusy) {
             if (cancelBtn) {
                 cancelBtn.addEventListener("click", () => {
                     reportOpToken++; // Cancel analysis
+                    lockMapInteraction(false);
+                    setBusy(false);
+                    setStatus("canceled");
                     this.hide();
                 });
             }
@@ -312,7 +314,6 @@ function setBusy(isBusy) {
     function startReportOp() {
         const my = ++reportOpToken;
         lockMapInteraction(true);
-        if (cancelRunBtn) cancelRunBtn.classList.remove("hidden");
         return my;
     }
 
@@ -320,7 +321,6 @@ function setBusy(isBusy) {
         // Only unlock if this is the most recent op (prevents weird edge cases)
         if (myToken === reportOpToken) {
             lockMapInteraction(false);
-            if (cancelRunBtn) cancelRunBtn.classList.add("hidden");
         }
     }
 
@@ -2483,7 +2483,8 @@ async function generateVisualReportData(myOp, modal = null) {
             // Only layers with real intersect hits AND usable query objects
             const targets = lastReportRowsByLayer
                 .filter(x => (x?.count || 0) > 0)
-                .filter(x => x?._layer && x?._exportQuery); // excludes pinned AOI source etc.
+                .filter(x => x?._layer && x?._exportQuery) // excludes pinned AOI source etc.
+                .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 
             if (!targets.length) {
                 setVisualStatus("No intersecting layers to map (all counts are 0).");
@@ -4521,15 +4522,10 @@ function buildDataSourcesSection() {
         view.popup.autoOpenEnabled = false;
 
 
-        // Basemap toggle (near zoom controls)
-        const imageryBasemapId = config?.map?.imageryBasemap || "satellite"; // "satellite" is Esri World Imagery
+        // Basemap config
+        const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
         const imageryOpacity = config?.map?.imageryOpacity ?? 0.75;
-
-        const basemapToggle = new BasemapToggle({
-            view,
-            nextBasemap: imageryBasemapId
-        });
-        view.ui.add(basemapToggle, "top-left");
+        const defaultBasemapId = config.map?.basemap || "gray-vector";
 
         // Enforce imagery opacity when imagery is active (and restore for non-imagery)
         view.watch("map.basemap", (bm) => {
@@ -4540,6 +4536,81 @@ function buildDataSourcesSection() {
 
         // Apply once on load
         if (isImageryBasemap(view.map.basemap)) setBasemapBaseLayerOpacity(view.map.basemap, imageryOpacity);
+
+        // ---------- Mini Overview Map ----------
+        const miniMap = new EsriMap({ basemap: imageryBasemapId });
+        const miniView = new MapView({
+            container: "miniMapView",
+            map: miniMap,
+            center: view.center,
+            zoom: Math.max(1, (config.map?.zoom || 4) - 4),
+            ui: { components: [] },
+            constraints: { snapToZoom: false }
+        });
+        miniView.when(() => {
+            const nav = miniView.navigation;
+            if (nav) {
+                nav.mouseWheelEnabled = false;
+                nav.browserTouchPanEnabled = false;
+                nav.dragPanEnabled = false;
+                nav.keyboardEnabled = false;
+                nav.doubleClickZoomEnabled = false;
+            }
+        });
+
+        const zoomOffset = 4;
+        function syncMiniMap() {
+            if (!view.center) return;
+            const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
+            miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false }).catch(() => {});
+        }
+        view.watch("extent", syncMiniMap);
+        view.watch("stationary", (s) => { if (s) syncMiniMap(); });
+
+        const extentBox = document.getElementById("miniMapExtentBox");
+        function updateExtentBox() {
+            if (!extentBox || !view.extent || !miniView.extent) {
+                if (extentBox) extentBox.style.display = "none";
+                return;
+            }
+            try {
+                const tl = miniView.toScreen({ x: view.extent.xmin, y: view.extent.ymax, spatialReference: view.spatialReference });
+                const br = miniView.toScreen({ x: view.extent.xmax, y: view.extent.ymin, spatialReference: view.spatialReference });
+                const left = Math.max(0, tl.x);
+                const top = Math.max(0, tl.y);
+                const right = Math.min(miniView.width, br.x);
+                const bottom = Math.min(miniView.height, br.y);
+                const w = right - left;
+                const h = bottom - top;
+                if (w < 2 || h < 2 || w > miniView.width * 0.95) { extentBox.style.display = "none"; return; }
+                extentBox.style.display = "block";
+                extentBox.style.left = left + "px";
+                extentBox.style.top = top + "px";
+                extentBox.style.width = w + "px";
+                extentBox.style.height = h + "px";
+            } catch (e) { extentBox.style.display = "none"; }
+        }
+        view.watch("extent", updateExtentBox);
+        miniView.watch("extent", updateExtentBox);
+
+        const miniContainer = document.getElementById("miniMapContainer");
+        const miniLabel = document.getElementById("miniMapLabel");
+        if (miniContainer) {
+            miniContainer.addEventListener("click", () => {
+                const mainIsImagery = isImageryBasemap(view.map.basemap);
+                if (mainIsImagery) {
+                    view.map.basemap = defaultBasemapId;
+                    miniMap.basemap = imageryBasemapId;
+                    if (miniLabel) miniLabel.textContent = "Imagery";
+                } else {
+                    view.map.basemap = imageryBasemapId;
+                    miniMap.basemap = defaultBasemapId;
+                    if (miniLabel) miniLabel.textContent = "Gray Vector";
+                }
+                syncMiniMap();
+            });
+            if (miniLabel) miniLabel.textContent = "Imagery";
+        }
 
         // AOI layer + sketch (AOI must always be visible and on top)
         aoiLayer = new GraphicsLayer({ title: "AOI" });
@@ -4766,16 +4837,6 @@ function buildDataSourcesSection() {
         }
 
         if (runBtn) runBtn.addEventListener("click", runAnalysis);
-        
-        if (cancelRunBtn) {
-            cancelRunBtn.addEventListener("click", () => {
-                // bump token to cancel; unlock immediately
-                reportOpToken++;
-                lockMapInteraction(false);
-                cancelRunBtn.classList.add("hidden");
-                setStatus("cancel requested…");
-            });
-        }
 
         if (clearBtn) clearBtn.addEventListener("click", clearAll);
 
