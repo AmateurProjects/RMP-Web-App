@@ -4570,10 +4570,12 @@ function buildDataSourcesSection() {
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
 
-        // Re-sync whenever the mini-map's basemap finishes loading (prevents basemap load from resetting extent)
+        // After a basemap swap, the miniView may reset its extent while loading new tiles.
+        // This flag-guarded watcher re-syncs exactly once when the miniView finishes loading.
+        let miniBasemapSwapping = false;
         miniView.watch("updating", (isUpdating) => {
-            if (!isUpdating) {
-                // Basemap/tiles finished loading — force correct zoom
+            if (miniBasemapSwapping && !isUpdating) {
+                miniBasemapSwapping = false;
                 syncMiniMap();
             }
         });
@@ -4609,6 +4611,7 @@ function buildDataSourcesSection() {
         if (miniContainer) {
             miniContainer.addEventListener("click", () => {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
+                miniBasemapSwapping = true;
                 if (mainIsImagery) {
                     view.map.basemap = defaultBasemapId;
                     miniMap.basemap = imageryBasemapId;
@@ -4616,7 +4619,6 @@ function buildDataSourcesSection() {
                     view.map.basemap = imageryBasemapId;
                     miniMap.basemap = defaultBasemapId;
                 }
-                // The miniView "updating" watcher handles re-sync automatically
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
