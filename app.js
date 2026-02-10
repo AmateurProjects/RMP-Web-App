@@ -4558,25 +4558,27 @@ function buildDataSourcesSection() {
         });
 
         const zoomOffset = 4;
-        let miniSyncPending = false;
         function syncMiniMap() {
             if (!view.center) return;
-            miniSyncPending = true;
             const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
             miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false })
-                .then(() => { miniSyncPending = false; updateExtentBox(); })
-                .catch(() => { miniSyncPending = false; });
+                .then(updateExtentBox)
+                .catch(() => {});
         }
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
 
-        // After a basemap swap, the miniView may reset its extent while loading new tiles.
-        // This flag-guarded watcher re-syncs exactly once when the miniView finishes loading.
-        let miniBasemapSwapping = false;
-        miniView.watch("updating", (isUpdating) => {
-            if (miniBasemapSwapping && !isUpdating) {
-                miniBasemapSwapping = false;
+        // After a basemap swap the new basemap may reset the miniView extent
+        // while its tiles load.  This watcher keeps correcting the zoom until
+        // it actually matches the expected zoomed-out value, then stops.
+        let swapCorrecting = false;
+        miniView.watch("stationary", (s) => {
+            if (!s || !swapCorrecting) return;
+            const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
+            if (Math.abs(miniView.zoom - targetZoom) > 0.5) {
                 syncMiniMap();
+            } else {
+                swapCorrecting = false;
             }
         });
 
@@ -4611,7 +4613,6 @@ function buildDataSourcesSection() {
         if (miniContainer) {
             miniContainer.addEventListener("click", () => {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
-                miniBasemapSwapping = true;
                 if (mainIsImagery) {
                     view.map.basemap = defaultBasemapId;
                     miniMap.basemap = imageryBasemapId;
@@ -4619,6 +4620,12 @@ function buildDataSourcesSection() {
                     view.map.basemap = imageryBasemapId;
                     miniMap.basemap = defaultBasemapId;
                 }
+                // Activate swap-correction: keeps fixing miniView zoom
+                // until it sticks at the expected zoomed-out value.
+                swapCorrecting = true;
+                syncMiniMap();
+                // Hard safety stop after 5 s to avoid any runaway corrections.
+                setTimeout(() => { swapCorrecting = false; }, 5000);
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }

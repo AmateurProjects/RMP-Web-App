@@ -523,19 +523,6 @@ th{
   border: 1px solid var(--border-light);
   border-top: none;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.layers-list::-webkit-scrollbar {
-  width: 6px;
-}
-.layers-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-.layers-list::-webkit-scrollbar-thumb {
-  background: var(--border-medium);
-  border-radius: 3px;
 }
 
 
