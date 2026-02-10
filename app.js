@@ -2564,14 +2564,17 @@ async function generateVisualReportData(myOp, modal = null) {
                 setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
 
                 // Create a temporary layer for this URL, regardless of toggle state
-                // Get geometry type for appropriate renderer
+                // Get geometry type for appropriate renderer — fully opaque for visual report
                 const tempGeomType = await getLayerGeometryType(item.url);
+                const opaqueVRRenderer = makeRendererOpaque(
+                    getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType)
+                );
                 const temp = new FeatureLayer({
                     url: item.url,
                     title: item.title,
                     outFields: ["*"],
                     visible: true,
-                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType) || undefined
+                    renderer: opaqueVRRenderer || undefined
                 });
 
                 // 🔒 Prevent scale-based rendering rules from forcing view scale changes
@@ -3466,6 +3469,18 @@ async function generateVisualReportData(myOp, modal = null) {
         return summaryHtml;
     }
 
+    // Helper: clone a renderer and force all color alphas to fully opaque
+    function makeRendererOpaque(renderer) {
+        if (!renderer) return renderer;
+        const r = JSON.parse(JSON.stringify(renderer));
+        const forceOpaque = (c) => { if (Array.isArray(c) && c.length >= 4) c[3] = (c[3] <= 1) ? 1 : 255; };
+        if (r.symbol) {
+            if (r.symbol.color) forceOpaque(r.symbol.color);
+            if (r.symbol.outline && r.symbol.outline.color) forceOpaque(r.symbol.outline.color);
+        }
+        return r;
+    }
+
     // ✅ NEW: Robust query with retry logic for better data reliability
     async function queryFeaturesWithRetry(layer, query, { maxRetries = 2, retryDelayMs = 500 } = {}) {
         if (!layer) return { features: [] };
@@ -4049,14 +4064,17 @@ async function buildFinalReportHtml() {
                 const item = targets[i];
                 setStatus(`building final report… (${i + 1}/${targets.length})`);
 
-                // Get geometry type for appropriate renderer
+                // Get geometry type for appropriate renderer — fully opaque for final report
                 const tempGeomType = await getLayerGeometryType(item.url);
+                const opaqueRenderer = makeRendererOpaque(
+                    getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType)
+                );
                 const temp = new FeatureLayer({
                     url: item.url,
                     title: item.title,
                     outFields: ["*"],
                     visible: true,
-                    renderer: getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType) || undefined
+                    renderer: opaqueRenderer || undefined
                 });
 
                 temp.minScale = 0;
