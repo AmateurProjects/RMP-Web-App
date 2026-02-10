@@ -4558,10 +4558,14 @@ function buildDataSourcesSection() {
         });
 
         const zoomOffset = 4;
+        let miniSyncPending = false;
         function syncMiniMap() {
-            if (!view.center) return;
+            if (!view.center || miniSyncPending) return;
+            miniSyncPending = true;
             const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
-            miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false }).catch(() => {});
+            miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false })
+                .then(() => { miniSyncPending = false; updateExtentBox(); })
+                .catch(() => { miniSyncPending = false; });
         }
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
@@ -4600,20 +4604,17 @@ function buildDataSourcesSection() {
                 if (mainIsImagery) {
                     view.map.basemap = defaultBasemapId;
                     miniMap.basemap = imageryBasemapId;
-                    if (miniLabel) miniLabel.textContent = "Imagery";
                 } else {
                     view.map.basemap = imageryBasemapId;
                     miniMap.basemap = defaultBasemapId;
-                    if (miniLabel) miniLabel.textContent = "Gray Vector";
                 }
                 // Wait for the new basemap to load before syncing extent
                 setTimeout(() => {
-                    const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
-                    miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false }).catch(() => {});
-                    setTimeout(updateExtentBox, 300);
-                }, 200);
+                    miniSyncPending = false;
+                    syncMiniMap();
+                }, 400);
             });
-            if (miniLabel) miniLabel.textContent = "Imagery";
+            if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
 
         // AOI layer + sketch (AOI must always be visible and on top)
