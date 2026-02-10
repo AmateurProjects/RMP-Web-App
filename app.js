@@ -4560,7 +4560,7 @@ function buildDataSourcesSection() {
         const zoomOffset = 4;
         let miniSyncPending = false;
         function syncMiniMap() {
-            if (!view.center || miniSyncPending) return;
+            if (!view.center) return;
             miniSyncPending = true;
             const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
             miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false })
@@ -4569,6 +4569,14 @@ function buildDataSourcesSection() {
         }
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
+
+        // Re-sync whenever the mini-map's basemap finishes loading (prevents basemap load from resetting extent)
+        miniView.watch("updating", (isUpdating) => {
+            if (!isUpdating) {
+                // Basemap/tiles finished loading — force correct zoom
+                syncMiniMap();
+            }
+        });
 
         const extentBox = document.getElementById("miniMapExtentBox");
         function updateExtentBox() {
@@ -4608,11 +4616,7 @@ function buildDataSourcesSection() {
                     view.map.basemap = imageryBasemapId;
                     miniMap.basemap = defaultBasemapId;
                 }
-                // Wait for the new basemap to load before syncing extent
-                setTimeout(() => {
-                    miniSyncPending = false;
-                    syncMiniMap();
-                }, 400);
+                // The miniView "updating" watcher handles re-sync automatically
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
@@ -4967,6 +4971,7 @@ function buildDataSourcesSection() {
                     where,
                     outFields: "*",
                     returnGeometry: "true",
+                    outSR: String(view?.spatialReference?.wkid || 102100),
                     resultRecordCount: String(maxResults),
                     f: "json"
                 });
@@ -5206,43 +5211,28 @@ function buildDataSourcesSection() {
 
             try {
                 const geomJson = feature.geometry;
+                const sr = geomJson.spatialReference || view.spatialReference || { wkid: 102100 };
                 
                 // Determine geometry type and create a proper graphic
                 let graphic = null;
                 let geomType = null;
                 
                 if (geomJson.rings && geomJson.rings.length > 0) {
-                    // Polygon
                     geomType = "polygon";
                     graphic = new Graphic({
-                        geometry: {
-                            type: "polygon",
-                            rings: geomJson.rings,
-                            spatialReference: geomJson.spatialReference || { wkid: 102100 }
-                        },
+                        geometry: { type: "polygon", rings: geomJson.rings, spatialReference: sr },
                         symbol: { type: "simple-fill", color: [255, 255, 0, 0.4], outline: { color: [255, 100, 0], width: 3 } }
                     });
                 } else if (geomJson.paths && geomJson.paths.length > 0) {
-                    // Polyline
                     geomType = "polyline";
                     graphic = new Graphic({
-                        geometry: {
-                            type: "polyline",
-                            paths: geomJson.paths,
-                            spatialReference: geomJson.spatialReference || { wkid: 102100 }
-                        },
+                        geometry: { type: "polyline", paths: geomJson.paths, spatialReference: sr },
                         symbol: { type: "simple-line", color: [255, 255, 0], width: 6 }
                     });
                 } else if (geomJson.x !== undefined && geomJson.y !== undefined) {
-                    // Point
                     geomType = "point";
                     graphic = new Graphic({
-                        geometry: {
-                            type: "point",
-                            x: geomJson.x,
-                            y: geomJson.y,
-                            spatialReference: geomJson.spatialReference || { wkid: 102100 }
-                        },
+                        geometry: { type: "point", x: geomJson.x, y: geomJson.y, spatialReference: sr },
                         symbol: { type: "simple-marker", color: [255, 255, 0, 0.8], size: 16, outline: { color: [255, 100, 0], width: 3 } }
                     });
                 }
