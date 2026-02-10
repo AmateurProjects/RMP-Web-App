@@ -4606,7 +4606,12 @@ function buildDataSourcesSection() {
                     miniMap.basemap = defaultBasemapId;
                     if (miniLabel) miniLabel.textContent = "Gray Vector";
                 }
-                syncMiniMap();
+                // Wait for the new basemap to load before syncing extent
+                setTimeout(() => {
+                    const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
+                    miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false }).catch(() => {});
+                    setTimeout(updateExtentBox, 300);
+                }, 200);
             });
             if (miniLabel) miniLabel.textContent = "Imagery";
         }
