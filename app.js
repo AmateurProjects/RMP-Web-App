@@ -2455,6 +2455,71 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         return all;
     }
 
+    /**
+     * Compute elevation statistics (min/max) for an AOI from an ImageServer
+     * Uses the computeHistograms endpoint
+     * @param {string} imageServerUrl - URL of the ImageServer
+     * @param {object} geometry - AOI geometry (polygon)
+     * @returns {Promise<{min: number, max: number, mean: number}|null>}
+     */
+    async function computeElevationStats(imageServerUrl, geometry) {
+        if (!imageServerUrl || !geometry) return null;
+
+        try {
+            // Convert geometry to JSON for the request
+            const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+            
+            // Use computeHistograms endpoint with geometry
+            const url = `${imageServerUrl}/computeHistograms`;
+            const params = new URLSearchParams({
+                f: "json",
+                geometry: geomJson,
+                geometryType: "esriGeometryPolygon"
+            });
+
+            const response = await fetch(`${url}?${params.toString()}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (data.histograms && data.histograms.length > 0) {
+                const hist = data.histograms[0];
+                // Elevation values are in meters by default
+                const minElev = hist.min;
+                const maxElev = hist.max;
+                // Calculate mean from histogram if available
+                let mean = null;
+                if (hist.counts && hist.size) {
+                    const binWidth = (maxElev - minElev) / hist.counts.length;
+                    let sum = 0, total = 0;
+                    for (let i = 0; i < hist.counts.length; i++) {
+                        const binCenter = minElev + (i + 0.5) * binWidth;
+                        sum += binCenter * hist.counts[i];
+                        total += hist.counts[i];
+                    }
+                    mean = total > 0 ? sum / total : null;
+                }
+                
+                return {
+                    min: minElev,
+                    max: maxElev,
+                    mean: mean,
+                    // Convert to feet as well
+                    minFt: minElev * 3.28084,
+                    maxFt: maxElev * 3.28084,
+                    meanFt: mean ? mean * 3.28084 : null,
+                    elevationChange: maxElev - minElev,
+                    elevationChangeFt: (maxElev - minElev) * 3.28084
+                };
+            }
+            
+            return null;
+        } catch (e) {
+            console.warn("Failed to compute elevation statistics:", e);
+            return null;
+        }
+    }
+
     function unionGeomsChunked(geoms) {
         // geometryEngine.union can choke on huge arrays; do it in chunks.
         const CHUNK = 25;
@@ -2851,6 +2916,19 @@ async function generateVisualReportData(myOp, modal = null) {
 
                         const meta = item.__serviceMeta || {};
                         
+                        // Compute elevation statistics for the AOI
+                        const elevStats = await computeElevationStats(item.url, selectionGeom);
+                        
+                        let elevStatsHtml = '';
+                        if (elevStats) {
+                            elevStatsHtml = `
+                                <tr><td colspan="2" style="font-weight:600; padding-top:8px;">Elevation (AOI)</td></tr>
+                                <tr><td>Min</td><td>${formatNumber(elevStats.minFt, 0)} ft</td></tr>
+                                <tr><td>Max</td><td>${formatNumber(elevStats.maxFt, 0)} ft</td></tr>
+                                <tr><td>Change</td><td>${formatNumber(elevStats.elevationChangeFt, 0)} ft</td></tr>
+                            `;
+                        }
+                        
                         outCards.push(`
                           <div class="visual-output-card">
                             <div class="visual-output-title">${escapeHtml(item.title)}</div>
@@ -2859,6 +2937,7 @@ async function generateVisualReportData(myOp, modal = null) {
                               <table>
                                 <tr><td>Type</td><td>Image Service</td></tr>
                                 <tr><td>Service</td><td>${escapeHtml(meta.name || item.title)}</td></tr>
+                                ${elevStatsHtml}
                                 ${meta.copyright ? `<tr><td>Source</td><td>${escapeHtml(meta.copyright)}</td></tr>` : ''}
                               </table>
                             </div>
@@ -4567,6 +4646,20 @@ async function buildFinalReportHtml() {
 
                         const meta = item.__serviceMeta || {};
                         
+                        // Compute elevation statistics for the AOI
+                        const elevStats = await computeElevationStats(item.url, selectionGeom);
+                        
+                        let elevStatsHtml = '';
+                        if (elevStats) {
+                            elevStatsHtml = `
+                              <tr><td colspan="2" style="background:#f0f0f0; font-weight:600;">Elevation Statistics (within AOI)</td></tr>
+                              <tr><td>Minimum Elevation</td><td><b>${formatNumber(elevStats.minFt, 0)}</b> ft (${formatNumber(elevStats.min, 1)} m)</td></tr>
+                              <tr><td>Maximum Elevation</td><td><b>${formatNumber(elevStats.maxFt, 0)}</b> ft (${formatNumber(elevStats.max, 1)} m)</td></tr>
+                              <tr><td>Elevation Change</td><td><b>${formatNumber(elevStats.elevationChangeFt, 0)}</b> ft (${formatNumber(elevStats.elevationChange, 1)} m)</td></tr>
+                              ${elevStats.meanFt ? `<tr><td>Mean Elevation</td><td><b>${formatNumber(elevStats.meanFt, 0)}</b> ft (${formatNumber(elevStats.mean, 1)} m)</td></tr>` : ''}
+                            `;
+                        }
+                        
                         sectionsHtml += `
                           <div class="section layer-section page-break">
                             <h3>${escapeHtml(item.title)}</h3>
@@ -4576,7 +4669,7 @@ async function buildFinalReportHtml() {
                             <table class="info-table" style="margin-top:16px;">
                               <tr><td style="width:200px;">Service Name</td><td><b>${escapeHtml(meta.name || item.title)}</b></td></tr>
                               <tr><td>Type</td><td>Image Service (Elevation/Raster)</td></tr>
-                              ${meta.description ? `<tr><td>Description</td><td>${escapeHtml(meta.description)}</td></tr>` : ''}
+                              ${elevStatsHtml}
                               ${meta.copyright ? `<tr><td>Source</td><td>${escapeHtml(meta.copyright)}</td></tr>` : ''}
                             </table>
                           </div>
