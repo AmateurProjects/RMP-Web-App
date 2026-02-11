@@ -4582,29 +4582,26 @@ function buildDataSourcesSection() {
 
         const extentBox = document.getElementById("miniMapExtentBox");
         function updateExtentBox() {
-            if (!extentBox || !view.extent || !miniView.extent) {
-                if (extentBox) extentBox.style.display = "none";
-                return;
-            }
-            try {
-                const tl = miniView.toScreen({ x: view.extent.xmin, y: view.extent.ymax, spatialReference: view.spatialReference });
-                const br = miniView.toScreen({ x: view.extent.xmax, y: view.extent.ymin, spatialReference: view.spatialReference });
-                const left = Math.max(0, tl.x);
-                const top = Math.max(0, tl.y);
-                const right = Math.min(miniView.width, br.x);
-                const bottom = Math.min(miniView.height, br.y);
-                const w = right - left;
-                const h = bottom - top;
-                if (w < 2 || h < 2 || w > miniView.width * 0.95) { extentBox.style.display = "none"; return; }
-                extentBox.style.display = "block";
-                extentBox.style.left = left + "px";
-                extentBox.style.top = top + "px";
-                extentBox.style.width = w + "px";
-                extentBox.style.height = h + "px";
-            } catch (e) { extentBox.style.display = "none"; }
+            if (!extentBox) return;
+            // The minimap always shows view.extent expanded by MINI_EXPAND,
+            // so the main extent occupies a centered 1/MINI_EXPAND fraction
+            // of the container.  Compute the box purely from the container
+            // dimensions — no toScreen() needed, so timing doesn't matter.
+            const cw = miniView.width  || 200;
+            const ch = miniView.height || 150;
+            const w = cw / MINI_EXPAND;
+            const h = ch / MINI_EXPAND;
+            const left = (cw - w) / 2;
+            const top  = (ch - h) / 2;
+            if (w < 2 || h < 2) { extentBox.style.display = "none"; return; }
+            extentBox.style.display = "block";
+            extentBox.style.left   = left + "px";
+            extentBox.style.top    = top  + "px";
+            extentBox.style.width  = w + "px";
+            extentBox.style.height = h + "px";
         }
-        // Update the red extent box whenever the miniView finishes rendering
-        // (stationary = true means toScreen coords are valid).
+        // Draw the box once the miniView is ready, and keep it updated.
+        miniView.when(updateExtentBox);
         miniView.watch("stationary", (s) => { if (s) updateExtentBox(); });
 
         const miniContainer = document.getElementById("miniMapContainer");
