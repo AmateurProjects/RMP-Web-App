@@ -2841,8 +2841,9 @@ async function generateVisualReportData(myOp, modal = null) {
                     
                     try {
                         setVisibilityForScreenshot(temp);
+                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                         await view.goTo(fixedExtent, { animate: false });
-                        await waitForViewStationary(1500);
+                        await waitForViewStationary(2500);
                         
                         const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
                         if (!ss?.dataUrl) throw new Error("Screenshot failed");
@@ -4526,8 +4527,8 @@ async function buildFinalReportHtml() {
                 ensureAoiOnTop(view.map);
             }
 
-            // ✅ Calculate consistent extent for all per-layer maps (AOI with small buffer)
-            const consistentExtent = selectionGeom.extent.expand(1.2);
+            // ✅ Calculate consistent extent for all per-layer maps (AOI with tight buffer)
+            const consistentExtent = selectionGeom.extent.expand(1.05);
 
             // ✅ Switch to imagery basemap ONCE before all per-layer maps
             try {
@@ -4557,9 +4558,9 @@ async function buildFinalReportHtml() {
                     
                     try {
                         setVisibilityForScreenshot(temp);
-                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 8000 });
+                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                         await view.goTo(consistentExtent, { animate: false });
-                        await waitForViewStationary(2000);
+                        await waitForViewStationary(2500);
                         
                         const dataUrl = await captureScreenshotWithWait({ width });
                         if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");

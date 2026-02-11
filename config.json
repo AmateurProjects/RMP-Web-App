@@ -94,19 +94,19 @@
     {
       "title": "PLSS Township",
       "url": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Public_Land_Survey_System_view/FeatureServer/1",
-      "visible": true,
+      "visible": false,
       "group": "plss"
     },
     {
       "title": "PLSS Section",
       "url": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Public_Land_Survey_System_view/FeatureServer/2",
-      "visible": true,
+      "visible": false,
       "group": "plss"
     },
     {
       "title": "PLSS Parcel",
       "url": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Public_Land_Survey_System_view/FeatureServer/3",
-      "visible": true,
+      "visible": false,
       "group": "plss"
     },
     {
