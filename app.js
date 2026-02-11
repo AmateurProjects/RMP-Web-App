@@ -4768,7 +4768,7 @@ function buildDataSourcesSection() {
             ui: { components: [] },
             constraints: { snapToZoom: false, rotationEnabled: false },
             center: [-98.5795, 39.8283], // Center of contiguous US
-            zoom: 3 // Adjust as needed for full US
+            zoom: 2 // Zoomed out to show full US with margin
         });
 
         // Disable all interaction on the overview
@@ -4811,9 +4811,8 @@ function buildDataSourcesSection() {
         view.when(() => overviewView.when(updateOverviewExtentGraphic));
 
         // --- Click to swap basemaps ---
-        let swapHandle = null;
         if (overviewDiv) {
-            overviewDiv.addEventListener("click", () => {
+            overviewDiv.addEventListener("click", async () => {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
                 if (mainIsImagery) {
                     view.map.basemap = defaultBasemapId;
@@ -4822,26 +4821,23 @@ function buildDataSourcesSection() {
                     view.map.basemap = imageryBasemapId;
                     overviewMap.basemap = defaultBasemapId;
                 }
-                // Wait for overview to fully settle after basemap change,
-                // then force the correct extent.
-                if (swapHandle) { swapHandle.remove(); swapHandle = null; }
-                let syncCount = 0;
-                swapHandle = overviewView.watch("stationary", (s) => {
-                    if (s) {
-                        syncOverview();
-                        syncCount++;
-                        // Sync twice: once when basemap loads, once after our goTo settles
-                        if (syncCount >= 2) {
-                            swapHandle.remove();
-                            swapHandle = null;
-                        }
-                    }
-                });
-                // Safety: clean up after 8s
-                setTimeout(() => {
-                    if (swapHandle) { swapHandle.remove(); swapHandle = null; }
-                    syncOverview();
-                }, 8000);
+
+                // Wait for main view to settle after basemap change
+                await waitForViewStationary(2000);
+
+                // Refresh all visible operational layers so they redraw on the new basemap
+                const allLayers = view.map.layers.toArray();
+                for (const lyr of allLayers) {
+                    if (!lyr.visible) continue;
+                    try {
+                        const lv = await view.whenLayerView(lyr);
+                        if (typeof lv.refresh === "function") lv.refresh();
+                    } catch (e) { /* ignore layers that can't refresh */ }
+                }
+
+                // Ensure AOI stays on top and extent indicator is current
+                ensureAoiOnTop(map);
+                updateOverviewExtentGraphic();
             });
         }
 
