@@ -178,7 +178,11 @@
     },
     {
       "title": "BLM ePlanning Projects",
-      "url": "https://gis.blm.gov/arcgis/rest/services/eplanning/BLM_Natl_Epl_Comment/FeatureServer/0"
+      "url": "https://gis.blm.gov/arcgis/rest/services/ePlanning/BLM_Natl_Epl_Comment/FeatureServer"
+    },
+    {
+      "title": "BLM Fire Perimeters",
+      "url": "https://gis.blm.gov/arcgis/rest/services/fire/BLM_Natl_FirePerimeter/MapServer"
     },
     {
       "title": "BLM National Recreation Sites",

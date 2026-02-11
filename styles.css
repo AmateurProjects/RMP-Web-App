@@ -959,22 +959,22 @@ th{
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 24px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    min-height: 24px;
     flex-shrink: 0;
 }
 
 .analysis-step-value::before {
     content: "";
-    display: inline-block;
+    display: block;
     width: 12px;
     height: 12px;
+    min-width: 12px;
+    min-height: 12px;
     border: 2px solid #3b82f6;
     border-radius: 50%;
     border-top-color: transparent;
     animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
 }
 
 .analysis-log {

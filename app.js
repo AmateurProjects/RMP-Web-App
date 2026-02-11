@@ -1249,14 +1249,11 @@ function clearAll() {
             // alwaysVisible layers default ON but user can toggle them off on the main map
             const disabled = "";
 
-            // Update note text
-            const note = isRoot ? ` <span class="small">(expands to polygon sublayers)</span>` : "";
-
             return `
                 <div class="toggle-row">
                     <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
                     <span class="layer-swatch layer-swatch-report" aria-hidden="true" title="Report layer"></span>
-                    <label class="toggle-name" for="rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}${note}</label>
+                    <label class="toggle-name" for="rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}</label>
                     <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
                 </div>
             `;
@@ -2383,7 +2380,8 @@ async function generateVisualReportData(myOp, modal = null) {
             const targets = lastReportRowsByLayer
                 .filter(x => (x?.count || 0) > 0)
                 .filter(x => x?._layer && x?._exportQuery) // excludes pinned AOI source etc.
-                .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+                .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")))
+                .filter(x => !(x.title && x.title.toLowerCase().includes("administrative unit")));
 
             if (!targets.length) {
                 setVisualStatus("No intersecting layers to map (all counts are 0).");
@@ -3323,6 +3321,77 @@ async function generateVisualReportData(myOp, modal = null) {
             }
         }
         
+        // BLM Fire Perimeters
+        if (title.includes("fire perimeter") || title.includes("fireperimeter")) {
+            const fireNames = new Set();
+            const causeCounts = new Map();
+            const discoveryYears = new Map();
+            const adminStates = new Map();
+            const totalAcres = [];
+            const complexNames = new Set();
+            
+            for (const row of rows) {
+                const name = row.INCDNT_NM || "";
+                if (name) fireNames.add(name);
+                
+                const cause = row.FIRE_CAUSE_NM || "";
+                if (cause) causeCounts.set(cause, (causeCounts.get(cause) || 0) + 1);
+                
+                const yr = row.FIRE_DSCVR_CY || "";
+                if (yr) discoveryYears.set(String(yr), (discoveryYears.get(String(yr)) || 0) + 1);
+                
+                const adminSt = row.ADMIN_ST || "";
+                if (adminSt) adminStates.set(adminSt, (adminStates.get(adminSt) || 0) + 1);
+                
+                const acres = parseFloat(row.GIS_ACRES || row.TOTAL_RPT_ACRES_NR || 0);
+                if (acres > 0) totalAcres.push(acres);
+                
+                const cmplx = row.CMPLX_NM || "";
+                if (cmplx) complexNames.add(cmplx);
+            }
+            
+            if (fireNames.size > 0 || causeCounts.size > 0 || discoveryYears.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Fire Perimeter Details</b></td></tr>`;
+                
+                if (fireNames.size > 0) {
+                    const names = Array.from(fireNames).slice(0, 15).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Fire Names</td><td>${names}${fireNames.size > 15 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (causeCounts.size > 0) {
+                    const items = Array.from(causeCounts.entries())
+                        .map(([c, count]) => `${escapeHtml(c)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Fire Cause</td><td>${items}</td></tr>`;
+                }
+                
+                if (discoveryYears.size > 0) {
+                    const sorted = Array.from(discoveryYears.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+                    const items = sorted.slice(0, 15)
+                        .map(([y, count]) => `${escapeHtml(y)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Discovery Years</td><td>${items}${sorted.length > 15 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (adminStates.size > 0) {
+                    const items = Array.from(adminStates.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Admin State</td><td>${items}</td></tr>`;
+                }
+                
+                if (totalAcres.length > 0) {
+                    const sum = totalAcres.reduce((a, b) => a + b, 0);
+                    summaryHtml += `<tr><td>Total Burned Acres</td><td>${formatNumber(sum, 1)} (${totalAcres.length} fires)</td></tr>`;
+                }
+                
+                if (complexNames.size > 0) {
+                    const names = Array.from(complexNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Fire Complexes</td><td>${names}${complexNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+            }
+        }
+        
         // BLM Administrative Units (Admin Unit boundaries, office points)
         if (title.includes("administrative unit") || title.includes("admin unit") || title.includes("adminunit")) {
             const unitNames = new Set();
@@ -3610,6 +3679,39 @@ function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, aoiSectionHtml,
                 }
                 .legal-list{ margin: 6px 0 0 20px; padding: 0; }
                 .legal-list li{ margin: 5px 0; }
+
+                /* Admin Unit Table in AOI Section */
+                table.admin-unit-tbl{
+                    width:100%;
+                    border-collapse: collapse;
+                    margin-top: 12px;
+                    font-size: 13px;
+                    background: var(--white);
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    overflow: hidden;
+                }
+                table.admin-unit-tbl th{
+                    background: var(--blm-green);
+                    color: var(--white);
+                    padding: 10px 12px;
+                    text-align: left;
+                    font-weight: 600;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                table.admin-unit-tbl td{
+                    padding: 8px 12px;
+                    border-bottom: 1px solid var(--border);
+                    vertical-align: top;
+                }
+                table.admin-unit-tbl tr:nth-child(even){
+                    background: var(--blm-tan);
+                }
+                table.admin-unit-tbl tr:last-child td{
+                    border-bottom: none;
+                }
                 
                 /* Per-Layer Map Sections */
                 .section{ 
@@ -3954,7 +4056,8 @@ async function buildFinalReportHtml() {
         const targets = lastReportRowsByLayer
             .filter(x => (x?.count || 0) > 0)
             .filter(x => x?._layer && x?._exportQuery)
-            .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+            .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")))
+            .filter(x => !(x.title && x.title.toLowerCase().includes("administrative unit")));
 
         // Build per-layer sections (reuse screenshots from Visual Report if possible)
         let sectionsHtml = "";
@@ -4135,6 +4238,65 @@ async function buildFinalReportHtml() {
                </div>`
             : "";
 
+        // BLM Administrative Units info table for AOI section
+        let adminUnitTableHtml = "";
+        if (lastReportRowsByLayer && lastReportRowsByLayer.length) {
+            const adminItems = lastReportRowsByLayer.filter(x =>
+                x.title && x.title.toLowerCase().includes("administrative unit") && (x.count || 0) > 0
+            );
+            if (adminItems.length > 0) {
+                const allAdminRows = [];
+                for (const item of adminItems) {
+                    for (const row of (item.rows || [])) {
+                        allAdminRows.push({
+                            name: row.ADMU_NAME || row.Label_Full_Name || row.Label || "",
+                            orgType: row.BLM_ORG_TYPE || "",
+                            adminSt: row.ADMIN_ST || "",
+                            parent: row.PARENT_NAME || "",
+                            city: row.City_Label || "",
+                            url: row.ADMU_ST_URL || ""
+                        });
+                    }
+                }
+                // Deduplicate by name + orgType
+                const seen = new Set();
+                const unique = allAdminRows.filter(r => {
+                    const key = `${r.name}|${r.orgType}`;
+                    if (!r.name || seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                if (unique.length > 0) {
+                    const trs = unique.map(r => `
+                        <tr>
+                            <td>${escapeHtml(r.name)}</td>
+                            <td>${escapeHtml(r.orgType)}</td>
+                            <td>${escapeHtml(r.adminSt)}</td>
+                            <td>${escapeHtml(r.parent)}</td>
+                            <td>${escapeHtml(r.city)}</td>
+                            ${r.url ? `<td><a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Link</a></td>` : `<td></td>`}
+                        </tr>`).join("");
+                    adminUnitTableHtml = `
+                        <div style="margin-top:20px;">
+                            <span class="aoi-label" style="display:block; margin-bottom:8px;">BLM Administrative Units Intersecting AOI:</span>
+                            <table class="admin-unit-tbl">
+                                <thead>
+                                    <tr>
+                                        <th>Unit Name</th>
+                                        <th>Type</th>
+                                        <th>State</th>
+                                        <th>Parent Office</th>
+                                        <th>Office Location</th>
+                                        <th>URL</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${trs}</tbody>
+                            </table>
+                        </div>`;
+                }
+            }
+        }
+
         const aoiSectionHtml = `
             <h2>Area of Interest</h2>
             ${aoiMapsHtml}
@@ -4143,6 +4305,7 @@ async function buildFinalReportHtml() {
                 ${legalHtml}
                 <div class="aoi-field"><span class="aoi-label">Area:</span> ${formatNumber(aoiAcres, 2)} acres</div>
                 <div class="aoi-field"><span class="aoi-label">Method:</span> ${escapeHtml(aoiMethod)}</div>
+                ${adminUnitTableHtml}
             </div>
         `;
 
@@ -4786,6 +4949,8 @@ function buildDataSourcesSection() {
 
         let searchDebounceTimer = null;
         let searchAbortController = null;
+        let searchGeneration = 0; // tracks which search is "current" to avoid race conditions
+        const fieldMetadataCache = new Map(); // url -> string field names (avoids re-fetching)
 
         // Get all searchable layer URLs from config
         function getSearchableLayers() {
@@ -4812,10 +4977,12 @@ function buildDataSourcesSection() {
             return layers;
         }
 
-        // Get string field names from a layer's field metadata
+        // Get string field names from a layer's field metadata (cached)
         async function getStringFieldsForLayer(url) {
+            const cacheKey = url.replace(/\/$/, "");
+            if (fieldMetadataCache.has(cacheKey)) return fieldMetadataCache.get(cacheKey);
             try {
-                const pjsonUrl = url.replace(/\/$/, "") + "?f=pjson";
+                const pjsonUrl = cacheKey + "?f=pjson";
                 const info = await fetchJson(pjsonUrl);
                 const fields = info?.fields || [];
                 
@@ -4824,6 +4991,7 @@ function buildDataSourcesSection() {
                     .filter(f => f.type === "esriFieldTypeString")
                     .map(f => f.name);
                 
+                fieldMetadataCache.set(cacheKey, stringFields);
                 return stringFields;
             } catch (e) {
                 console.warn("Failed to get fields for", url, e);
@@ -4940,6 +5108,7 @@ function buildDataSourcesSection() {
             }
             searchAbortController = new AbortController();
             const signal = searchAbortController.signal;
+            const myGen = ++searchGeneration; // snapshot our generation
 
             // Show loading state
             searchIcon.style.display = "none";
@@ -4955,7 +5124,7 @@ function buildDataSourcesSection() {
 
                 const results = await Promise.all(searchPromises);
                 
-                if (signal.aborted) return;
+                if (signal.aborted || myGen !== searchGeneration) return;
 
                 // Flatten all results into a single array for easy access
                 allSearchResults = [];
@@ -5016,12 +5185,16 @@ function buildDataSourcesSection() {
 
             } catch (e) {
                 if (e.name === "AbortError") return;
+                if (myGen !== searchGeneration) return; // superseded
                 console.error("Search error:", e);
                 searchResults.innerHTML = '<div class="search-no-results">Search failed</div>';
                 searchResults.classList.add("visible");
             } finally {
-                searchIcon.style.display = "block";
-                searchSpinner.style.display = "none";
+                // Only reset spinner if this is still the active search
+                if (myGen === searchGeneration) {
+                    searchIcon.style.display = "block";
+                    searchSpinner.style.display = "none";
+                }
             }
         }
 
