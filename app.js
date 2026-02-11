@@ -4571,6 +4571,21 @@ function buildDataSourcesSection() {
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
 
+        // When the miniMap basemap changes the MapView internally resets
+        // its extent while loading tiles — overriding any goTo() we issued.
+        // Watch for the miniView to finish updating after a basemap swap
+        // and re-apply the correct zoomed-out level.
+        let basemapSwapping = false;
+        miniMap.watch("basemap", () => {
+            basemapSwapping = true;
+        });
+        miniView.watch("updating", (updating) => {
+            if (!updating && basemapSwapping) {
+                basemapSwapping = false;
+                syncMiniMap();
+            }
+        });
+
         const extentBox = document.getElementById("miniMapExtentBox");
         function updateExtentBox() {
             if (!extentBox || !view.extent || !miniView.extent) {
