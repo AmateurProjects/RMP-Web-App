@@ -4541,13 +4541,26 @@ function buildDataSourcesSection() {
 
         // ---------- Mini Overview Map ----------
         // Single MapView.  Sync via expanded extent for reliability.
-        // On basemap swap, destroy & recreate the miniView for a clean state.
+        // On basemap swap, assign a fresh EsriMap to force a clean reload.
         const MINI_EXPAND = 6;   // how many times wider the mini extent is
-        const miniMapContainer = document.getElementById("miniMapView");
 
         let miniMap = new EsriMap({ basemap: imageryBasemapId });
-        let miniView;
-        let miniStationaryHandle;
+        const miniView = new MapView({
+            container: "miniMapView",
+            map: miniMap,
+            ui: { components: [] },
+            constraints: { snapToZoom: false, rotationEnabled: false }
+        });
+        miniView.when(() => {
+            const nav = miniView.navigation;
+            if (nav) {
+                nav.mouseWheelEnabled = false;
+                nav.browserTouchPanEnabled = false;
+                nav.dragPanEnabled = false;
+                nav.keyboardEnabled = false;
+                nav.doubleClickZoomEnabled = false;
+            }
+        });
 
         function expandedExtent() {
             if (!view.extent) return null;
@@ -4556,45 +4569,27 @@ function buildDataSourcesSection() {
 
         function syncMiniMap() {
             const ext = expandedExtent();
-            if (!ext || !miniView) return;
+            if (!ext) return;
             miniView.goTo(ext, { animate: false }).catch(() => {});
         }
 
-        function createMiniView() {
-            // Destroy previous if it exists
-            if (miniView) {
-                if (miniStationaryHandle) { miniStationaryHandle.remove(); miniStationaryHandle = null; }
-                miniView.destroy();
-            }
-            miniView = new MapView({
-                container: miniMapContainer,
-                map: miniMap,
-                ui: { components: [] },
-                constraints: { snapToZoom: false, rotationEnabled: false }
-            });
+        // Swap the miniMap to a brand-new EsriMap with the given basemap.
+        // This avoids all basemap-load extent-reset issues because the
+        // MapView treats it as a fresh map and runs its ready sequence,
+        // after which our .when() callback re-applies the correct extent.
+        function swapMiniBasemap(basemapId) {
+            miniMap = new EsriMap({ basemap: basemapId });
+            miniView.map = miniMap;
             miniView.when(() => {
-                const nav = miniView.navigation;
-                if (nav) {
-                    nav.mouseWheelEnabled = false;
-                    nav.browserTouchPanEnabled = false;
-                    nav.dragPanEnabled = false;
-                    nav.keyboardEnabled = false;
-                    nav.doubleClickZoomEnabled = false;
-                }
                 syncMiniMap();
                 updateExtentBox();
             });
-            miniStationaryHandle = miniView.watch("stationary", (s) => {
-                if (s) updateExtentBox();
-            });
         }
-
-        // Create initial miniView
-        createMiniView();
 
         // Sync when the main view stops moving.
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
-
+        // Initial sync once miniView is ready.
+        miniView.when(syncMiniMap);
         const extentBox = document.getElementById("miniMapExtentBox");
         function updateExtentBox() {
             if (!extentBox) return;
@@ -4612,6 +4607,8 @@ function buildDataSourcesSection() {
             extentBox.style.height = h + "px";
         }
         updateExtentBox();
+        miniView.when(updateExtentBox);
+        miniView.watch("stationary", (s) => { if (s) updateExtentBox(); });
 
         const miniContainer = document.getElementById("miniMapContainer");
         const miniLabel = document.getElementById("miniMapLabel");
@@ -4620,14 +4617,11 @@ function buildDataSourcesSection() {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
                 if (mainIsImagery) {
                     view.map.basemap = defaultBasemapId;
-                    miniMap.basemap = imageryBasemapId;
+                    swapMiniBasemap(imageryBasemapId);
                 } else {
                     view.map.basemap = imageryBasemapId;
-                    miniMap.basemap = miniBasemapId;
+                    swapMiniBasemap(miniBasemapId);
                 }
-                // Destroy and recreate the miniView for a guaranteed clean
-                // state — no basemap-load extent-reset issues.
-                createMiniView();
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
