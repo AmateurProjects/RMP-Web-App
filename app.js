@@ -4569,13 +4569,10 @@ function buildDataSourcesSection() {
         }
 
         // Navigate minimap to expanded extent (no animation).
-        // updateExtentBox runs in .then() so toScreen() has valid coords.
         function syncMiniMap() {
             const ext = expandedExtent();
             if (!ext) return;
-            miniView.goTo(ext, { animate: false })
-                .then(updateExtentBox)
-                .catch(() => {});
+            miniView.goTo(ext, { animate: false }).catch(() => {});
         }
 
         // Only sync when the main view stops moving (not every frame).
@@ -4606,8 +4603,9 @@ function buildDataSourcesSection() {
                 extentBox.style.height = h + "px";
             } catch (e) { extentBox.style.display = "none"; }
         }
-        // Backup: also update extent box when miniView extent changes (e.g. after basemap swap)
-        miniView.watch("extent", updateExtentBox);
+        // Update the red extent box whenever the miniView finishes rendering
+        // (stationary = true means toScreen coords are valid).
+        miniView.watch("stationary", (s) => { if (s) updateExtentBox(); });
 
         const miniContainer = document.getElementById("miniMapContainer");
         const miniLabel = document.getElementById("miniMapLabel");
@@ -4624,17 +4622,14 @@ function buildDataSourcesSection() {
                     miniMap.basemap = miniBasemapId;
                 }
                 // The basemap swap may internally reset the miniView extent.
-                // Re-apply our expanded extent now, and also after the view
-                // finishes its internal update cycle (when updating → false).
+                // Keep re-applying our expanded extent at intervals until
+                // the basemap settles (brute-force but reliable).
                 syncMiniMap();
-                const handle = miniView.watch("updating", (u) => {
-                    if (!u) {
-                        syncMiniMap();
-                        handle.remove();
-                    }
-                });
-                // Safety: remove watcher after 4s regardless.
-                setTimeout(() => handle.remove(), 4000);
+                let count = 0;
+                const iv = setInterval(() => {
+                    syncMiniMap();
+                    if (++count >= 10) clearInterval(iv);
+                }, 500);
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
