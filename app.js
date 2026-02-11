@@ -4957,10 +4957,11 @@ function buildDataSourcesSection() {
         if (pickerSelectedIdx < 0 || !pickerFeatures[pickerSelectedIdx]) return;
 
         const selectedFeature = pickerFeatures[pickerSelectedIdx];
+        const callback = pickerOnSelect; // Save callback before hiding clears it
         hideFeaturePicker();
 
-        if (pickerOnSelect) {
-            pickerOnSelect(selectedFeature);
+        if (callback) {
+            callback(selectedFeature);
         }
     }
 
@@ -5418,7 +5419,7 @@ function buildDataSourcesSection() {
 
 
         // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
-        async function activatePlss(which, idxToEnable) {
+        async function activatePlss(which, idxToEnable, { skipAutoZoom = false } = {}) {
             // Force select mode (PLSS tools are select-only)
             if (modeSelect && modeSelect.value !== "select") {
                 modeSelect.value = "select";
@@ -5448,9 +5449,11 @@ function buildDataSourcesSection() {
                 setPermitToolActive(null); // Clear permit tool selection
 
                 // Auto-zoom to minimum visible zoom level (using layer.minScale)
-                const lyr = selectionLayers[idxToEnable]?.layer;
-                await ensureLayerVisibleAtScale(lyr);
-                await waitForViewStationary(1500);
+                if (!skipAutoZoom) {
+                    const lyr = selectionLayers[idxToEnable]?.layer;
+                    await ensureLayerVisibleAtScale(lyr);
+                    await waitForViewStationary(1500);
+                }
 
                 const whichLabel = (which === "intersected") ? "parcel" : which;
                 setStatus(`PLSS select: ${whichLabel} (click a polygon)`);
@@ -5543,12 +5546,13 @@ function buildDataSourcesSection() {
         }
 
         // Default to Township if present, otherwise Section, otherwise Intersected, otherwise first selection layer
+        // Skip auto-zoom on initial load to respect config center/zoom
         if (townshipIdx >= 0) {
-            await activatePlss("township", townshipIdx);
+            await activatePlss("township", townshipIdx, { skipAutoZoom: true });
         } else if (sectionIdx >= 0) {
-            await activatePlss("section", sectionIdx);
+            await activatePlss("section", sectionIdx, { skipAutoZoom: true });
         } else if (intersectedIdx >= 0) {
-            await activatePlss("intersected", intersectedIdx);
+            await activatePlss("intersected", intersectedIdx, { skipAutoZoom: true });
         } else if (selectionLayers.length) {
             enableSelectionLayer(0);
             await setActiveSelectionLayerByIndex(0);
