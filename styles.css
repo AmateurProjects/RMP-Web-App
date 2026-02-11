@@ -717,44 +717,31 @@ th{
   font-family: 'Consolas', 'Monaco', monospace;
 }
 
-/* ====== Mini Overview Map ====== */
-#miniMapContainer {
-  position: absolute;
-  bottom: 30px;
-  left: 15px;
+/* ====== Esri Overview Map ====== */
+#overviewDiv {
   width: 200px;
   height: 150px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.9);
   box-shadow: 0 4px 16px rgba(0,0,0,0.3);
   overflow: hidden;
   cursor: pointer;
-  z-index: 50;
+  position: relative;
   transition: box-shadow 0.2s ease, transform 0.15s ease;
 }
 
-#miniMapContainer:hover {
+#overviewDiv:hover {
   box-shadow: 0 6px 24px rgba(0,0,0,0.4);
   transform: scale(1.03);
 }
 
-#miniMapView {
+#overviewMapView {
   width: 100%;
   height: 100%;
   pointer-events: none;
 }
 
-/* Extent indicator box on mini-map */
-#miniMapExtentBox {
-  position: absolute;
-  border: 2px solid rgba(255, 60, 60, 0.9);
-  background: rgba(255, 60, 60, 0.12);
-  pointer-events: none;
-  z-index: 2;
-  transition: all 0.3s ease;
-}
-
-#miniMapLabel {
+#overviewLabel {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -770,8 +757,8 @@ th{
   letter-spacing: 0.3px;
 }
 
-/* Hide Esri UI elements inside mini-map */
-#miniMapView .esri-ui {
+/* Hide Esri UI elements inside overview map */
+#overviewMapView .esri-ui {
   display: none !important;
 }
 

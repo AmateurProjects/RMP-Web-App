@@ -4525,8 +4525,6 @@ function buildDataSourcesSection() {
         const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
         const imageryOpacity = config?.map?.imageryOpacity ?? 0.75;
         const defaultBasemapId = config.map?.basemap || "gray-vector";
-        // Use the same gray-vector basemap as the main map for the minimap.
-        const miniBasemapId = defaultBasemapId;
 
         // Enforce imagery opacity when imagery is active (and restore for non-imagery)
         view.watch("map.basemap", (bm) => {
@@ -4538,20 +4536,29 @@ function buildDataSourcesSection() {
         // Apply once on load
         if (isImageryBasemap(view.map.basemap)) setBasemapBaseLayerOpacity(view.map.basemap, imageryOpacity);
 
-        // ---------- Mini Overview Map ----------
-        // Single MapView.  Sync via expanded extent for reliability.
-        // On basemap swap, assign a fresh EsriMap to force a clean reload.
-        const MINI_EXPAND = 6;   // how many times wider the mini extent is
+        // ---------- Esri Overview Map ----------
+        // Second MapView placed into the main view's UI at top-left.
+        // Shows the opposite basemap of the main map.
+        // A GraphicsLayer draws the main view's extent as a red rectangle.
+        // Click to swap basemaps between main and overview.
 
-        let miniMap = new EsriMap({ basemap: imageryBasemapId });
-        const miniView = new MapView({
-            container: "miniMapView",
-            map: miniMap,
+        const OVERVIEW_EXPAND = 6;
+
+        const overviewExtentLayer = new GraphicsLayer();
+        let overviewMap = new EsriMap({
+            basemap: imageryBasemapId,
+            layers: [overviewExtentLayer]
+        });
+        const overviewView = new MapView({
+            container: "overviewMapView",
+            map: overviewMap,
             ui: { components: [] },
             constraints: { snapToZoom: false, rotationEnabled: false }
         });
-        miniView.when(() => {
-            const nav = miniView.navigation;
+
+        // Disable all interaction on the overview
+        overviewView.when(() => {
+            const nav = overviewView.navigation;
             if (nav) {
                 nav.mouseWheelEnabled = false;
                 nav.browserTouchPanEnabled = false;
@@ -4561,74 +4568,55 @@ function buildDataSourcesSection() {
             }
         });
 
-        function expandedExtent() {
-            if (!view.extent) return null;
-            return view.extent.expand(MINI_EXPAND);
+        // Place the overview div into the main view's UI
+        const overviewDiv = document.getElementById("overviewDiv");
+        if (overviewDiv) {
+            view.ui.add(overviewDiv, "top-left");
         }
 
-        function syncMiniMap() {
-            const ext = expandedExtent();
-            if (!ext) return;
-            miniView.goTo(ext, { animate: false }).catch(() => {});
+        // --- Sync: update overview extent + extent graphic ---
+        const extentSymbol = {
+            type: "simple-fill",
+            color: [255, 60, 60, 0.12],
+            outline: { color: [255, 60, 60, 0.9], width: 1.5 }
+        };
+
+        function syncOverview() {
+            if (!view.extent) return;
+            const expanded = view.extent.expand(OVERVIEW_EXPAND);
+            overviewView.goTo(expanded, { animate: false }).catch(() => {});
+
+            // Update the extent indicator graphic
+            overviewExtentLayer.removeAll();
+            overviewExtentLayer.add(new Graphic({
+                geometry: view.extent,
+                symbol: extentSymbol
+            }));
         }
 
-        // Swap the miniMap to a brand-new EsriMap with the given basemap.
-        // Staggered retries ensure at least one lands after the basemap loads.
-        function swapMiniBasemap(basemapId) {
-            miniMap = new EsriMap({ basemap: basemapId });
-            miniView.map = miniMap;
-            [500, 1000, 2000, 3000].forEach(delay => {
-                setTimeout(() => {
-                    syncMiniMap();
-                    updateExtentBox();
-                }, delay);
-            });
-        }
+        // Sync when main view settles
+        view.watch("stationary", (s) => { if (s) syncOverview(); });
+        // Initial sync
+        overviewView.when(() => { view.when(syncOverview); });
 
-        // Sync when the main view stops moving (accurate final sync).
-        view.watch("stationary", (s) => { if (s) syncMiniMap(); });
-        // Also sync during panning/zooming (debounced to avoid overwhelming goTo).
-        let miniSyncTimer = null;
-        view.watch("extent", () => {
-            clearTimeout(miniSyncTimer);
-            miniSyncTimer = setTimeout(syncMiniMap, 300);
-        });
-        // Initial sync once miniView is ready.
-        miniView.when(syncMiniMap);
-        const extentBox = document.getElementById("miniMapExtentBox");
-        function updateExtentBox() {
-            if (!extentBox) return;
-            const cw = miniView ? (miniView.width  || 200) : 200;
-            const ch = miniView ? (miniView.height || 150) : 150;
-            const w = cw / MINI_EXPAND;
-            const h = ch / MINI_EXPAND;
-            const left = (cw - w) / 2;
-            const top  = (ch - h) / 2;
-            if (w < 2 || h < 2) { extentBox.style.display = "none"; return; }
-            extentBox.style.display = "block";
-            extentBox.style.left   = left + "px";
-            extentBox.style.top    = top  + "px";
-            extentBox.style.width  = w + "px";
-            extentBox.style.height = h + "px";
-        }
-        updateExtentBox();
-        miniView.when(updateExtentBox);
-        miniView.watch("stationary", (s) => { if (s) updateExtentBox(); });
-
-        const miniContainer = document.getElementById("miniMapContainer");
-        const miniLabel = document.getElementById("miniMapLabel");
-        if (miniContainer) {
-            miniContainer.addEventListener("click", () => {
+        // --- Click to swap basemaps ---
+        if (overviewDiv) {
+            overviewDiv.addEventListener("click", () => {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
                 if (mainIsImagery) {
+                    // Main → gray, overview → imagery
                     view.map.basemap = defaultBasemapId;
-                    swapMiniBasemap(imageryBasemapId);
+                    overviewMap.basemap = imageryBasemapId;
                 } else {
+                    // Main → imagery, overview → gray
                     view.map.basemap = imageryBasemapId;
-                    swapMiniBasemap(defaultBasemapId);
+                    overviewMap.basemap = defaultBasemapId;
                 }
+                // Re-sync after basemaps settle
+                [500, 1500, 3000].forEach(delay => {
+                    setTimeout(syncOverview, delay);
+                });
             });
-            if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
 
         // AOI layer + sketch (AOI must always be visible and on top)
