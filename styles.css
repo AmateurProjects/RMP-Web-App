@@ -10,7 +10,9 @@ html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(145deg, #f5f0e6 0%, #e8e0d0 50%, #f5f0e6 100%);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     transition: opacity 0.6s ease, visibility 0.6s ease;
 }
 .app-loading-overlay.fade-out {
@@ -40,27 +42,27 @@ html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
     font-family: 'Avenir Next', 'Segoe UI', sans-serif;
     font-size: 22px;
     font-weight: 700;
-    color: #1a472a;
+    color: #ffffff;
     letter-spacing: 0.5px;
 }
 .app-loading-status {
     font-family: 'Avenir Next', 'Segoe UI', sans-serif;
     font-size: 13px;
-    color: #5a5a5a;
+    color: rgba(255, 255, 255, 0.7);
     min-height: 18px;
     transition: opacity 0.2s ease;
 }
 .app-loading-bar-track {
     width: 220px;
     height: 4px;
-    background: rgba(26, 71, 42, 0.12);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 99px;
     overflow: hidden;
 }
 .app-loading-bar-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #1a472a, #2d5a3d);
+    background: linear-gradient(90deg, #ffffff, rgba(255, 255, 255, 0.7));
     border-radius: 99px;
     transition: width 0.4s ease;
 }

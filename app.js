@@ -992,6 +992,8 @@ async function buildReportDisplayLayers() {
         const useServiceRenderer = cfg.useServiceRenderer === true;
         const isAlwaysVisible = cfg.alwaysVisible === true;
 
+        try {
+
         // FeatureServer root: expand sublayers
         if (isFeatureServerRoot(key)) {
             // If useServiceRenderer, expand to ALL sublayers (including points/lines);
@@ -1069,6 +1071,11 @@ async function buildReportDisplayLayers() {
 
         map.add(lyr);
         reportLayerViews.set(key, lyr);
+
+        } catch (e) {
+            console.warn(`[buildReportDisplayLayers] Failed to load "${cfg.title}" (${key}):`, e);
+            // Continue loading remaining layers
+        }
     }
 
     ensureAoiOnTop(map);
