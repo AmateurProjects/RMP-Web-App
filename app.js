@@ -4571,19 +4571,43 @@ function buildDataSourcesSection() {
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
 
-        // When the miniMap basemap changes the MapView internally resets
-        // its extent while loading tiles — overriding any goTo() we issued.
-        // Watch for the miniView to finish updating after a basemap swap
-        // and re-apply the correct zoomed-out level.
+        // When the miniMap basemap changes, the MapView internally resets
+        // its extent while loading tiles — overriding any goTo() we issue.
+        // Imagery basemaps don't do this, but vector/raster gray basemaps do.
+        //
+        // Strategy: do NOT sync immediately (a premature goTo success fools
+        // us into thinking the zoom is correct). Instead, every time the
+        // miniView becomes non-updating, check the zoom.  Only stop
+        // correcting once the zoom has been correct for 750 ms (meaning
+        // no late basemap-load resets overrode it).
         let basemapSwapping = false;
+        let swapSafetyTimer = null;
+        let settleTimer = null;
         miniMap.watch("basemap", () => {
             basemapSwapping = true;
+            clearTimeout(settleTimer);
+            clearTimeout(swapSafetyTimer);
+            swapSafetyTimer = setTimeout(() => { basemapSwapping = false; }, 8000);
         });
         miniView.watch("updating", (updating) => {
-            if (!updating && basemapSwapping) {
-                basemapSwapping = false;
+            if (!basemapSwapping) return;
+            clearTimeout(settleTimer);
+            if (updating) return; // still loading
+            const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
+            if (Math.abs(miniView.zoom - targetZoom) > 0.5) {
                 syncMiniMap();
             }
+            // Start a settle timer — if the zoom stays correct and
+            // updating stays false for 750 ms, we're truly done.
+            settleTimer = setTimeout(() => {
+                const tz = Math.max(1, Math.round(view.zoom - zoomOffset));
+                if (Math.abs(miniView.zoom - tz) > 0.5) {
+                    syncMiniMap(); // one more correction
+                } else {
+                    basemapSwapping = false;
+                    clearTimeout(swapSafetyTimer);
+                }
+            }, 750);
         });
 
         const extentBox = document.getElementById("miniMapExtentBox");
@@ -4624,7 +4648,10 @@ function buildDataSourcesSection() {
                     view.map.basemap = imageryBasemapId;
                     miniMap.basemap = miniBasemapId;
                 }
-                syncMiniMap();
+                // Don't call syncMiniMap() here — the basemapSwapping
+                // watcher handles it after the basemap finishes loading.
+                // Calling it now would create a premature "success" that
+                // fools the watcher into clearing too early.
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
