@@ -4573,12 +4573,11 @@ function buildDataSourcesSection() {
         }
 
         // Swap the miniMap to a brand-new EsriMap with the given basemap.
-        // Brute-force: fire syncMiniMap at staggered intervals so at least
-        // one call lands AFTER the new basemap has finished loading.
+        // Staggered retries ensure at least one lands after the basemap loads.
         function swapMiniBasemap(basemapId) {
             miniMap = new EsriMap({ basemap: basemapId });
             miniView.map = miniMap;
-            [0, 200, 500, 1000, 2000, 3000].forEach(delay => {
+            [500, 1000, 2000, 3000].forEach(delay => {
                 setTimeout(() => {
                     syncMiniMap();
                     updateExtentBox();
@@ -4586,17 +4585,14 @@ function buildDataSourcesSection() {
             });
         }
 
-        // Sync on every extent change (throttled) for responsive updates,
-        // plus an accurate sync when the view settles.
-        let syncThrottle = null;
-        view.watch("extent", () => {
-            if (syncThrottle) return;
-            syncThrottle = setTimeout(() => {
-                syncThrottle = null;
-                syncMiniMap();
-            }, 60);   // ~16 updates/sec max
-        });
+        // Sync when the main view stops moving (accurate final sync).
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
+        // Also sync during panning/zooming (debounced to avoid overwhelming goTo).
+        let miniSyncTimer = null;
+        view.watch("extent", () => {
+            clearTimeout(miniSyncTimer);
+            miniSyncTimer = setTimeout(syncMiniMap, 300);
+        });
         // Initial sync once miniView is ready.
         miniView.when(syncMiniMap);
         const extentBox = document.getElementById("miniMapExtentBox");
