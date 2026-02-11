@@ -4587,22 +4587,37 @@ function buildDataSourcesSection() {
         overviewView.when(() => { view.when(syncOverview); });
 
         // --- Click to swap basemaps ---
+        let swapHandle = null;
         if (overviewDiv) {
             overviewDiv.addEventListener("click", () => {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
                 if (mainIsImagery) {
-                    // Main → gray, overview → imagery
                     view.map.basemap = defaultBasemapId;
                     overviewMap.basemap = imageryBasemapId;
                 } else {
-                    // Main → imagery, overview → gray
                     view.map.basemap = imageryBasemapId;
                     overviewMap.basemap = defaultBasemapId;
                 }
-                // Re-sync after basemaps settle
-                [500, 1500, 3000].forEach(delay => {
-                    setTimeout(syncOverview, delay);
+                // Wait for overview to fully settle after basemap change,
+                // then force the correct extent.
+                if (swapHandle) { swapHandle.remove(); swapHandle = null; }
+                let syncCount = 0;
+                swapHandle = overviewView.watch("stationary", (s) => {
+                    if (s) {
+                        syncOverview();
+                        syncCount++;
+                        // Sync twice: once when basemap loads, once after our goTo settles
+                        if (syncCount >= 2) {
+                            swapHandle.remove();
+                            swapHandle = null;
+                        }
+                    }
                 });
+                // Safety: clean up after 8s
+                setTimeout(() => {
+                    if (swapHandle) { swapHandle.remove(); swapHandle = null; }
+                    syncOverview();
+                }, 8000);
             });
         }
 
@@ -4709,6 +4724,34 @@ function buildDataSourcesSection() {
         }));
 
         selectionLayers.forEach(e => map.add(e.layer));
+
+        // Auto-refresh selection layers when tile requests fail.
+        // BLM MapServer endpoints are unreliable and intermittently drop requests,
+        // causing blank tiles.  This watches each layer view: when it finishes
+        // updating but isn't fully opaque yet (tiles missing), it schedules a refresh.
+        selectionLayers.forEach(e => {
+            view.whenLayerView(e.layer).then(lv => {
+                let retryCount = 0;
+                const MAX_RETRIES = 3;
+                lv.watch("updating", (updating) => {
+                    if (updating || retryCount >= MAX_RETRIES) return;
+                    // If the layer should be visible but the layerView still has
+                    // suspended or connection issues, refresh after a delay
+                    if (e.layer.visible && lv.suspended) {
+                        retryCount++;
+                        console.warn(`Layer "${e.layer.title}" suspended, retry ${retryCount}/${MAX_RETRIES}…`);
+                        setTimeout(() => { e.layer.refresh(); }, 2000 * retryCount);
+                    }
+                });
+                // Also: one extra refresh 5s after initial load to catch
+                // intermittent tile failures from slow BLM endpoints
+                setTimeout(() => {
+                    if (e.layer.visible && e.layer.loaded) {
+                        e.layer.refresh();
+                    }
+                }, 5000);
+            }).catch(() => {});
+        });
 
         // ✅ NEW: build report layers (for map display toggles)
         await buildReportDisplayLayers();
