@@ -222,6 +222,10 @@
       "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer",
       "useServiceRenderer": true,
       "alwaysVisible": true
+    },
+    {
+      "title": "BLM Surface Management Agency",
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_LimitedScale/MapServer/0"
     }
   ],
   "report": {

@@ -14,6 +14,9 @@ require([
 
     // ---------- DOM ----------
     const modeSelect = document.getElementById("modeSelect");
+    // Panel minimize toggle
+    const panelEl = document.getElementById("panel");
+    const panelToggleBtn = document.getElementById("panelToggleBtn");
     // PLSS selection tools (Township / Section / Intersected)
     const plssTownshipBtn = document.getElementById("plssTownshipBtn");
     const plssSectionBtn = document.getElementById("plssSectionBtn");
@@ -2784,6 +2787,14 @@ async function generateVisualReportData(myOp, modal = null) {
                     const acresCovered = cov ? cov.acresCovered : 0;
                     const pctCovered = cov ? cov.pctAoiCovered : 0;
 
+                    // Check for low coverage warning (single feature with <3% coverage)
+                    const isSingleFeatureLowCoverage = (item.count === 1 && pctCovered < 3);
+                    const lowCoverageWarningHtml = isSingleFeatureLowCoverage
+                        ? `<div style="margin-top:8px; padding:6px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px; font-size:11px;">
+                            <span style="color:#856404;">⚠️ Low coverage (&lt;3%) — possible sliver or boundary artifact</span>
+                           </div>`
+                        : "";
+
                     outCards.push(`
                   <div class="visual-output-card">
                     <div class="visual-output-title">${escapeHtml(item.title)}</div>
@@ -2793,8 +2804,9 @@ async function generateVisualReportData(myOp, modal = null) {
                         <tr><td>AOI area</td><td><span class="mono">${formatNumber(aoiAcres, 2)}</span> acres</td></tr>
                         <tr><td>Intersecting features</td><td><span class="mono">${escapeHtml(String(item.count || 0))}</span></td></tr>
                         <tr><td>AOI covered by layer</td><td><span class="mono">${formatNumber(acresCovered, 2)}</span> acres</td></tr>
-                        <tr><td>% AOI covered</td><td><span class="mono">${formatNumber(pctCovered, 2)}</span>%</td></tr>
+                        <tr><td>% AOI covered</td><td><span class="mono">${formatNumber(pctCovered, 2)}</span>%${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage — possible sliver">⚠️</span>' : ''}</td></tr>
                       </table>
+                      ${lowCoverageWarningHtml}
                     </div>
                   </div>
                 `);
@@ -4422,6 +4434,14 @@ async function buildFinalReportHtml() {
                         ? await buildPerFeatureTable(item, selectionGeom)
                         : "";
 
+                    // Check for low coverage warning (single feature with <3% coverage)
+                    const isSingleFeatureLowCoverage = (item.count === 1 && pctCovered < 3);
+                    const lowCoverageWarningHtml = isSingleFeatureLowCoverage
+                        ? `<div style="margin-top:12px; padding:10px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px;">
+                            <span style="color:#856404;">⚠️ <b>Low Coverage Warning:</b> This feature covers less than 3% of the AOI. This may indicate a polygon sliver or boundary artifact rather than meaningful overlap.</span>
+                           </div>`
+                        : "";
+
                     sectionsHtml += `
                     <div class="section">
                         <h3>${escapeHtml(item.title)}</h3>
@@ -4434,9 +4454,10 @@ async function buildFinalReportHtml() {
                             <tr><td>AOI Area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
                             <tr><td>Intersecting Features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
                             <tr><td>Layer Coverage</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
-                            <tr><td>Percent of AOI Covered</td><td><b>${formatNumber(pctCovered, 2)}%</b></td></tr>
+                            <tr><td>Percent of AOI Covered</td><td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage — possible sliver or boundary artifact">⚠️</span>' : ''}</td></tr>
                             ${layerAttrSummary}
                         </table>
+                        ${lowCoverageWarningHtml}
                         ${perFeatureTableHtml}
                     </div>
                     <div class="pagebreak"></div>
@@ -5085,10 +5106,12 @@ function buildDataSourcesSection() {
 
                 if (matches.length === 0) {
                     return;
+                }
 
-                    // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
+                    // ✅ Fetch the “true” // Handler for when a feature is selected (single or from picker)
+                async function handleFeatureSelection(graphic) {
                     const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
-                    aoiSourceFeature = full?.feature || graphic || null; // ✅ cache clicked feature for AOI Source card
+                    aoiSourceFeature = full?.feature || graphic || null;
                     const fullGeom = full?.geometry || null;
                     if (!fullGeom) return;
 
@@ -5121,9 +5144,16 @@ function buildDataSourcesSection() {
                         else if (t.includes("intersected") || t.includes("parcel")) aoiSourcePlssTool = "intersected";
                     }
                     setStatus("polygon selected (ready to run)");
-                    return;
                 }
 
+                // If multiple features, show picker; otherwise select directly
+                if (matches.length > 1) {
+                    showFeaturePicker(matches, (selected) => {
+                        handleFeatureSelection(selected.graphic);
+                    });
+                } else {
+                    await handleFeatureSelection(matches[0].graphic);
+                }
 
             } catch (e) {
                 console.error(e);
@@ -5152,6 +5182,15 @@ function buildDataSourcesSection() {
 
         setLoadingState("Loading configuration...", 5);
         setStatus("loading config…");
+
+        // Panel minimize toggle wiring
+        if (panelToggleBtn && panelEl) {
+            panelToggleBtn.addEventListener("click", () => {
+                const isMinimized = panelEl.classList.toggle("minimized");
+                panelToggleBtn.title = isMinimized ? "Expand panel" : "Minimize panel";
+                panelToggleBtn.setAttribute("aria-label", isMinimized ? "Expand panel" : "Minimize panel");
+            });
+        }
 
         config = await fetchJson("./config.json");
         layerCfgByUrl = buildLayerCfgIndex(config);

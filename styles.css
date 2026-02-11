@@ -133,6 +133,64 @@ html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
   padding: 16px 18px;
   margin: 0;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Panel toggle button */
+.panel-toggle-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-sm);
+  color: white;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.panel-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+.panel-toggle-icon {
+  font-size: 14px;
+  transition: transform var(--transition-normal);
+}
+
+/* Minimized panel state */
+#panel.minimized {
+  max-height: none;
+  overflow: visible;
+}
+#panel.minimized > *:not(.panel-header) {
+  display: none;
+}
+#panel.minimized .panel-header {
+  border-radius: var(--radius-xl);
+}
+#panel.minimized .panel-toggle-icon {
+  transform: rotate(180deg);
+}
+
+/* Mobile-friendly minimized state */
+@media (max-width: 600px) {
+  #panel {
+    width: calc(100vw - 24px);
+    max-height: 70vh;
+  }
+  #panel.minimized {
+    width: auto;
+    min-width: 180px;
+  }
+  .panel-toggle-btn {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 .title{ 
