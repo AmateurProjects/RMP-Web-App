@@ -337,7 +337,6 @@ a:hover {
 
 .result-card{
   background: var(--bg-white);
-  background: var(--bg-white);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   padding: 14px;
@@ -846,7 +845,7 @@ th{
 }
 
 .tabs.tabs-mid{
-  margin: 10px 0 12px;
+  margin: 6px 0 10px; /* slightly tighter than default */
   padding: 10px 0;
   border-top: 1px solid rgba(0,0,0,.08);
   border-bottom: 1px solid rgba(0,0,0,.08);
@@ -855,12 +854,6 @@ th{
 #resultsCard{
   margin-bottom: 0;
 }
-
-.tabs.tabs-mid{
-  margin: 6px 0 10px; /* slightly tighter than default */
-}
-
-#resultsCard.is-empty { display:none; }
 
 /* ====== Lock map interactions during long operations ====== */
 .view-blocker{
@@ -982,10 +975,6 @@ th{
     border-radius: 50%;
     border-top-color: transparent;
     animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
 }
 
 .analysis-log {

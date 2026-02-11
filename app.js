@@ -33,7 +33,6 @@ require([
     const statusTextEl = document.getElementById("statusText");
     const busyIndicatorEl = document.getElementById("busyIndicator");
 
-    const resultsCardEl = document.getElementById("resultsCard");
     const resultsEl = document.getElementById("results");
     const selectionLayerTogglesEl = document.getElementById("selectionLayerToggles");
     const reportLayerTogglesEl = document.getElementById("reportLayerToggles");
@@ -54,7 +53,6 @@ require([
     // Visual report DOM
     const visualReportStatusEl = document.getElementById("visualReportStatus");
     const visualReportMapWrapEl = document.getElementById("visualReportMapWrap");
-    // const visualReportImgEl = document.getElementById("visualReportImg"); // no longer used
     const visualReportOutputsEl = document.getElementById("visualReportOutputs");
     const visualReportSummaryEl = document.getElementById("visualReportSummary");
 
@@ -493,21 +491,6 @@ function setActiveTab(tabName) {
             activeSelectionLayerView = null;
         }
     }
-
-async function autoZoomToLayerMinVisible(layer) {
-    if (!view || !layer) return;
-
-    const minScale = Number(layer.minScale || 0);
-    if (!minScale || !isFinite(minScale) || minScale <= 0) return;
-
-    // Zoom to 75% of minScale — just inside the layer's visible range
-    const nudgeFactor = 0.75;
-    const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
-
-    if (view.scale > targetScale) {
-        await view.goTo({ scale: targetScale }, { animate: true, duration: 450 });
-    }
-}
 
     async function ensureLayerVisibleAtScale(layer) {
         if (!view || !layer) return;
@@ -1216,10 +1199,6 @@ function clearAll() {
                 ? `<span class="status-warning" title="Service is DOWN">⚠️</span>` 
                 : "";
 
-                Array.isArray(existing) ? (existing.length > 0) :
-                    existing ? !!existing.visible :
-                        false;
-
             const checked = isChecked ? "checked" : "";
 
             // ✅ Do NOT disable FeatureServer roots anymore (we will expand them to drawable polygon sublayers)
@@ -1241,8 +1220,6 @@ function clearAll() {
         (config.reportLayers || []).forEach((l, i) => {
             const cb = document.getElementById(`rptlayer_${i}`);
             if (!cb) return;
-
-            const key = normalizeUrlKey(l.url);
 
 cb.addEventListener("change", async () => {
     const spin = document.getElementById(`rptlayer_spin_${i}`);
@@ -1783,8 +1760,6 @@ async function runAnalysis() {
 
 // Extracted query logic (was: runReport)
 async function queryAllLayers(reportGeom, myOp, modal = null) {
-    const toolLabel = plssToolLabel(aoiSourcePlssTool);
-
     resultsEl.innerHTML = "";
     exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
@@ -2150,40 +2125,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     }
 
 
-    function getVisualSummaryLines() {
-        // Uses the same stats as renderVisualSummary(), but returns plain text lines for PNG.
-        if (!selectionGeom) return ["No AOI selected."];
-
-        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-            return ["Run the report to populate layer counts."];
-        }
-
-        const totalLayers = lastReportRowsByLayer.length;
-        const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0);
-        const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
-
-        const top = layersWithHits
-            .slice()
-            .sort((a, b) => (b.count || 0) - (a.count || 0))
-            .slice(0, 10);
-
-        const lines = [
-            `Layers queried: ${totalLayers}`,
-            `Layers with hits: ${layersWithHits.length}`,
-            `Total intersecting features (sum of counts): ${totalHits}`,
-            ""
-        ];
-
-        if (top.length) {
-            lines.push("Top layers:");
-            top.forEach(x => lines.push(`• ${x.title} (${x.count || 0})`));
-        } else {
-            lines.push("(No intersect hits.)");
-        }
-
-        return lines;
-    }
-
     // ---------- Coverage stats (AOI acres + % covered by layer) ----------
     const SQM_PER_ACRE = 4046.8564224;
     const coverageCache = new Map(); // key: `${aoiKey}||${layerUrl}` -> { acresCovered, pctAoiCovered }
@@ -2330,90 +2271,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         const out = { acresCovered, pctAoiCovered };
         coverageCache.set(cacheKey, out);
         return out;
-    }
-
-
-    function wrapText(ctx, text, maxWidth) {
-        const words = String(text || "").split(/\s+/).filter(Boolean);
-        if (!words.length) return [""];
-
-        const lines = [];
-        let line = words[0];
-
-        for (let i = 1; i < words.length; i++) {
-            const test = line + " " + words[i];
-            if (ctx.measureText(test).width <= maxWidth) line = test;
-            else { lines.push(line); line = words[i]; }
-        }
-        lines.push(line);
-        return lines;
-    }
-
-    async function buildVisualPngWithSummary(mapDataUrl) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-
-        await new Promise((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = (e) => reject(e);
-            img.src = mapDataUrl;
-        });
-
-        const padding = 18;
-        const lineH = 18;
-        const titleH = 22;
-
-        // Create a canvas the same width as the screenshot
-        const w = img.naturalWidth || img.width;
-        const summaryLines = getVisualSummaryLines();
-
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
-        // Set fonts for measuring/wrapping
-        ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-
-        // Wrap lines to fit
-        const maxTextWidth = w - padding * 2;
-        const wrapped = [];
-        for (const line of summaryLines) {
-            if (!line) { wrapped.push(""); continue; }
-            wrapText(ctx, line, maxTextWidth).forEach(x => wrapped.push(x));
-        }
-
-        const summaryBlockH = padding + titleH + (wrapped.length * lineH) + padding;
-
-        canvas.width = w;
-        canvas.height = img.height + summaryBlockH;
-
-        // Background
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Draw map screenshot
-        ctx.drawImage(img, 0, 0);
-
-        // Draw summary panel background
-        const y0 = img.height;
-        ctx.fillStyle = "rgba(255,255,255,0.96)";
-        ctx.fillRect(0, y0, canvas.width, summaryBlockH);
-
-        // Summary title
-        ctx.fillStyle = "#111111";
-        ctx.font = "700 16px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-        ctx.fillText("Visual Report Summary", padding, y0 + padding + 16);
-
-        // Summary lines
-        ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-        let y = y0 + padding + titleH;
-
-        for (const line of wrapped) {
-            if (!line) { y += lineH; continue; }
-            ctx.fillText(line, padding, y);
-            y += lineH;
-        }
-
-        return canvas.toDataURL("image/png");
     }
 
 
@@ -3479,32 +3336,6 @@ async function generateVisualReportData(myOp, modal = null) {
         return r;
     }
 
-    // ✅ NEW: Robust query with retry logic for better data reliability
-    async function queryFeaturesWithRetry(layer, query, { maxRetries = 2, retryDelayMs = 500 } = {}) {
-        if (!layer) return { features: [] };
-
-        let lastError = null;
-        
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-                const result = await layer.queryFeatures(query);
-                return result;
-            } catch (e) {
-                lastError = e;
-                console.warn(`Query attempt ${attempt + 1} failed:`, e);
-                
-                // Don't retry after last attempt
-                if (attempt < maxRetries) {
-                    await new Promise(r => setTimeout(r, retryDelayMs));
-                }
-            }
-        }
-
-        // All retries exhausted
-        console.error("All query retries failed:", lastError);
-        return { features: [] };
-    }
-
 
     function openHtmlInNewTab(htmlString) {
         const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
@@ -4271,44 +4102,6 @@ async function generateAoiMapsWithCircles() {
 
 
 
-// ========================================
-// HELPER: Draw red circle on screenshot
-// ========================================
-async function addRedCircleToScreenshot(dataUrl, aoiExtent, viewExtent) {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-
-    await new Promise((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = (e) => reject(e);
-        img.src = dataUrl;
-    });
-
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0);
-
-    // Calculate AOI center in screen coordinates
-    const aoiCenterX = (aoiExtent.center.x - viewExtent.xmin) / (viewExtent.xmax - viewExtent.xmin) * canvas.width;
-    const aoiCenterY = (1 - (aoiExtent.center.y - viewExtent.ymin) / (viewExtent.ymax - viewExtent.ymin)) * canvas.height;
-
-    // Calculate circle radius (1.5x AOI width in screen coords)
-    const aoiWidthScreen = (aoiExtent.width / (viewExtent.xmax - viewExtent.xmin)) * canvas.width;
-    const radius = Math.max(30, aoiWidthScreen * 0.75); // At least 30px, max 1.5x AOI width
-
-    // Draw red circle
-    ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(aoiCenterX, aoiCenterY, radius, 0, 2 * Math.PI);
-    ctx.stroke();
-
-    return canvas.toDataURL("image/png");
-}
-
 
 // ========================================
 // HELPER: Build data sources appendix (IMPROVED TABLE)
@@ -4722,7 +4515,7 @@ function buildDataSourcesSection() {
 
                 // Auto-zoom to minimum visible zoom level (using layer.minScale)
                 const lyr = selectionLayers[idxToEnable]?.layer;
-                await autoZoomToLayerMinVisible(lyr);
+                await ensureLayerVisibleAtScale(lyr);
                 await waitForViewStationary(1500);
 
                 const whichLabel = (which === "intersected") ? "parcel" : which;
