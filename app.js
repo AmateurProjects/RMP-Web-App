@@ -4540,65 +4540,84 @@ function buildDataSourcesSection() {
         if (isImageryBasemap(view.map.basemap)) setBasemapBaseLayerOpacity(view.map.basemap, imageryOpacity);
 
         // ---------- Mini Overview Map ----------
-        const miniMap = new EsriMap({ basemap: imageryBasemapId });
-        const miniView = new MapView({
-            container: "miniMapView",
-            map: miniMap,
-            center: view.center,
-            zoom: Math.max(1, (config.map?.zoom || 4) - 4),
+        // Two permanent MapViews with fixed basemaps — toggle visibility.
+        // This avoids all basemap-swap extent-reset issues.
+        const zoomOffset = 4;
+        const initCenter = view.center;
+        const initZoom = Math.max(1, (config.map?.zoom || 4) - zoomOffset);
+
+        const miniMapImagery = new EsriMap({ basemap: imageryBasemapId });
+        const miniMapGray = new EsriMap({ basemap: miniBasemapId });
+
+        const miniViewImagery = new MapView({
+            container: "miniMapViewImagery",
+            map: miniMapImagery,
+            center: initCenter,
+            zoom: initZoom,
             ui: { components: [] },
             constraints: { snapToZoom: false }
         });
-        miniView.when(() => {
-            const nav = miniView.navigation;
-            if (nav) {
-                nav.mouseWheelEnabled = false;
-                nav.browserTouchPanEnabled = false;
-                nav.dragPanEnabled = false;
-                nav.keyboardEnabled = false;
-                nav.doubleClickZoomEnabled = false;
-            }
+        const miniViewGray = new MapView({
+            container: "miniMapViewGray",
+            map: miniMapGray,
+            center: initCenter,
+            zoom: initZoom,
+            ui: { components: [] },
+            constraints: { snapToZoom: false }
         });
 
-        const zoomOffset = 4;
+        function disableNav(mv) {
+            mv.when(() => {
+                const nav = mv.navigation;
+                if (nav) {
+                    nav.mouseWheelEnabled = false;
+                    nav.browserTouchPanEnabled = false;
+                    nav.dragPanEnabled = false;
+                    nav.keyboardEnabled = false;
+                    nav.doubleClickZoomEnabled = false;
+                }
+            });
+        }
+        disableNav(miniViewImagery);
+        disableNav(miniViewGray);
+
+        // Track which mini view is active (visible).
+        // Main map starts gray → minimap shows imagery.
+        let activeMiniView = miniViewImagery;
+        const imageryDiv = document.getElementById("miniMapViewImagery");
+        const grayDiv = document.getElementById("miniMapViewGray");
+        // Gray mini hidden initially (main map is gray, so mini shows imagery)
+        if (grayDiv) grayDiv.classList.add("hidden");
+
         function syncMiniMap() {
             if (!view.center) return;
             const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
-            miniView.goTo({ center: view.center, zoom: targetZoom }, { animate: false })
-                .then(updateExtentBox)
-                .catch(() => {});
+            const target = { center: view.center, zoom: targetZoom };
+            const opts = { animate: false };
+            // Sync BOTH views so the hidden one is ready when toggled.
+            miniViewImagery.goTo(target, opts).catch(() => {});
+            miniViewGray.goTo(target, opts).catch(() => {});
+            updateExtentBox();
         }
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
 
-        // After a basemap swap on the minimap, the gray basemap's tile-load
-        // resets the miniView extent at unpredictable times — overriding any
-        // single goTo().  Brute-force fix: re-sync at staggered intervals so
-        // at least one call lands after the basemap is done loading.
-        let swapTimers = [];
-        function syncAfterSwap() {
-            swapTimers.forEach(t => clearTimeout(t));
-            swapTimers = [200, 500, 1000, 1500, 2000, 3000].map(ms =>
-                setTimeout(syncMiniMap, ms)
-            );
-        }
-
         const extentBox = document.getElementById("miniMapExtentBox");
         function updateExtentBox() {
-            if (!extentBox || !view.extent || !miniView.extent) {
+            if (!extentBox || !view.extent || !activeMiniView.extent) {
                 if (extentBox) extentBox.style.display = "none";
                 return;
             }
             try {
-                const tl = miniView.toScreen({ x: view.extent.xmin, y: view.extent.ymax, spatialReference: view.spatialReference });
-                const br = miniView.toScreen({ x: view.extent.xmax, y: view.extent.ymin, spatialReference: view.spatialReference });
+                const tl = activeMiniView.toScreen({ x: view.extent.xmin, y: view.extent.ymax, spatialReference: view.spatialReference });
+                const br = activeMiniView.toScreen({ x: view.extent.xmax, y: view.extent.ymin, spatialReference: view.spatialReference });
                 const left = Math.max(0, tl.x);
                 const top = Math.max(0, tl.y);
-                const right = Math.min(miniView.width, br.x);
-                const bottom = Math.min(miniView.height, br.y);
+                const right = Math.min(activeMiniView.width, br.x);
+                const bottom = Math.min(activeMiniView.height, br.y);
                 const w = right - left;
                 const h = bottom - top;
-                if (w < 2 || h < 2 || w > miniView.width * 0.95) { extentBox.style.display = "none"; return; }
+                if (w < 2 || h < 2 || w > activeMiniView.width * 0.95) { extentBox.style.display = "none"; return; }
                 extentBox.style.display = "block";
                 extentBox.style.left = left + "px";
                 extentBox.style.top = top + "px";
@@ -4607,7 +4626,8 @@ function buildDataSourcesSection() {
             } catch (e) { extentBox.style.display = "none"; }
         }
         view.watch("extent", updateExtentBox);
-        miniView.watch("extent", updateExtentBox);
+        miniViewImagery.watch("extent", updateExtentBox);
+        miniViewGray.watch("extent", updateExtentBox);
 
         const miniContainer = document.getElementById("miniMapContainer");
         const miniLabel = document.getElementById("miniMapLabel");
@@ -4615,13 +4635,19 @@ function buildDataSourcesSection() {
             miniContainer.addEventListener("click", () => {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
                 if (mainIsImagery) {
+                    // Main → gray, mini shows imagery
                     view.map.basemap = defaultBasemapId;
-                    miniMap.basemap = imageryBasemapId;
+                    activeMiniView = miniViewImagery;
+                    if (grayDiv) grayDiv.classList.add("hidden");
+                    if (imageryDiv) imageryDiv.classList.remove("hidden");
                 } else {
+                    // Main → imagery, mini shows gray
                     view.map.basemap = imageryBasemapId;
-                    miniMap.basemap = miniBasemapId;
+                    activeMiniView = miniViewGray;
+                    if (imageryDiv) imageryDiv.classList.add("hidden");
+                    if (grayDiv) grayDiv.classList.remove("hidden");
                 }
-                syncAfterSwap();
+                syncMiniMap();
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
