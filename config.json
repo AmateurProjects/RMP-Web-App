@@ -202,8 +202,8 @@
       "url": "https://gis.blm.gov/arcgis/rest/services/ePlanning/BLM_Natl_Epl_Comment/FeatureServer"
     },
     {
-      "title": "BLM Fire Perimeters",
-      "url": "https://gis.blm.gov/arcgis/rest/services/fire/BLM_Natl_FirePerimeter/MapServer"
+      "title": "BLM Fire Perimeters (Final Poly)",
+      "url": "https://gis.blm.gov/arcgis/rest/services/fire/BLM_Natl_FirePerimeter/MapServer/0"
     },
     {
       "title": "BLM National Recreation Sites",
@@ -225,7 +225,10 @@
     },
     {
       "title": "BLM Surface Management Agency",
-      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_LimitedScale/MapServer/0"
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_LimitedScale/MapServer/1",
+      "useServiceRenderer": true,
+      "minScale": 0,
+      "maxScale": 0
     }
   ],
   "report": {

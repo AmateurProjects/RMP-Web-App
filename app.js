@@ -1137,6 +1137,9 @@ async function buildReportDisplayLayers() {
                 if (!useServiceRenderer) {
                     layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
                 }
+                // Apply scale overrides if specified
+                if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
+                if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                 const lyr = new FeatureLayer(layerOpts);
                 layers.push(lyr);
                 if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
@@ -1165,6 +1168,9 @@ async function buildReportDisplayLayers() {
                 if (!useServiceRenderer) {
                     layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
                 }
+                // Apply scale overrides if specified
+                if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
+                if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                 const lyr = new FeatureLayer(layerOpts);
                 layers.push(lyr);
                 if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
@@ -1188,6 +1194,9 @@ async function buildReportDisplayLayers() {
         if (!useServiceRenderer) {
             layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
         }
+        // Apply scale overrides if specified
+        if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
+        if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
         const lyr = new FeatureLayer(layerOpts);
         if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
 
@@ -2535,6 +2544,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         const thCells = attrKeys.map(k => `<th>${escapeHtml(k)}</th>`).join("");
         const headerHtml = `<tr>${thCells}<th>Acres</th><th>% of AOI</th></tr>`;
 
+        let hasSliverWarning = false;
         const bodyHtml = tableRows.map(row => {
             const tdCells = attrKeys.map(k => {
                 const raw = (row.attrs[k] == null) ? "" : String(row.attrs[k]);
@@ -2543,10 +2553,17 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             }).join("");
             // Flag rows with <3% coverage as potential sliver/anomaly
             const isSliverWarning = row.pctAoi < 3;
+            if (isSliverWarning) hasSliverWarning = true;
             const rowStyle = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
-            const warningIcon = isSliverWarning ? '<span title="Low coverage (&lt;3%) — possible sliver or boundary artifact" style="color:#856404; cursor:help;">⚠️</span> ' : '';
+            const warningIcon = isSliverWarning ? '<span style="color:#856404;">⚠️</span> ' : '';
             return `<tr${rowStyle}>${tdCells}<td style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td><td style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td></tr>`;
         }).join("");
+
+        const sliverNote = hasSliverWarning
+            ? `<div style="margin-top:8px; font-size:10px; color:#856404; background:#fff3cd; padding:6px 8px; border-radius:4px;">
+                <b>⚠️ Note:</b> Highlighted rows cover less than 3% of the AOI and may represent slivers, boundary artifacts, or minor overlaps rather than meaningful intersections.
+            </div>`
+            : '';
 
         return `
             <div style="margin-top:16px;">
@@ -2555,6 +2572,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     <thead>${headerHtml}</thead>
                     <tbody>${bodyHtml}</tbody>
                 </table>
+                ${sliverNote}
             </div>
         `;
     }
@@ -2658,8 +2676,8 @@ async function generateVisualReportData(myOp, modal = null) {
                 for (const l of allLayers) {
                     // Keep AOI layer visible
                     if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                    // Keep AOI mask layer visible
-                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
+                    // Hide AOI mask layer for report screenshots
+                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
 
                     // Keep SMA overlay visible (your TileLayer at bottom) if present
                     // (We don’t have the variable here; keep TileLayers visible by default.)
@@ -2673,8 +2691,6 @@ async function generateVisualReportData(myOp, modal = null) {
                 }
 
                 if (tempLayer) tempLayer.visible = true;
-                // ✅ Show AOI mask to lighten areas outside AOI
-                updateAoiMask(true);
                 ensureAoiOnTop(view.map);
             }
 
@@ -3579,8 +3595,8 @@ async function generateVisualReportData(myOp, modal = null) {
             }
         }
         
-        // BLM Fire Perimeters
-        if (title.includes("fire perimeter") || title.includes("fireperimeter")) {
+        // BLM Fire Perimeters (Final Poly)
+        if (title.includes("fire perimeter")) {
             const fireNames = new Set();
             const causeCounts = new Map();
             const discoveryYears = new Map();
@@ -4347,7 +4363,8 @@ async function buildFinalReportHtml() {
             function setVisibilityForScreenshot(tempLayer) {
                 for (const l of allLayers) {
                     if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
+                    // Hide AOI mask layer for report screenshots
+                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
                     if (l?.type === "tile") { l.visible = true; continue; }
                     // ✅ Show PLSS Section layer on all per-layer maps
                     if (plssSectionLayer && l === plssSectionLayer) { l.visible = true; continue; }
@@ -4356,8 +4373,6 @@ async function buildFinalReportHtml() {
                     l.visible = false;
                 }
                 if (tempLayer) tempLayer.visible = true;
-                // ✅ Show AOI mask to lighten areas outside AOI
-                updateAoiMask(true);
                 ensureAoiOnTop(view.map);
             }
 
@@ -4638,7 +4653,8 @@ async function generateAoiMapsWithCircles() {
     function setVisibilityForAoi() {
         for (const l of allLayers) {
             if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-            if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
+            // Hide AOI mask layer for report screenshots
+            if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
             if (l?.type === "tile") { l.visible = true; continue; }
             // ✅ Show PLSS Township layer on AOI maps
             if (plssTownshipLayer && l === plssTownshipLayer) { l.visible = true; continue; }
@@ -4646,8 +4662,6 @@ async function generateAoiMapsWithCircles() {
             if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
             l.visible = false;
         }
-        // ✅ Show AOI mask to lighten areas outside AOI
-        updateAoiMask(true);
         ensureAoiOnTop(view.map);
     }
 
@@ -4881,6 +4895,42 @@ function buildDataSourcesSection() {
     const featurePickerList = document.getElementById("featurePickerList");
     const featurePickerCancelBtn = document.getElementById("featurePickerCancelBtn");
     const featurePickerConfirmBtn = document.getElementById("featurePickerConfirmBtn");
+    const featurePickerContent = document.querySelector(".feature-picker-content");
+    const featurePickerHeader = document.querySelector(".feature-picker-header");
+
+    // Drag functionality for feature picker
+    let pickerDragState = { isDragging: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
+
+    if (featurePickerHeader && featurePickerContent) {
+        featurePickerHeader.addEventListener("mousedown", (e) => {
+            if (e.target.tagName === "BUTTON") return; // Don't drag if clicking buttons
+            pickerDragState.isDragging = true;
+            pickerDragState.startX = e.clientX;
+            pickerDragState.startY = e.clientY;
+            const rect = featurePickerContent.getBoundingClientRect();
+            pickerDragState.offsetX = rect.left;
+            pickerDragState.offsetY = rect.top;
+            featurePickerContent.style.transition = "none";
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!pickerDragState.isDragging) return;
+            const dx = e.clientX - pickerDragState.startX;
+            const dy = e.clientY - pickerDragState.startY;
+            const newLeft = pickerDragState.offsetX + dx;
+            const newTop = pickerDragState.offsetY + dy;
+            featurePickerContent.style.position = "fixed";
+            featurePickerContent.style.left = newLeft + "px";
+            featurePickerContent.style.top = newTop + "px";
+            featurePickerContent.style.right = "auto";
+            featurePickerContent.style.margin = "0";
+        });
+
+        document.addEventListener("mouseup", () => {
+            pickerDragState.isDragging = false;
+            featurePickerContent.style.transition = "";
+        });
+    }
 
     // State for feature picker
     let pickerFeatures = [];
@@ -4889,6 +4939,15 @@ function buildDataSourcesSection() {
 
     function showFeaturePicker(features, onSelect) {
         if (!featurePickerModal || !featurePickerList) return;
+
+        // Reset position for new selection
+        if (featurePickerContent) {
+            featurePickerContent.style.position = "";
+            featurePickerContent.style.left = "";
+            featurePickerContent.style.top = "";
+            featurePickerContent.style.right = "";
+            featurePickerContent.style.margin = "";
+        }
 
         // Store state
         pickerFeatures = features;
@@ -5545,19 +5604,11 @@ function buildDataSourcesSection() {
             });
         }
 
-        // Default to Township if present, otherwise Section, otherwise Intersected, otherwise first selection layer
-        // Skip auto-zoom on initial load to respect config center/zoom
-        if (townshipIdx >= 0) {
-            await activatePlss("township", townshipIdx, { skipAutoZoom: true });
-        } else if (sectionIdx >= 0) {
-            await activatePlss("section", sectionIdx, { skipAutoZoom: true });
-        } else if (intersectedIdx >= 0) {
-            await activatePlss("intersected", intersectedIdx, { skipAutoZoom: true });
-        } else if (selectionLayers.length) {
-            enableSelectionLayer(0);
-            await setActiveSelectionLayerByIndex(0);
-            setPlssToolActive("township"); // best-effort UI state
-        }
+        // No PLSS layer selected by default - user must choose
+        // Clear any default button states
+        setPlssToolActive(null);
+        setPermitToolActive(null);
+        setStatus("Select a layer or draw a polygon to define your AOI");
 
 
         // Tab wiring
