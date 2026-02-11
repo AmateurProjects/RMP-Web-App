@@ -500,10 +500,8 @@ async function autoZoomToLayerMinVisible(layer) {
     const minScale = Number(layer.minScale || 0);
     if (!minScale || !isFinite(minScale) || minScale <= 0) return;
 
-    // ✅ VERY AGGRESSIVE ZOOM: 90% more zoomed in than minScale
-    // Smaller scale number = more zoomed in
-    // 0.10 = zoom in 10x closer than minimum required
-    const nudgeFactor = 0.10;
+    // Zoom to 75% of minScale — just inside the layer's visible range
+    const nudgeFactor = 0.75;
     const targetScale = Math.max(1, Math.floor(minScale * nudgeFactor));
 
     if (view.scale > targetScale) {
