@@ -2322,6 +2322,117 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         return out;
     }
 
+    /**
+     * Build a per-feature breakdown table for layers with multiple intersecting features.
+     * Each row = one feature, with relevant attribute columns + Acres + % AOI.
+     */
+    async function buildPerFeatureTable(item, aoiGeom) {
+        if (!item || !item._layer || !item._exportQuery || !aoiGeom) return "";
+        if ((item.count || 0) < 2) return ""; // only for multiple features
+
+        // AOI area
+        let aoiAreaSqm = 0;
+        try {
+            aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters"));
+        } catch (e) { aoiAreaSqm = 0; }
+        if (!aoiAreaSqm) return "";
+
+        const pageSize = config.report?.pageSize ?? 1000;
+        const maxExport = config.report?.maxExportFeatures ?? 50000;
+
+        // Query all features WITH geometry + attributes
+        let feats = [];
+        try {
+            const q = item._exportQuery.clone();
+            q.returnGeometry = true;
+            q.outFields = ["*"];
+            q.outSpatialReference = view?.spatialReference;
+
+            const all = [];
+            let offset = 0;
+            while (true) {
+                const pq = q.clone();
+                pq.num = pageSize;
+                pq.start = offset;
+                const fs = await item._layer.queryFeatures(pq);
+                const batch = fs?.features ?? [];
+                all.push(...batch);
+                if (batch.length < pageSize) break;
+                offset += pageSize;
+                if (all.length >= maxExport) break;
+            }
+            feats = all;
+        } catch (e) {
+            console.warn("buildPerFeatureTable: query failed", e);
+            return "";
+        }
+
+        if (feats.length < 2) return "";
+
+        // Determine relevant attribute columns (skip OID-like, shape, and GlobalID fields)
+        const skipPatterns = /^(objectid|oid|fid|shape|shape_area|shape_length|shape\.area|shape\.len|globalid|st_area|st_length|st_perimeter)$/i;
+        const allKeys = new Set();
+        for (const f of feats) {
+            if (!f.attributes) continue;
+            for (const k of Object.keys(f.attributes)) {
+                if (!skipPatterns.test(k)) allKeys.add(k);
+            }
+        }
+
+        // Pick up to 6 attribute columns to keep the table readable
+        const maxAttrCols = 6;
+        const attrKeys = Array.from(allKeys).slice(0, maxAttrCols);
+
+        // Build rows: compute per-feature intersection area
+        const tableRows = [];
+        for (const f of feats) {
+            const attrs = f.attributes || {};
+            const geom = f.geometry;
+
+            let acresCovered = 0;
+            let pctAoi = 0;
+
+            if (geom) {
+                try {
+                    const inter = geometryEngine.intersect(aoiGeom, geom);
+                    if (inter) {
+                        const areaSqm = Math.max(0, geometryEngine.geodesicArea(inter, "square-meters"));
+                        acresCovered = areaSqm / SQM_PER_ACRE;
+                        pctAoi = Math.min(100, Math.max(0, (areaSqm / aoiAreaSqm) * 100));
+                    }
+                } catch (e) { /* skip bad geometry */ }
+            }
+
+            tableRows.push({ attrs, acresCovered, pctAoi });
+        }
+
+        // Sort by acres descending
+        tableRows.sort((a, b) => b.acresCovered - a.acresCovered);
+
+        // Build HTML
+        const thCells = attrKeys.map(k => `<th>${escapeHtml(k)}</th>`).join("");
+        const headerHtml = `<tr>${thCells}<th>Acres</th><th>% of AOI</th></tr>`;
+
+        const bodyHtml = tableRows.map(row => {
+            const tdCells = attrKeys.map(k => {
+                const raw = (row.attrs[k] == null) ? "" : String(row.attrs[k]);
+                const truncated = raw.length > 40 ? raw.slice(0, 39) + "…" : raw;
+                return `<td title="${escapeHtml(raw)}">${escapeHtml(truncated)}</td>`;
+            }).join("");
+            return `<tr>${tdCells}<td style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td><td style="text-align:right;">${formatNumber(row.pctAoi, 2)}%</td></tr>`;
+        }).join("");
+
+        return `
+            <div style="margin-top:16px;">
+                <b>Per-Feature Breakdown</b>
+                <table class="metaTbl" style="margin-top:8px; width:100%; font-size:11px;">
+                    <thead>${headerHtml}</thead>
+                    <tbody>${bodyHtml}</tbody>
+                </table>
+            </div>
+        `;
+    }
+
 
     function setVisualStatus(msg) {
         if (visualReportStatusEl) visualReportStatusEl.textContent = msg || "";
@@ -4174,6 +4285,11 @@ async function buildFinalReportHtml() {
                     // Generate layer-specific attribute summary
                     const layerAttrSummary = generateLayerAttributeSummary(item);
 
+                    // Generate per-feature breakdown table (only if multiple features)
+                    const perFeatureTableHtml = (item.count > 1)
+                        ? await buildPerFeatureTable(item, selectionGeom)
+                        : "";
+
                     sectionsHtml += `
                     <div class="section">
                         <h3>${escapeHtml(item.title)}</h3>
@@ -4189,6 +4305,7 @@ async function buildFinalReportHtml() {
                             <tr><td>Percent of AOI Covered</td><td><b>${formatNumber(pctCovered, 2)}%</b></td></tr>
                             ${layerAttrSummary}
                         </table>
+                        ${perFeatureTableHtml}
                     </div>
                     <div class="pagebreak"></div>
                     `;

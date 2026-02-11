@@ -437,6 +437,7 @@ a:hover {
   border: 1px solid transparent;
   border-radius: 999px;
   padding: 4px 10px;
+  white-space: nowrap;
 }
 
 .badge-count {
