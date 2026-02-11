@@ -747,7 +747,7 @@ th{
 }
 
 .mini-map-layer.hidden {
-  display: none;
+  visibility: hidden;
 }
 
 /* Extent indicator box on mini-map */
