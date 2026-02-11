@@ -224,11 +224,17 @@
       "alwaysVisible": true
     },
     {
-      "title": "BLM Surface Management Agency",
-      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_LimitedScale/MapServer/1",
+      "title": "USA Federal Lands",
+      "url": "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Federal_Lands/FeatureServer",
       "useServiceRenderer": true,
       "minScale": 0,
       "maxScale": 0
+    },
+    {
+      "title": "3DEP Elevation",
+      "url": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+      "imageService": true,
+      "renderingRule": "Hillshade Elevation Tinted"
     }
   ],
   "report": {

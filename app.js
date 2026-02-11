@@ -8,8 +8,9 @@ require([
     "esri/widgets/Sketch",
     "esri/Graphic",
     "esri/geometry/geometryEngine",
-    "esri/layers/TileLayer"
-], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer) {
+    "esri/layers/TileLayer",
+    "esri/layers/ImageryLayer"
+], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
 
 
     // ---------- DOM ----------
@@ -1183,6 +1184,26 @@ async function buildReportDisplayLayers() {
             continue;
         }
 
+        // ImageServer: create ImageryLayer
+        if (cfg.imageService === true) {
+            const layerOpts = {
+                url: key,
+                title: cfg.title,
+                visible: isAlwaysVisible
+            };
+            // Apply rendering rule if specified
+            if (cfg.renderingRule) {
+                layerOpts.renderingRule = { functionName: cfg.renderingRule };
+            }
+            const lyr = new ImageryLayer(layerOpts);
+            if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
+            map.add(lyr);
+            reportLayerViews.set(key, lyr);
+            // Mark as image service in config index
+            layerCfgByUrl.set(key, { kind: "report", cfg, isImageService: true });
+            continue;
+        }
+
         // Normal single layer - get geometry type
         const geomType = await getLayerGeometryType(key);
         const layerOpts = {
@@ -1999,6 +2020,17 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             continue;
         }
 
+        // Handle ImageServer layers specially
+        if (cfg.imageService === true) {
+            expandedTargets.push({ 
+                title: cfg.title, 
+                url,
+                __isImageService: true,
+                __renderingRule: cfg.renderingRule || null
+            });
+            continue;
+        }
+
         if (isFeatureServerRoot(url)) {
             try {
                 const sublayers = await expandServiceToSublayers(url);
@@ -2062,6 +2094,67 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             <div class="small mono">${escapeHtml(String(t.error))}</div>
           </div>
         `);
+            continue;
+        }
+
+        // Handle ImageServer layers - fetch metadata instead of feature query
+        if (t.__isImageService) {
+            try {
+                const metaUrl = `${t.url}?f=json`;
+                const resp = await fetch(metaUrl);
+                const meta = await resp.json();
+
+                const serviceDesc = meta.description || meta.serviceDescription || "No description available.";
+                const copyright = meta.copyrightText || "";
+                const serviceName = meta.name || t.title;
+
+                // Add to lastReportRowsByLayer with special imageService flag
+                lastReportRowsByLayer.push({
+                    title: t.title,
+                    url: t.url,
+                    count: 1, // Always show as having coverage
+                    rows: [],
+                    _layer: null,
+                    _exportQuery: null,
+                    fullRows: null,
+                    __isImageService: true,
+                    __renderingRule: t.__renderingRule,
+                    __serviceMeta: {
+                        name: serviceName,
+                        description: serviceDesc,
+                        copyright: copyright
+                    }
+                });
+
+                cards.push(`
+          <div class="result-card">
+            <div class="result-head">
+              <div class="result-title">${escapeHtml(t.title)}</div>
+              <div class="badge">Image Service</div>
+            </div>
+            <div class="small mono">
+              <a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">Service URL</a>
+            </div>
+            <div style="margin-top:8px;">
+              <div class="small"><b>Service:</b> ${escapeHtml(serviceName)}</div>
+              <div class="small" style="margin-top:4px;">${escapeHtml(serviceDesc.slice(0, 200))}${serviceDesc.length > 200 ? '…' : ''}</div>
+              ${copyright ? `<div class="small" style="margin-top:4px; color: var(--muted);">${escapeHtml(copyright)}</div>` : ''}
+            </div>
+          </div>
+        `);
+            } catch (e) {
+                console.warn(`Failed to fetch ImageServer metadata for ${t.title}:`, e);
+                cards.push(`
+          <div class="result-card">
+            <div class="result-head">
+              <div class="result-title">${escapeHtml(t.title)}</div>
+              <div class="badge">error</div>
+            </div>
+            <div class="small mono">${escapeHtml(String(e))}</div>
+          </div>
+        `);
+            }
+            setStatus(`Running analysis... (querying ${i + 1}/${expandedTargets.length})`);
             continue;
         }
 
@@ -2639,9 +2732,10 @@ async function generateVisualReportData(myOp, modal = null) {
 
         try {
             // Only layers with real intersect hits AND usable query objects
+            // Include ImageServer layers even though they don't have _layer/_exportQuery
             const targets = lastReportRowsByLayer
                 .filter(x => (x?.count || 0) > 0)
-                .filter(x => x?._layer && x?._exportQuery) // excludes pinned AOI source etc.
+                .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService) // excludes pinned AOI source etc.
                 .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")))
                 .filter(x => !(x.title && x.title.toLowerCase().includes("administrative unit")));
 
@@ -2676,8 +2770,8 @@ async function generateVisualReportData(myOp, modal = null) {
                 for (const l of allLayers) {
                     // Keep AOI layer visible
                     if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                    // Hide AOI mask layer for report screenshots
-                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
+                    // Keep AOI mask layer visible for per-layer maps
+                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
 
                     // Keep SMA overlay visible (your TileLayer at bottom) if present
                     // (We don’t have the variable here; keep TileLayers visible by default.)
@@ -2691,6 +2785,8 @@ async function generateVisualReportData(myOp, modal = null) {
                 }
 
                 if (tempLayer) tempLayer.visible = true;
+                // Show AOI mask to lighten areas outside AOI
+                updateAoiMask(true);
                 ensureAoiOnTop(view.map);
             }
 
@@ -2728,6 +2824,50 @@ async function generateVisualReportData(myOp, modal = null) {
                 }
 
                 setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
+
+                // Handle ImageServer layers differently
+                if (item.__isImageService) {
+                    const imgLayerOpts = {
+                        url: item.url,
+                        title: item.title,
+                        visible: true
+                    };
+                    if (item.__renderingRule) {
+                        imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
+                    }
+                    const temp = new ImageryLayer(imgLayerOpts);
+                    view.map.add(temp);
+                    
+                    try {
+                        setVisibilityForScreenshot(temp);
+                        await view.goTo(fixedExtent, { animate: false });
+                        await waitForViewStationary(1500);
+                        
+                        const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
+                        if (!ss?.dataUrl) throw new Error("Screenshot failed");
+                        const dataUrl = ss.dataUrl;
+
+                        const meta = item.__serviceMeta || {};
+                        
+                        outCards.push(`
+                          <div class="visual-output-card">
+                            <div class="visual-output-title">${escapeHtml(item.title)}</div>
+                            <img class="visual-output-img" src="${dataUrl}" alt="${escapeHtml(item.title)}" />
+                            <div class="visual-output-meta">
+                              <table>
+                                <tr><td>Type</td><td>Image Service</td></tr>
+                                <tr><td>Service</td><td>${escapeHtml(meta.name || item.title)}</td></tr>
+                                ${meta.copyright ? `<tr><td>Source</td><td>${escapeHtml(meta.copyright)}</td></tr>` : ''}
+                              </table>
+                            </div>
+                          </div>
+                        `);
+                    } finally {
+                        try { view.map.remove(temp); } catch (e) { }
+                        restoreVisibility();
+                    }
+                    continue;
+                }
 
                 // Create a temporary layer for this URL, regardless of toggle state
                 // Get geometry type for appropriate renderer — fully opaque for visual report
@@ -4327,9 +4467,10 @@ async function buildFinalReportHtml() {
         }
 
         // Filter out PLSS: State Boundaries from map section
+        // Include ImageServer layers even though they don't have _layer/_exportQuery
         const targets = lastReportRowsByLayer
             .filter(x => (x?.count || 0) > 0)
-            .filter(x => x?._layer && x?._exportQuery)
+            .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")))
             .filter(x => !(x.title && x.title.toLowerCase().includes("administrative unit")));
 
@@ -4363,8 +4504,8 @@ async function buildFinalReportHtml() {
             function setVisibilityForScreenshot(tempLayer) {
                 for (const l of allLayers) {
                     if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                    // Hide AOI mask layer for report screenshots
-                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
+                    // Keep AOI mask layer visible for per-layer maps
+                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
                     if (l?.type === "tile") { l.visible = true; continue; }
                     // ✅ Show PLSS Section layer on all per-layer maps
                     if (plssSectionLayer && l === plssSectionLayer) { l.visible = true; continue; }
@@ -4373,6 +4514,8 @@ async function buildFinalReportHtml() {
                     l.visible = false;
                 }
                 if (tempLayer) tempLayer.visible = true;
+                // Show AOI mask to lighten areas outside AOI
+                updateAoiMask(true);
                 ensureAoiOnTop(view.map);
             }
 
@@ -4397,6 +4540,51 @@ async function buildFinalReportHtml() {
             for (let i = 0; i < targets.length; i++) {
                 const item = targets[i];
                 setStatus(`building final report… (${i + 1}/${targets.length})`);
+
+                // Handle ImageServer layers differently
+                if (item.__isImageService) {
+                    const imgLayerOpts = {
+                        url: item.url,
+                        title: item.title,
+                        visible: true
+                    };
+                    if (item.__renderingRule) {
+                        imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
+                    }
+                    const temp = new ImageryLayer(imgLayerOpts);
+                    view.map.add(temp);
+                    
+                    try {
+                        setVisibilityForScreenshot(temp);
+                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 8000 });
+                        await view.goTo(consistentExtent, { animate: false });
+                        await waitForViewStationary(2000);
+                        
+                        const dataUrl = await captureScreenshotWithWait({ width });
+                        if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+
+                        const meta = item.__serviceMeta || {};
+                        
+                        sectionsHtml += `
+                          <div class="section layer-section page-break">
+                            <h3>${escapeHtml(item.title)}</h3>
+                            <div class="layer-map-container">
+                              <img src="${dataUrl}" alt="${escapeHtml(item.title)}" style="width:100%; border-radius:8px;" />
+                            </div>
+                            <table class="info-table" style="margin-top:16px;">
+                              <tr><td style="width:200px;">Service Name</td><td><b>${escapeHtml(meta.name || item.title)}</b></td></tr>
+                              <tr><td>Type</td><td>Image Service (Elevation/Raster)</td></tr>
+                              ${meta.description ? `<tr><td>Description</td><td>${escapeHtml(meta.description)}</td></tr>` : ''}
+                              ${meta.copyright ? `<tr><td>Source</td><td>${escapeHtml(meta.copyright)}</td></tr>` : ''}
+                            </table>
+                          </div>
+                        `;
+                    } finally {
+                        try { view.map.remove(temp); } catch (e) { }
+                        restoreVisibility();
+                    }
+                    continue;
+                }
 
                 // Get geometry type for appropriate renderer — fully opaque for final report
                 const tempGeomType = await getLayerGeometryType(item.url);
@@ -4653,7 +4841,7 @@ async function generateAoiMapsWithCircles() {
     function setVisibilityForAoi() {
         for (const l of allLayers) {
             if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-            // Hide AOI mask layer for report screenshots
+            // Hide AOI mask layer for AOI overview maps (no mask on these)
             if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
             if (l?.type === "tile") { l.visible = true; continue; }
             // ✅ Show PLSS Township layer on AOI maps
