@@ -4525,9 +4525,8 @@ function buildDataSourcesSection() {
         const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
         const imageryOpacity = config?.map?.imageryOpacity ?? 0.75;
         const defaultBasemapId = config.map?.basemap || "gray-vector";
-        // Vector-tile basemaps abort in-flight goTo() while loading,
-        // which breaks the minimap zoom.  Use the raster equivalent.
-        const miniBasemapId = defaultBasemapId.replace("-vector", "");
+        // Use the same gray-vector basemap as the main map for the minimap.
+        const miniBasemapId = defaultBasemapId;
 
         // Enforce imagery opacity when imagery is active (and restore for non-imagery)
         view.watch("map.basemap", (bm) => {
@@ -4574,16 +4573,30 @@ function buildDataSourcesSection() {
         }
 
         // Swap the miniMap to a brand-new EsriMap with the given basemap.
-        // This avoids all basemap-load extent-reset issues because the
-        // MapView treats it as a fresh map and runs its ready sequence,
-        // after which our .when() callback re-applies the correct extent.
+        // Wait for the map to finish loading before applying the extent.
+        let swapWatchHandle = null;
         function swapMiniBasemap(basemapId) {
+            if (swapWatchHandle) { swapWatchHandle.remove(); swapWatchHandle = null; }
             miniMap = new EsriMap({ basemap: basemapId });
             miniView.map = miniMap;
-            miniView.when(() => {
-                syncMiniMap();
-                updateExtentBox();
+            // Wait for the miniView to finish loading the new basemap
+            // (updating goes true → false), then apply the correct extent.
+            swapWatchHandle = miniView.watch("updating", (updating) => {
+                if (!updating) {
+                    syncMiniMap();
+                    updateExtentBox();
+                    // Don't remove yet — basemap may trigger another cycle.
+                    // Remove after a short delay to catch late resets.
+                    setTimeout(() => {
+                        syncMiniMap();
+                        if (swapWatchHandle) { swapWatchHandle.remove(); swapWatchHandle = null; }
+                    }, 1000);
+                }
             });
+            // Safety: remove after 6s
+            setTimeout(() => {
+                if (swapWatchHandle) { swapWatchHandle.remove(); swapWatchHandle = null; }
+            }, 6000);
         }
 
         // Sync when the main view stops moving.
@@ -4620,7 +4633,7 @@ function buildDataSourcesSection() {
                     swapMiniBasemap(imageryBasemapId);
                 } else {
                     view.map.basemap = imageryBasemapId;
-                    swapMiniBasemap(miniBasemapId);
+                    swapMiniBasemap(defaultBasemapId);
                 }
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
