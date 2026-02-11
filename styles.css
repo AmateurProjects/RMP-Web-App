@@ -738,16 +738,10 @@ th{
   transform: scale(1.03);
 }
 
-.mini-map-layer {
-  position: absolute;
-  top: 0; left: 0;
+#miniMapView {
   width: 100%;
   height: 100%;
   pointer-events: none;
-}
-
-.mini-map-layer.hidden {
-  visibility: hidden;
 }
 
 /* Extent indicator box on mini-map */
@@ -777,8 +771,7 @@ th{
 }
 
 /* Hide Esri UI elements inside mini-map */
-#miniMapViewImagery .esri-ui,
-#miniMapViewGray .esri-ui {
+#miniMapView .esri-ui {
   display: none !important;
 }
 
