@@ -4568,17 +4568,17 @@ function buildDataSourcesSection() {
             return view.extent.expand(MINI_EXPAND);
         }
 
-        // Apply the expanded extent directly (synchronous, no goTo).
+        // Navigate minimap to expanded extent (no animation).
+        // updateExtentBox runs in .then() so toScreen() has valid coords.
         function syncMiniMap() {
             const ext = expandedExtent();
-            if (ext) {
-                miniView.set("extent", ext);
-            }
-            updateExtentBox();
+            if (!ext) return;
+            miniView.goTo(ext, { animate: false })
+                .then(updateExtentBox)
+                .catch(() => {});
         }
 
-        // Sync whenever the main view's extent changes.
-        view.watch("extent", syncMiniMap);
+        // Only sync when the main view stops moving (not every frame).
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
         // Initial sync once miniView is ready.
         miniView.when(syncMiniMap);
@@ -4606,7 +4606,7 @@ function buildDataSourcesSection() {
                 extentBox.style.height = h + "px";
             } catch (e) { extentBox.style.display = "none"; }
         }
-        view.watch("extent", updateExtentBox);
+        // Backup: also update extent box when miniView extent changes (e.g. after basemap swap)
         miniView.watch("extent", updateExtentBox);
 
         const miniContainer = document.getElementById("miniMapContainer");
