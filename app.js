@@ -4540,55 +4540,66 @@ function buildDataSourcesSection() {
         if (isImageryBasemap(view.map.basemap)) setBasemapBaseLayerOpacity(view.map.basemap, imageryOpacity);
 
         // ---------- Mini Overview Map ----------
-        // Single MapView.  Sync via view.extent (not goTo) for reliability.
-        // Expand the main extent by a factor so the minimap is zoomed out.
+        // Single MapView.  Sync via expanded extent for reliability.
+        // On basemap swap, destroy & recreate the miniView for a clean state.
         const MINI_EXPAND = 6;   // how many times wider the mini extent is
+        const miniMapContainer = document.getElementById("miniMapView");
 
-        const miniMap = new EsriMap({ basemap: imageryBasemapId });
-        const miniView = new MapView({
-            container: "miniMapView",
-            map: miniMap,
-            ui: { components: [] },
-            constraints: { snapToZoom: false, rotationEnabled: false }
-        });
-        miniView.when(() => {
-            const nav = miniView.navigation;
-            if (nav) {
-                nav.mouseWheelEnabled = false;
-                nav.browserTouchPanEnabled = false;
-                nav.dragPanEnabled = false;
-                nav.keyboardEnabled = false;
-                nav.doubleClickZoomEnabled = false;
-            }
-        });
+        let miniMap = new EsriMap({ basemap: imageryBasemapId });
+        let miniView;
+        let miniStationaryHandle;
 
-        // Build a zoomed-out extent from the main view's extent.
         function expandedExtent() {
             if (!view.extent) return null;
             return view.extent.expand(MINI_EXPAND);
         }
 
-        // Navigate minimap to expanded extent (no animation).
         function syncMiniMap() {
             const ext = expandedExtent();
-            if (!ext) return;
+            if (!ext || !miniView) return;
             miniView.goTo(ext, { animate: false }).catch(() => {});
         }
 
-        // Only sync when the main view stops moving (not every frame).
+        function createMiniView() {
+            // Destroy previous if it exists
+            if (miniView) {
+                if (miniStationaryHandle) { miniStationaryHandle.remove(); miniStationaryHandle = null; }
+                miniView.destroy();
+            }
+            miniView = new MapView({
+                container: miniMapContainer,
+                map: miniMap,
+                ui: { components: [] },
+                constraints: { snapToZoom: false, rotationEnabled: false }
+            });
+            miniView.when(() => {
+                const nav = miniView.navigation;
+                if (nav) {
+                    nav.mouseWheelEnabled = false;
+                    nav.browserTouchPanEnabled = false;
+                    nav.dragPanEnabled = false;
+                    nav.keyboardEnabled = false;
+                    nav.doubleClickZoomEnabled = false;
+                }
+                syncMiniMap();
+                updateExtentBox();
+            });
+            miniStationaryHandle = miniView.watch("stationary", (s) => {
+                if (s) updateExtentBox();
+            });
+        }
+
+        // Create initial miniView
+        createMiniView();
+
+        // Sync when the main view stops moving.
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
-        // Initial sync once miniView is ready.
-        miniView.when(syncMiniMap);
 
         const extentBox = document.getElementById("miniMapExtentBox");
         function updateExtentBox() {
             if (!extentBox) return;
-            // The minimap always shows view.extent expanded by MINI_EXPAND,
-            // so the main extent occupies a centered 1/MINI_EXPAND fraction
-            // of the container.  Compute the box purely from the container
-            // dimensions — no toScreen() needed, so timing doesn't matter.
-            const cw = miniView.width  || 200;
-            const ch = miniView.height || 150;
+            const cw = miniView ? (miniView.width  || 200) : 200;
+            const ch = miniView ? (miniView.height || 150) : 150;
             const w = cw / MINI_EXPAND;
             const h = ch / MINI_EXPAND;
             const left = (cw - w) / 2;
@@ -4600,9 +4611,7 @@ function buildDataSourcesSection() {
             extentBox.style.width  = w + "px";
             extentBox.style.height = h + "px";
         }
-        // Draw the box once the miniView is ready, and keep it updated.
-        miniView.when(updateExtentBox);
-        miniView.watch("stationary", (s) => { if (s) updateExtentBox(); });
+        updateExtentBox();
 
         const miniContainer = document.getElementById("miniMapContainer");
         const miniLabel = document.getElementById("miniMapLabel");
@@ -4610,40 +4619,15 @@ function buildDataSourcesSection() {
             miniContainer.addEventListener("click", () => {
                 const mainIsImagery = isImageryBasemap(view.map.basemap);
                 if (mainIsImagery) {
-                    // Main → gray, mini shows imagery
                     view.map.basemap = defaultBasemapId;
                     miniMap.basemap = imageryBasemapId;
                 } else {
-                    // Main → imagery, mini shows gray
                     view.map.basemap = imageryBasemapId;
                     miniMap.basemap = miniBasemapId;
                 }
-                // The basemap swap may internally reset the miniView extent.
-                // Wait for the miniView to stop updating after the basemap
-                // loads, then re-apply the correct expanded extent.
-                // Use a persistent watcher that keeps correcting until the
-                // extent center matches the main view's center.
-                let swapAttempts = 0;
-                const maxAttempts = 20;
-                const swapHandle = miniView.watch("updating", (updating) => {
-                    if (updating) return; // still loading
-                    swapAttempts++;
-                    const ext = expandedExtent();
-                    if (!ext) { swapHandle.remove(); return; }
-                    // Check if miniView center is close to main view center
-                    const dx = Math.abs(miniView.center.x - view.center.x);
-                    const dy = Math.abs(miniView.center.y - view.center.y);
-                    const tolerance = Math.abs(view.extent.xmax - view.extent.xmin) * 0.1;
-                    if (dx > tolerance || dy > tolerance || swapAttempts <= 2) {
-                        // Extent is wrong or first attempts — re-apply
-                        miniView.goTo(ext, { animate: false }).catch(() => {});
-                    }
-                    if (swapAttempts >= maxAttempts) swapHandle.remove();
-                });
-                // Also do an immediate sync
-                syncMiniMap();
-                // Safety: remove watcher after 6s
-                setTimeout(() => swapHandle.remove(), 6000);
+                // Destroy and recreate the miniView for a guaranteed clean
+                // state — no basemap-load extent-reset issues.
+                createMiniView();
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
