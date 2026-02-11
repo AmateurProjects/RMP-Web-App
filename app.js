@@ -4573,56 +4573,29 @@ function buildDataSourcesSection() {
         }
 
         // Swap the miniMap to a brand-new EsriMap with the given basemap.
-        // Both the main view AND mini view are changing basemaps simultaneously,
-        // so we must wait for BOTH to be stationary before applying the extent.
-        let swapWatchHandles = [];
-        function cleanupSwapWatches() {
-            swapWatchHandles.forEach(h => h.remove());
-            swapWatchHandles = [];
-        }
+        // Brute-force: fire syncMiniMap at staggered intervals so at least
+        // one call lands AFTER the new basemap has finished loading.
         function swapMiniBasemap(basemapId) {
-            cleanupSwapWatches();
             miniMap = new EsriMap({ basemap: basemapId });
             miniView.map = miniMap;
-
-            // trySync checks if both views are stationary, then applies extent.
-            let synced = false;
-            function trySync() {
-                if (synced) return;
-                if (!view.stationary || !miniView.stationary) return;
-                synced = true;
-                cleanupSwapWatches();
-                syncMiniMap();
-                updateExtentBox();
-                // After our goTo settles, sync one more time to lock it in.
-                // This catches any residual extent adjustment from tile alignment.
-                const h = miniView.watch("stationary", (s) => {
-                    if (s) {
-                        h.remove();
-                        syncMiniMap();
-                        updateExtentBox();
-                    }
-                });
-                // Safety: remove the post-goTo watcher after 4s
-                setTimeout(() => h.remove(), 4000);
-            }
-
-            // Watch both views for stationary
-            swapWatchHandles.push(view.watch("stationary", trySync));
-            swapWatchHandles.push(miniView.watch("stationary", trySync));
-            // Check immediately in case both are already stationary
-            trySync();
-
-            // Safety fallback: force sync after 6s no matter what
-            const safetyTimer = setTimeout(() => {
-                cleanupSwapWatches();
-                syncMiniMap();
-                updateExtentBox();
-            }, 6000);
-            swapWatchHandles.push({ remove: () => clearTimeout(safetyTimer) });
+            [0, 200, 500, 1000, 2000, 3000].forEach(delay => {
+                setTimeout(() => {
+                    syncMiniMap();
+                    updateExtentBox();
+                }, delay);
+            });
         }
 
-        // Sync when the main view stops moving.
+        // Sync on every extent change (throttled) for responsive updates,
+        // plus an accurate sync when the view settles.
+        let syncThrottle = null;
+        view.watch("extent", () => {
+            if (syncThrottle) return;
+            syncThrottle = setTimeout(() => {
+                syncThrottle = null;
+                syncMiniMap();
+            }, 60);   // ~16 updates/sec max
+        });
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
         // Initial sync once miniView is ready.
         miniView.when(syncMiniMap);
