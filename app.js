@@ -4619,14 +4619,31 @@ function buildDataSourcesSection() {
                     miniMap.basemap = miniBasemapId;
                 }
                 // The basemap swap may internally reset the miniView extent.
-                // Keep re-applying our expanded extent at intervals until
-                // the basemap settles (brute-force but reliable).
+                // Wait for the miniView to stop updating after the basemap
+                // loads, then re-apply the correct expanded extent.
+                // Use a persistent watcher that keeps correcting until the
+                // extent center matches the main view's center.
+                let swapAttempts = 0;
+                const maxAttempts = 20;
+                const swapHandle = miniView.watch("updating", (updating) => {
+                    if (updating) return; // still loading
+                    swapAttempts++;
+                    const ext = expandedExtent();
+                    if (!ext) { swapHandle.remove(); return; }
+                    // Check if miniView center is close to main view center
+                    const dx = Math.abs(miniView.center.x - view.center.x);
+                    const dy = Math.abs(miniView.center.y - view.center.y);
+                    const tolerance = Math.abs(view.extent.xmax - view.extent.xmin) * 0.1;
+                    if (dx > tolerance || dy > tolerance || swapAttempts <= 2) {
+                        // Extent is wrong or first attempts — re-apply
+                        miniView.goTo(ext, { animate: false }).catch(() => {});
+                    }
+                    if (swapAttempts >= maxAttempts) swapHandle.remove();
+                });
+                // Also do an immediate sync
                 syncMiniMap();
-                let count = 0;
-                const iv = setInterval(() => {
-                    syncMiniMap();
-                    if (++count >= 10) clearInterval(iv);
-                }, 500);
+                // Safety: remove watcher after 6s
+                setTimeout(() => swapHandle.remove(), 6000);
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
