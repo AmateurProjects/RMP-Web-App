@@ -4335,7 +4335,15 @@ async function generateAoiMapsWithCircles() {
     if (!view || !selectionGeom) return "";
 
     const width = config?.visualReport?.screenshotWidth ?? 1400;
+    const height = Math.round(width * 0.5625); // 16:9
     const maps = [];
+
+    // Overview inset dimensions (fraction of main image)
+    const insetFrac = 0.22; // 22% of width
+    const insetW = Math.round(width * insetFrac);
+    const insetH = Math.round(height * insetFrac);
+    const insetMargin = 12;
+    const overviewZoomFactor = 8; // how much wider the overview is vs the main view
 
     // Snapshot visibility
     const allLayers = view.map.layers.toArray();
@@ -4368,27 +4376,117 @@ async function generateAoiMapsWithCircles() {
         ensureAoiOnTop(view.map);
     }
 
+    /**
+     * Composite an overview inset onto a main screenshot.
+     * @param {string} mainDataUrl - data URL of the main screenshot
+     * @param {object} mainExtent  - the view.extent when main was captured
+     * @param {number} scale       - the scale used for the main view
+     * @returns {Promise<string>}  - composited data URL
+     */
+    async function compositeWithOverview(mainDataUrl, mainExtent, scale) {
+        // 1. Zoom out for overview capture
+        const overviewScale = scale * overviewZoomFactor;
+        await view.goTo({ target: selectionGeom.extent, scale: overviewScale }, { animate: false });
+        const ovSs = await captureScreenshotWithWait({ width });
+        if (!ovSs) return mainDataUrl;
+
+        // 2. Compute where the main extent falls within the overview extent
+        const ovExtent = view.extent;
+
+        // 3. Load both images
+        const [mainImg, ovImg] = await Promise.all([
+            loadImageFromDataUrl(mainDataUrl),
+            loadImageFromDataUrl(ovSs)
+        ]);
+        if (!mainImg || !ovImg) return mainDataUrl;
+
+        // 4. Draw onto canvas
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+
+        // Draw main image
+        ctx.drawImage(mainImg, 0, 0, width, height);
+
+        // Inset position: lower-left with margin
+        const ix = insetMargin;
+        const iy = height - insetH - insetMargin;
+
+        // Draw inset background (white border + shadow effect)
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.35)";
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(ix - 2, iy - 2, insetW + 4, insetH + 4);
+        ctx.restore();
+
+        // Draw overview image clipped to inset area
+        ctx.drawImage(ovImg, ix, iy, insetW, insetH);
+
+        // 5. Draw red extent rectangle on overview
+        // Map mainExtent coords → pixel coords within the inset
+        if (ovExtent && mainExtent) {
+            const ovXMin = ovExtent.xmin;
+            const ovYMin = ovExtent.ymin;
+            const ovW = ovExtent.xmax - ovExtent.xmin;
+            const ovH = ovExtent.ymax - ovExtent.ymin;
+
+            if (ovW > 0 && ovH > 0) {
+                const rxPx = ix + ((mainExtent.xmin - ovXMin) / ovW) * insetW;
+                const ryPx = iy + ((ovExtent.ymax - mainExtent.ymax) / ovH) * insetH;
+                const rwPx = ((mainExtent.xmax - mainExtent.xmin) / ovW) * insetW;
+                const rhPx = ((mainExtent.ymax - mainExtent.ymin) / ovH) * insetH;
+
+                ctx.strokeStyle = "#e63946";
+                ctx.lineWidth = 2.5;
+                ctx.strokeRect(rxPx, ryPx, rwPx, rhPx);
+            }
+        }
+
+        // 6. Thin border around inset
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(ix - 1, iy - 1, insetW + 2, insetH + 2);
+
+        return canvas.toDataURL("image/png");
+    }
+
+    /** Load an Image from a data URL */
+    function loadImageFromDataUrl(dataUrl) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = dataUrl;
+        });
+    }
+
     try {
         setVisibilityForAoi();
 
         // ✅ Map 1: 1:900,000 scale (showing regional context)
         const ext1 = selectionGeom.extent;
         await view.goTo({ target: ext1, scale: 900000 }, { animate: false });
-        
-        // ✅ Use improved screenshot capture
         const ss1 = await captureScreenshotWithWait({ width });
+        const mainExtent1 = view.extent.clone();
+
         if (ss1) {
-            maps.push(`<div class="aoi-map"><img src="${ss1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
+            const composited1 = await compositeWithOverview(ss1, mainExtent1, 900000);
+            maps.push(`<div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
         }
 
         // ✅ Map 2: 1:250,000 scale (county-level zoom)
         const ext2 = selectionGeom.extent;
         await view.goTo({ target: ext2, scale: 250000 }, { animate: false });
-        
-        // ✅ Use improved screenshot capture
         const ss2 = await captureScreenshotWithWait({ width });
+        const mainExtent2 = view.extent.clone();
+
         if (ss2) {
-            maps.push(`<div class="aoi-map"><img src="${ss2}" alt="AOI Context (County 1:250,000)" /></div>`);
+            const composited2 = await compositeWithOverview(ss2, mainExtent2, 250000);
+            maps.push(`<div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:250,000)" /></div>`);
         }
 
     } finally {
@@ -4580,10 +4678,29 @@ function buildDataSourcesSection() {
 
     // ---------- Init ----------
     async function init() {
+        const loadingOverlay = document.getElementById("appLoadingOverlay");
+        const loadingStatus = document.getElementById("appLoadingStatus");
+        const loadingBar = document.getElementById("appLoadingBarFill");
+
+        function setLoadingState(text, pct) {
+            if (loadingStatus) loadingStatus.textContent = text;
+            if (loadingBar) loadingBar.style.width = pct + "%";
+        }
+
+        function hideLoadingOverlay() {
+            if (loadingOverlay) {
+                loadingOverlay.classList.add("fade-out");
+                setTimeout(() => { loadingOverlay.remove(); }, 700);
+            }
+        }
+
+        setLoadingState("Loading configuration...", 5);
         setStatus("loading config…");
 
         config = await fetchJson("./config.json");
         layerCfgByUrl = buildLayerCfgIndex(config);
+
+        setLoadingState("Initializing map...", 20);
 
         map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
 
@@ -4764,14 +4881,18 @@ function buildDataSourcesSection() {
 
         selectionLayers.forEach(e => map.add(e.layer));
 
+        setLoadingState("Loading report layers...", 45);
+
         // ✅ NEW: build report layers (for map display toggles)
         await buildReportDisplayLayers();
 
         renderLayerToggles(map);
         ensureAoiOnTop(map);
 
+        setLoadingState("Waiting for map view...", 65);
 
         await view.when();
+        setLoadingState("Setting up tools...", 80);
         attachClickToSelect();
 
         // ---------- PLSS tool wiring (Township / Section / Intersected) ----------
@@ -5383,7 +5504,12 @@ function buildDataSourcesSection() {
 
         setMode("select");
         setActiveTab("layers");
+        setLoadingState("Ready", 100);
         setStatus("ready");
+
+        // Brief delay so the bar visually reaches 100% before fading
+        await new Promise(r => setTimeout(r, 350));
+        hideLoadingOverlay();
 
         // Initialize analysis modal
         analysisModal.init();
