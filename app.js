@@ -1989,7 +1989,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         const urlKey = String(l?.url || "").replace(/\/+$/, "");
         if (!urlKey) continue;
 
-        byUrl.set(urlKey, { title: l.title, url: urlKey });
+        // Preserve all config properties (including imageService, renderingRule, etc.)
+        byUrl.set(urlKey, { ...l, url: urlKey });
     }
 
     const reportCfgs = Array.from(byUrl.values());
