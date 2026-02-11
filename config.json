@@ -36,7 +36,7 @@
       "symbol": {
         "type": "simple-fill",
         "color": [138, 43, 226, 0.20],
-        "style": "diagonal-cross",
+        "style": "forward-diagonal",
         "outline": {
           "color": [138, 43, 226, 0.95],
           "width": 2

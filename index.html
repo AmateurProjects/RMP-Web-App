@@ -118,6 +118,23 @@
     </div>
 </div>
 
+<!-- Feature Picker Modal (multiple overlapping polygons) -->
+<div id="featurePickerModal" class="feature-picker-modal hidden">
+    <div class="feature-picker-content">
+        <div class="feature-picker-header">
+            <h3>Multiple Features Found</h3>
+            <p class="feature-picker-subtitle">Click a row to preview, then confirm your selection:</p>
+        </div>
+        <div id="featurePickerList" class="feature-picker-list">
+            <!-- Feature items will be inserted here -->
+        </div>
+        <div class="feature-picker-footer">
+            <button id="featurePickerCancelBtn" class="btn btn-secondary">Cancel</button>
+            <button id="featurePickerConfirmBtn" class="btn btn-primary" disabled>Select This Polygon</button>
+        </div>
+    </div>
+</div>
+
 
   <aside id="panel">
     <div class="panel-header">

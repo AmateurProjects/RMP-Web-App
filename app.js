@@ -211,6 +211,7 @@ function setBusy(isBusy) {
     // AOI overlay (always on top)
     let aoiLayer = null;      // GraphicsLayer
     let aoiGraphic = null;    // Graphic (single AOI graphic)
+    let aoiMaskLayer = null;  // GraphicsLayer for transparent mask outside AOI
 
     // Renderer lookup helpers
     let layerCfgByUrl = new Map(); // url -> {kind, cfg}
@@ -741,6 +742,95 @@ function setActiveTab(tabName) {
         if (!map || !aoiLayer) return;
         // Put AOI layer at top draw order
         map.reorder(aoiLayer, map.layers.length - 1);
+        // Keep mask layer just below AOI
+        if (aoiMaskLayer) {
+            map.reorder(aoiMaskLayer, map.layers.length - 2);
+        }
+    }
+
+    /**
+     * Update the AOI mask layer with a "donut" polygon that lightens areas outside the AOI.
+     * @param {boolean} show - Whether to show the mask
+     */
+    function updateAoiMask(show = true) {
+        if (!aoiMaskLayer || !view) return;
+        
+        aoiMaskLayer.removeAll();
+        
+        if (!show || !selectionGeom) {
+            aoiMaskLayer.visible = false;
+            return;
+        }
+
+        // Get a large extent that covers beyond the current view
+        const viewExt = view.extent;
+        if (!viewExt) {
+            aoiMaskLayer.visible = false;
+            return;
+        }
+
+        // Expand extent significantly to ensure full coverage when panning/zooming
+        const expandedExt = viewExt.expand(5);
+        
+        // Create outer ring (clockwise for exterior)
+        const outerRing = [
+            [expandedExt.xmin, expandedExt.ymin],
+            [expandedExt.xmin, expandedExt.ymax],
+            [expandedExt.xmax, expandedExt.ymax],
+            [expandedExt.xmax, expandedExt.ymin],
+            [expandedExt.xmin, expandedExt.ymin]
+        ];
+
+        // Get AOI ring(s) - need to reverse for hole (counter-clockwise)
+        let aoiRings = [];
+        if (selectionGeom.rings && selectionGeom.rings.length > 0) {
+            // For polygon geometry, get all rings and reverse them for holes
+            aoiRings = selectionGeom.rings.map(ring => [...ring].reverse());
+        } else if (selectionGeom.type === "polygon") {
+            // Fallback for different geometry structures
+            const ext = selectionGeom.extent;
+            aoiRings = [[
+                [ext.xmin, ext.ymin],
+                [ext.xmax, ext.ymin],
+                [ext.xmax, ext.ymax],
+                [ext.xmin, ext.ymax],
+                [ext.xmin, ext.ymin]
+            ]];
+        }
+
+        if (aoiRings.length === 0) {
+            aoiMaskLayer.visible = false;
+            return;
+        }
+
+        // Create donut polygon: outer ring + hole ring(s)
+        const allRings = [outerRing, ...aoiRings];
+        
+        const maskGraphic = new Graphic({
+            geometry: {
+                type: "polygon",
+                rings: allRings,
+                spatialReference: view.spatialReference
+            },
+            symbol: {
+                type: "simple-fill",
+                color: [255, 255, 255, 0.45], // Semi-transparent white
+                outline: null
+            }
+        });
+
+        aoiMaskLayer.add(maskGraphic);
+        aoiMaskLayer.visible = true;
+    }
+
+    /**
+     * Hide the AOI mask layer
+     */
+    function hideAoiMask() {
+        if (aoiMaskLayer) {
+            aoiMaskLayer.visible = false;
+            aoiMaskLayer.removeAll();
+        }
     }
 
     async function wireLayerUpdatingSpinner(layer, spinnerEl) {
@@ -2448,7 +2538,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const truncated = raw.length > 40 ? raw.slice(0, 39) + "…" : raw;
                 return `<td title="${escapeHtml(raw)}">${escapeHtml(truncated)}</td>`;
             }).join("");
-            return `<tr>${tdCells}<td style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td><td style="text-align:right;">${formatNumber(row.pctAoi, 2)}%</td></tr>`;
+            // Flag rows with <3% coverage as potential sliver/anomaly
+            const isSliverWarning = row.pctAoi < 3;
+            const rowStyle = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
+            const warningIcon = isSliverWarning ? '<span title="Low coverage (&lt;3%) — possible sliver or boundary artifact" style="color:#856404; cursor:help;">⚠️</span> ' : '';
+            return `<tr${rowStyle}>${tdCells}<td style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td><td style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td></tr>`;
         }).join("");
 
         return `
@@ -2561,6 +2655,8 @@ async function generateVisualReportData(myOp, modal = null) {
                 for (const l of allLayers) {
                     // Keep AOI layer visible
                     if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                    // Keep AOI mask layer visible
+                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
 
                     // Keep SMA overlay visible (your TileLayer at bottom) if present
                     // (We don’t have the variable here; keep TileLayers visible by default.)
@@ -2574,11 +2670,14 @@ async function generateVisualReportData(myOp, modal = null) {
                 }
 
                 if (tempLayer) tempLayer.visible = true;
+                // ✅ Show AOI mask to lighten areas outside AOI
+                updateAoiMask(true);
                 ensureAoiOnTop(view.map);
             }
 
             function restoreVisibility() {
                 visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+                hideAoiMask();
                 ensureAoiOnTop(view.map);
             }
 
@@ -4236,6 +4335,7 @@ async function buildFinalReportHtml() {
             function setVisibilityForScreenshot(tempLayer) {
                 for (const l of allLayers) {
                     if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
                     if (l?.type === "tile") { l.visible = true; continue; }
                     // ✅ Show PLSS Section layer on all per-layer maps
                     if (plssSectionLayer && l === plssSectionLayer) { l.visible = true; continue; }
@@ -4244,11 +4344,14 @@ async function buildFinalReportHtml() {
                     l.visible = false;
                 }
                 if (tempLayer) tempLayer.visible = true;
+                // ✅ Show AOI mask to lighten areas outside AOI
+                updateAoiMask(true);
                 ensureAoiOnTop(view.map);
             }
 
             function restoreVisibility() {
                 visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+                hideAoiMask();
                 ensureAoiOnTop(view.map);
             }
 
@@ -4514,6 +4617,7 @@ async function generateAoiMapsWithCircles() {
     function setVisibilityForAoi() {
         for (const l of allLayers) {
             if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+            if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
             if (l?.type === "tile") { l.visible = true; continue; }
             // ✅ Show PLSS Township layer on AOI maps
             if (plssTownshipLayer && l === plssTownshipLayer) { l.visible = true; continue; }
@@ -4521,11 +4625,14 @@ async function generateAoiMapsWithCircles() {
             if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
             l.visible = false;
         }
+        // ✅ Show AOI mask to lighten areas outside AOI
+        updateAoiMask(true);
         ensureAoiOnTop(view.map);
     }
 
     function restoreVisibility() {
         visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
+        hideAoiMask();
         ensureAoiOnTop(view.map);
     }
 
@@ -4631,15 +4738,15 @@ async function generateAoiMapsWithCircles() {
             maps.push(`<div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
         }
 
-        // ✅ Map 2: 1:250,000 scale (county-level zoom)
+        // ✅ Map 2: 1:200,000 scale (county-level zoom)
         const ext2 = selectionGeom.extent;
-        await view.goTo({ target: ext2, scale: 250000 }, { animate: false });
+        await view.goTo({ target: ext2, scale: 200000 }, { animate: false });
         const ss2 = await captureScreenshotWithWait({ width });
         const mainExtent2 = view.extent.clone();
 
         if (ss2) {
-            const composited2 = await compositeWithOverview(ss2, mainExtent2, 250000);
-            maps.push(`<div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:250,000)" /></div>`);
+            const composited2 = await compositeWithOverview(ss2, mainExtent2, 200000);
+            maps.push(`<div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:200,000)" /></div>`);
         }
 
     } finally {
@@ -4748,6 +4855,203 @@ function buildDataSourcesSection() {
         }
     }
 
+    // ---------- Feature Picker Modal (for overlapping polygons) ----------
+    const featurePickerModal = document.getElementById("featurePickerModal");
+    const featurePickerList = document.getElementById("featurePickerList");
+    const featurePickerCancelBtn = document.getElementById("featurePickerCancelBtn");
+    const featurePickerConfirmBtn = document.getElementById("featurePickerConfirmBtn");
+
+    // State for feature picker
+    let pickerFeatures = [];
+    let pickerSelectedIdx = -1;
+    let pickerOnSelect = null;
+
+    function showFeaturePicker(features, onSelect) {
+        if (!featurePickerModal || !featurePickerList) return;
+
+        // Store state
+        pickerFeatures = features;
+        pickerSelectedIdx = -1;
+        pickerOnSelect = onSelect;
+
+        // Reset confirm button
+        if (featurePickerConfirmBtn) {
+            featurePickerConfirmBtn.disabled = true;
+            featurePickerConfirmBtn.textContent = "Select This Polygon";
+        }
+
+        // Build the list of features
+        featurePickerList.innerHTML = features.map((f, idx) => {
+            const attrs = f.graphic?.attributes || {};
+            const name = getFeaturePickerDisplayName(attrs);
+            const details = getFeaturePickerDetails(attrs);
+            
+            return `
+                <div class="feature-picker-item" data-idx="${idx}">
+                    <div class="feature-picker-index">${idx + 1}</div>
+                    <div class="feature-picker-info">
+                        <div class="feature-picker-name">${escapeHtml(name)}</div>
+                        ${details ? `<div class="feature-picker-details">${escapeHtml(details)}</div>` : ""}
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        // Add click handlers for preview (not immediate selection)
+        const items = featurePickerList.querySelectorAll(".feature-picker-item");
+        items.forEach((item) => {
+            item.addEventListener("click", () => {
+                const idx = parseInt(item.getAttribute("data-idx"), 10);
+                selectPickerRow(idx);
+            });
+        });
+
+        featurePickerModal.classList.remove("hidden");
+    }
+
+    function selectPickerRow(idx) {
+        if (idx < 0 || idx >= pickerFeatures.length) return;
+
+        pickerSelectedIdx = idx;
+
+        // Update visual selection state
+        const items = featurePickerList.querySelectorAll(".feature-picker-item");
+        items.forEach((item, i) => {
+            item.classList.toggle("selected", i === idx);
+        });
+
+        // Highlight the selected polygon on the map
+        highlightPickerFeature(pickerFeatures[idx]?.graphic);
+
+        // Enable confirm button and update text
+        if (featurePickerConfirmBtn) {
+            featurePickerConfirmBtn.disabled = false;
+            const name = getFeaturePickerDisplayName(pickerFeatures[idx]?.graphic?.attributes || {});
+            const shortName = name.length > 30 ? name.substring(0, 27) + "..." : name;
+            featurePickerConfirmBtn.textContent = `Select "${shortName}"`;
+        }
+    }
+
+    function confirmPickerSelection() {
+        if (pickerSelectedIdx < 0 || !pickerFeatures[pickerSelectedIdx]) return;
+
+        const selectedFeature = pickerFeatures[pickerSelectedIdx];
+        hideFeaturePicker();
+
+        if (pickerOnSelect) {
+            pickerOnSelect(selectedFeature);
+        }
+    }
+
+    function hideFeaturePicker() {
+        if (featurePickerModal) {
+            featurePickerModal.classList.add("hidden");
+        }
+        clearPickerHighlight();
+        pickerFeatures = [];
+        pickerSelectedIdx = -1;
+        pickerOnSelect = null;
+    }
+
+    // Highlight layer for picker hover
+    let pickerHighlightLayer = null;
+
+    function highlightPickerFeature(graphic) {
+        if (!graphic || !map || !view) return;
+        
+        clearPickerHighlight();
+        
+        pickerHighlightLayer = new GraphicsLayer({ title: "Picker Highlight" });
+        map.add(pickerHighlightLayer);
+        
+        const highlightGraphic = new Graphic({
+            geometry: graphic.geometry,
+            symbol: {
+                type: "simple-fill",
+                color: [0, 200, 100, 0.35],
+                outline: { color: [0, 150, 50], width: 3 }
+            }
+        });
+        pickerHighlightLayer.add(highlightGraphic);
+    }
+
+    function clearPickerHighlight() {
+        if (pickerHighlightLayer && map) {
+            try { map.remove(pickerHighlightLayer); } catch (e) {}
+            pickerHighlightLayer = null;
+        }
+    }
+
+    // Get display name for feature picker
+    function getFeaturePickerDisplayName(attrs) {
+        const nameFields = [
+            "NAME", "Name", "name",
+            "ALLOT_NAME", "ALLOTMENT_NAME", "Allotment",
+            "PASTURE_NAME", "PASTURE",
+            "LEASE_NAME", "LEASE_NUM", "CASE_FILE_N",
+            "PLAN_NAME", "UNIT_NAME", "AREA_NAME",
+            "LABEL", "TITLE", "DESCRIPTION"
+        ];
+        
+        for (const field of nameFields) {
+            if (attrs[field] && String(attrs[field]).trim()) {
+                return String(attrs[field]).trim();
+            }
+        }
+        
+        // Fallback
+        for (const [key, val] of Object.entries(attrs)) {
+            if (typeof val === "string" && val.trim() &&
+                !key.toLowerCase().includes("objectid") &&
+                !key.toLowerCase().includes("globalid") &&
+                !key.toLowerCase().includes("shape")) {
+                return val.trim().substring(0, 60);
+            }
+        }
+        
+        return "Unnamed Feature";
+    }
+
+    // Get details for feature picker
+    function getFeaturePickerDetails(attrs) {
+        const detailParts = [];
+        const skipFields = ["OBJECTID", "GLOBALID", "SHAPE", "SHAPE_LENGTH", "SHAPE_AREA"];
+        
+        let count = 0;
+        for (const [key, val] of Object.entries(attrs)) {
+            if (count >= 2) break;
+            if (skipFields.some(s => key.toUpperCase().includes(s))) continue;
+            if (val && String(val).trim() && typeof val !== "object") {
+                const displayVal = String(val).trim();
+                if (displayVal.length <= 50) {
+                    detailParts.push(`${key}: ${displayVal}`);
+                    count++;
+                }
+            }
+        }
+        
+        return detailParts.join(" • ");
+    }
+
+    // Cancel button handler
+    if (featurePickerCancelBtn) {
+        featurePickerCancelBtn.addEventListener("click", hideFeaturePicker);
+    }
+
+    // Confirm button handler
+    if (featurePickerConfirmBtn) {
+        featurePickerConfirmBtn.addEventListener("click", confirmPickerSelection);
+    }
+
+    // Close on click outside
+    if (featurePickerModal) {
+        featurePickerModal.addEventListener("click", (e) => {
+            if (e.target === featurePickerModal) {
+                hideFeaturePicker();
+            }
+        });
+    }
+
     // ---------- Selection layer setup ----------
     async function setActiveSelectionLayerByIndex(idx) {
         const entry = selectionLayers[idx];
@@ -4774,14 +5078,13 @@ function buildDataSourcesSection() {
                 const hit = await view.hitTest(event);
                 const results = (hit && hit.results) ? hit.results : [];
 
-                // First: try to select from active selection layer
-                const match = results.find(r =>
+                // Get ALL matching features from the active selection layer
+                const matches = results.filter(r =>
                     r.graphic && r.graphic.layer && activeSelectionLayer && r.graphic.layer === activeSelectionLayer
                 );
 
-                if (match) {
-                    const graphic = match.graphic;
-                    if (!graphic) return;
+                if (matches.length === 0) {
+                    return;
 
                     // ✅ Fetch the “true” polygon geometry (not the generalized hitTest geometry)
                     const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
@@ -4990,6 +5293,10 @@ function buildDataSourcesSection() {
         // AOI layer + sketch (AOI must always be visible and on top)
         aoiLayer = new GraphicsLayer({ title: "AOI" });
         map.add(aoiLayer);
+
+        // AOI Mask layer (transparent overlay outside AOI for reports)
+        aoiMaskLayer = new GraphicsLayer({ title: "AOI Mask", visible: false });
+        map.add(aoiMaskLayer);
 
         // Sketch draws directly into AOI layer
         sketch = new Sketch({
@@ -5512,8 +5819,10 @@ function buildDataSourcesSection() {
                     .slice(0, maxResults);
 
             } catch (e) {
-                if (e.name === "AbortError") throw e;
-                console.warn("Search failed for layer:", layerInfo.title, e);
+                // Return empty for all errors - the performSearch wrapper handles logging
+                if (e.name !== "AbortError") {
+                    console.warn("Search failed for layer:", layerInfo.title, e);
+                }
                 return [];
             }
         }
@@ -5578,32 +5887,46 @@ function buildDataSourcesSection() {
             if (!searchTerm || searchTerm.length < 2) {
                 searchResults.innerHTML = '<div class="search-hint">Type at least 2 characters to search</div>';
                 searchResults.classList.add("visible");
+                // Reset spinner in case a previous search was in progress
+                if (searchIcon) searchIcon.style.display = "block";
+                if (searchSpinner) searchSpinner.style.display = "none";
                 return;
             }
 
             // Cancel previous search
             if (searchAbortController) {
-                searchAbortController.abort();
+                try { searchAbortController.abort(); } catch (e) { }
+                searchAbortController = null;
             }
             searchAbortController = new AbortController();
             const signal = searchAbortController.signal;
             const myGen = ++searchGeneration; // snapshot our generation
 
             // Show loading state
-            searchIcon.style.display = "none";
-            searchSpinner.style.display = "block";
+            if (searchIcon) searchIcon.style.display = "none";
+            if (searchSpinner) searchSpinner.style.display = "block";
 
             try {
                 const layers = getSearchableLayers();
                 
                 // Search all layers in parallel (limit to first 15 to avoid too many requests)
+                // Use Promise.allSettled to avoid one failure killing all searches
                 const searchPromises = layers.slice(0, 15).map(layerInfo => 
-                    searchLayer(layerInfo, searchTerm, signal, 5)
+                    searchLayer(layerInfo, searchTerm, signal, 5).catch(e => {
+                        // Swallow errors (including AbortError) and return empty results
+                        if (e.name !== "AbortError") {
+                            console.warn("Search failed for layer:", layerInfo.title, e);
+                        }
+                        return [];
+                    })
                 );
 
                 const results = await Promise.all(searchPromises);
                 
-                if (signal.aborted || myGen !== searchGeneration) return;
+                // Check if this search was superseded
+                if (signal.aborted || myGen !== searchGeneration) {
+                    return;
+                }
 
                 // Flatten all results and sort by global relevance
                 allSearchResults = [];
@@ -5674,16 +5997,20 @@ function buildDataSourcesSection() {
                 searchResults.classList.add("visible");
 
             } catch (e) {
+                // If this search was superseded, don't show error state
+                if (myGen !== searchGeneration) return;
+                // AbortError means a new search started - also don't show error
                 if (e.name === "AbortError") return;
-                if (myGen !== searchGeneration) return; // superseded
+                
                 console.error("Search error:", e);
                 searchResults.innerHTML = '<div class="search-no-results">Search failed</div>';
                 searchResults.classList.add("visible");
             } finally {
-                // Only reset spinner if this is still the active search
+                // Always reset spinner for the current/active search
+                // This check ensures we don't interfere with a newer search's spinner state
                 if (myGen === searchGeneration) {
-                    searchIcon.style.display = "block";
-                    searchSpinner.style.display = "none";
+                    if (searchIcon) searchIcon.style.display = "block";
+                    if (searchSpinner) searchSpinner.style.display = "none";
                 }
             }
         }
@@ -5855,9 +6182,18 @@ function buildDataSourcesSection() {
                     searchClear.style.display = "none";
                     searchResults.classList.remove("visible");
                     searchResults.innerHTML = "";
+                    // Clear any pending debounce
+                    clearTimeout(searchDebounceTimer);
+                    // Abort any in-progress search
                     if (searchAbortController) {
-                        searchAbortController.abort();
+                        try { searchAbortController.abort(); } catch (e) { }
+                        searchAbortController = null;
                     }
+                    // Reset spinner state
+                    if (searchIcon) searchIcon.style.display = "block";
+                    if (searchSpinner) searchSpinner.style.display = "none";
+                    // Increment generation to invalidate any pending results
+                    searchGeneration++;
                 });
             }
 
