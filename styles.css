@@ -1497,9 +1497,8 @@ th{
     bottom: 0;
     background: transparent;
     display: flex;
-    align-items: flex-start;
-    justify-content: flex-end;
-    padding: 80px 20px 20px 20px;
+    align-items: center;
+    justify-content: center;
     z-index: 10000;
     pointer-events: none;
 }
