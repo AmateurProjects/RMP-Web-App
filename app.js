@@ -1988,7 +1988,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 ${(r.count > 0) ? `
                 <div class="row" style="margin-top:8px;">
                     <button class="btn subtle" data-export="${escapeHtml(r.title)}">
-                    Export FULL CSV
+                    Export CSV
                     </button>
                 </div>
                 ` : ``}
@@ -2069,7 +2069,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             ${(r.count > 0) ? `
                 <div class="row" style="margin-top:8px;">
                 <button class="btn subtle" data-export="${escapeHtml(r.title)}">
-                Export FULL CSV
+                Export CSV
                 </button>
                 </div>
             ` : ``}
@@ -4755,17 +4755,20 @@ function buildDataSourcesSection() {
         // A GraphicsLayer draws the main view's extent as a red rectangle.
         // Click to swap basemaps between main and overview.
 
-        const OVERVIEW_EXPAND = 6;
 
+        // Overview map: fixed extent/zoom (contiguous US), red rectangle shows main map extent
         const overviewExtentLayer = new GraphicsLayer();
         let overviewMap = new EsriMap({
-            basemap: imageryBasemapId
+            basemap: imageryBasemapId,
+            layers: [overviewExtentLayer]
         });
         const overviewView = new MapView({
             container: "overviewMapView",
             map: overviewMap,
             ui: { components: [] },
-            constraints: { snapToZoom: false, rotationEnabled: false }
+            constraints: { snapToZoom: false, rotationEnabled: false },
+            center: [-98.5795, 39.8283], // Center of contiguous US
+            zoom: 3 // Adjust as needed for full US
         });
 
         // Disable all interaction on the overview
@@ -4786,18 +4789,26 @@ function buildDataSourcesSection() {
             view.ui.add(overviewDiv, "bottom-left");
         }
 
-        // --- Sync: update overview extent ---
 
-        function syncOverview() {
+        // --- Draw red rectangle for main map extent on minimap ---
+        function updateOverviewExtentGraphic() {
             if (!view.extent) return;
-            const expanded = view.extent.expand(OVERVIEW_EXPAND);
-            overviewView.goTo(expanded, { animate: false }).catch(() => {});
+            overviewExtentLayer.removeAll();
+            const extentGraphic = new Graphic({
+                geometry: view.extent.clone(),
+                symbol: {
+                    type: "simple-line",
+                    color: [255, 0, 0, 1],
+                    width: 2
+                }
+            });
+            overviewExtentLayer.add(extentGraphic);
         }
 
-        // Sync when main view settles
-        view.watch("stationary", (s) => { if (s) syncOverview(); });
-        // Initial sync
-        overviewView.when(() => { view.when(syncOverview); });
+        // Update rectangle when main view moves
+        view.watch("extent", updateOverviewExtentGraphic);
+        // Initial draw
+        view.when(() => overviewView.when(updateOverviewExtentGraphic));
 
         // --- Click to swap basemaps ---
         let swapHandle = null;

@@ -755,6 +755,9 @@ th{
   border-radius: 999px;
   padding: 4px 10px;
   background: var(--bg-white);
+  white-space: nowrap;
+  min-width: 32px;
+  text-align: center;
 }
 
 .pill-up{
