@@ -143,24 +143,56 @@
       </div>
 
       <div id="selectModeControls">
+        <!-- Selection Layer Group Selector -->
         <div class="row">
-          <label class="label">PLSS select</label>
+          <label class="label" for="selectionGroupSelect">Select from</label>
+          <select id="selectionGroupSelect" class="select">
+            <option value="plss" selected>PLSS (Township/Section/Parcel)</option>
+            <option value="permit">Permit Layers</option>
+          </select>
+        </div>
 
-          <div id="plssSelectTools" class="toolgroup" role="group" aria-label="PLSS selection layer">
-            <button id="plssTownshipBtn" class="toolbtn" type="button" aria-pressed="true" title="Township (largest)">
-              <span class="box box-lg" aria-hidden="true"></span>
-              <span class="tooltext">Township</span>
-            </button>
+        <!-- PLSS Selection Tools -->
+        <div id="plssSelectGroup" class="selection-group">
+          <div class="row">
+            <div id="plssSelectTools" class="toolgroup" role="group" aria-label="PLSS selection layer">
+              <button id="plssTownshipBtn" class="toolbtn" type="button" aria-pressed="true" title="Township (largest)">
+                <span class="box box-lg" aria-hidden="true"></span>
+                <span class="tooltext">Township</span>
+              </button>
 
-            <button id="plssSectionBtn" class="toolbtn" type="button" aria-pressed="false" title="Section (medium)">
-              <span class="box box-md" aria-hidden="true"></span>
-              <span class="tooltext">Section</span>
-            </button>
+              <button id="plssSectionBtn" class="toolbtn" type="button" aria-pressed="false" title="Section (medium)">
+                <span class="box box-md" aria-hidden="true"></span>
+                <span class="tooltext">Section</span>
+              </button>
 
-            <button id="plssIntersectedBtn" class="toolbtn" type="button" aria-pressed="false" title="PLSS Parcel (small)">
-              <span class="box box-sm" aria-hidden="true"></span>
-              <span class="tooltext">Parcel</span>
-            </button>
+              <button id="plssIntersectedBtn" class="toolbtn" type="button" aria-pressed="false" title="PLSS Parcel (small)">
+                <span class="box box-sm" aria-hidden="true"></span>
+                <span class="tooltext">Parcel</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Permit Layer Selection Tools -->
+        <div id="permitSelectGroup" class="selection-group hidden">
+          <div class="row">
+            <div id="permitSelectTools" class="toolgroup toolgroup-vertical" role="group" aria-label="Permit layer selection">
+              <button id="grazingAllotmentBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Grazing Allotments">
+                <span class="toolicon">🐄</span>
+                <span class="tooltext">Grazing Allotments</span>
+              </button>
+
+              <button id="grazingPastureBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Grazing Pastures">
+                <span class="toolicon">🌾</span>
+                <span class="tooltext">Grazing Pastures</span>
+              </button>
+
+              <button id="oilGasLeaseBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Oil and Gas Leases">
+                <span class="toolicon">🛢️</span>
+                <span class="tooltext">Oil & Gas Leases</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -202,7 +234,7 @@
       <div class="layers-section">
         <div class="layers-section-header">
           <span class="layers-section-title">Selection Layers</span>
-          <span class="layers-section-subtitle">Click-to-select layers (PLSS polygons)</span>
+          <span class="layers-section-subtitle">Click-to-select layers for AOI definition</span>
         </div>
         <div id="selectionLayerToggles" class="layers-list"></div>
       </div>

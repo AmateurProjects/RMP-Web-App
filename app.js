@@ -18,6 +18,15 @@ require([
     const plssTownshipBtn = document.getElementById("plssTownshipBtn");
     const plssSectionBtn = document.getElementById("plssSectionBtn");
     const plssIntersectedBtn = document.getElementById("plssIntersectedBtn");
+    // Selection layer group selector
+    const selectionGroupSelect = document.getElementById("selectionGroupSelect");
+    const plssSelectGroup = document.getElementById("plssSelectGroup");
+    const permitSelectGroup = document.getElementById("permitSelectGroup");
+    // Permit layer selection buttons
+    const grazingAllotmentBtn = document.getElementById("grazingAllotmentBtn");
+    const grazingPastureBtn = document.getElementById("grazingPastureBtn");
+    const oilGasLeaseBtn = document.getElementById("oilGasLeaseBtn");
+
     const selectModeControls = document.getElementById("selectModeControls");
     const drawModeControls = document.getElementById("drawModeControls");
 
@@ -429,6 +438,26 @@ function setActiveTab(tabName) {
         set(plssTownshipBtn, which === "township");
         set(plssSectionBtn, which === "section");
         set(plssIntersectedBtn, which === "intersected");
+    }
+
+    function setPermitToolActive(which) {
+        const set = (btn, on) => {
+            if (!btn) return;
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+        };
+        set(grazingAllotmentBtn, which === "allotment");
+        set(grazingPastureBtn, which === "pasture");
+        set(oilGasLeaseBtn, which === "oilgas");
+    }
+
+    function clearAllSelectionToolButtons() {
+        setPlssToolActive(null);
+        setPermitToolActive(null);
+    }
+
+    function switchSelectionGroup(group) {
+        if (plssSelectGroup) plssSelectGroup.classList.toggle("hidden", group !== "plss");
+        if (permitSelectGroup) permitSelectGroup.classList.toggle("hidden", group !== "permit");
     }
 
     function updateSelectionToggleCheckbox(idx, checked) {
@@ -5036,6 +5065,10 @@ function buildDataSourcesSection() {
 
         plssParcelLayerUrl = (intersectedIdx >= 0) ? (selectionLayers[intersectedIdx]?.cfg?.url || null) : null;
 
+        // ---------- Permit layer indexes (Grazing Allotment / Pasture / Oil & Gas) ----------
+        const allotmentIdx = findSelectionLayerIndexByNameIncludes("grazing allotment");
+        const pastureIdx = findSelectionLayerIndexByNameIncludes("grazing pasture");
+        const oilGasIdx = findSelectionLayerIndexByNameIncludes("oil and gas");
 
 
         // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
@@ -5045,6 +5078,10 @@ function buildDataSourcesSection() {
                 modeSelect.value = "select";
                 setMode("select");
             }
+
+            // Disable all permit layers first
+            const permitTrio = [allotmentIdx, pastureIdx, oilGasIdx].filter(i => i >= 0);
+            for (const idx of permitTrio) disableSelectionLayer(idx);
 
             // Enable chosen layer even if user unchecked it earlier
             const trio = [townshipIdx, sectionIdx, intersectedIdx].filter(i => i >= 0);
@@ -5062,6 +5099,7 @@ function buildDataSourcesSection() {
                 await setActiveSelectionLayerByIndex(idxToEnable);
                 aoiSourcePlssTool = which; // <-- ADD: remember which PLSS tool is driving AOI selection
                 setPlssToolActive(which);
+                setPermitToolActive(null); // Clear permit tool selection
 
                 // Auto-zoom to minimum visible zoom level (using layer.minScale)
                 const lyr = selectionLayers[idxToEnable]?.layer;
@@ -5079,6 +5117,84 @@ function buildDataSourcesSection() {
         if (plssTownshipBtn) plssTownshipBtn.addEventListener("click", () => activatePlss("township", townshipIdx));
         if (plssSectionBtn) plssSectionBtn.addEventListener("click", () => activatePlss("section", sectionIdx));
         if (plssIntersectedBtn) plssIntersectedBtn.addEventListener("click", () => activatePlss("intersected", intersectedIdx));
+
+        // ---------- Permit layer wiring (Grazing Allotment / Pasture / Oil & Gas) ----------
+        // Helper: make ONE permit layer active, disable the other permit layers, and auto-zoom if needed
+        async function activatePermitLayer(which, idxToEnable) {
+            // Force select mode
+            if (modeSelect && modeSelect.value !== "select") {
+                modeSelect.value = "select";
+                setMode("select");
+            }
+
+            // Disable all PLSS layers first
+            const plssTrio = [townshipIdx, sectionIdx, intersectedIdx].filter(i => i >= 0);
+            for (const idx of plssTrio) disableSelectionLayer(idx);
+
+            // Disable other permit layers
+            const permitTrio = [allotmentIdx, pastureIdx, oilGasIdx].filter(i => i >= 0);
+            for (const idx of permitTrio) {
+                if (idx !== idxToEnable) disableSelectionLayer(idx);
+            }
+
+            // Enable the chosen one
+            if (idxToEnable >= 0) enableSelectionLayer(idxToEnable);
+
+            // Set as active selection layer
+            if (idxToEnable >= 0) {
+                await setActiveSelectionLayerByIndex(idxToEnable);
+                aoiSourcePlssTool = null; // Not a PLSS tool
+                setPlssToolActive(null);
+                setPermitToolActive(which);
+
+                // Auto-zoom to minimum visible zoom level
+                const lyr = selectionLayers[idxToEnable]?.layer;
+                await ensureLayerVisibleAtScale(lyr);
+                await waitForViewStationary(1500);
+
+                const labels = {
+                    allotment: "Grazing Allotments",
+                    pasture: "Grazing Pastures",
+                    oilgas: "Oil & Gas Leases"
+                };
+                setStatus(`Permit select: ${labels[which] || which} (click a polygon)`);
+            } else {
+                setPermitToolActive(which);
+                setStatus("Permit select: layer not found");
+            }
+        }
+
+        if (grazingAllotmentBtn) grazingAllotmentBtn.addEventListener("click", () => activatePermitLayer("allotment", allotmentIdx));
+        if (grazingPastureBtn) grazingPastureBtn.addEventListener("click", () => activatePermitLayer("pasture", pastureIdx));
+        if (oilGasLeaseBtn) oilGasLeaseBtn.addEventListener("click", () => activatePermitLayer("oilgas", oilGasIdx));
+
+        // Selection group dropdown handler
+        if (selectionGroupSelect) {
+            selectionGroupSelect.addEventListener("change", async () => {
+                const group = selectionGroupSelect.value;
+                switchSelectionGroup(group);
+
+                if (group === "plss") {
+                    // Activate township by default when switching to PLSS
+                    if (townshipIdx >= 0) {
+                        await activatePlss("township", townshipIdx);
+                    } else if (sectionIdx >= 0) {
+                        await activatePlss("section", sectionIdx);
+                    } else if (intersectedIdx >= 0) {
+                        await activatePlss("intersected", intersectedIdx);
+                    }
+                } else if (group === "permit") {
+                    // Activate grazing allotment by default when switching to permit layers
+                    if (allotmentIdx >= 0) {
+                        await activatePermitLayer("allotment", allotmentIdx);
+                    } else if (pastureIdx >= 0) {
+                        await activatePermitLayer("pasture", pastureIdx);
+                    } else if (oilGasIdx >= 0) {
+                        await activatePermitLayer("oilgas", oilGasIdx);
+                    }
+                }
+            });
+        }
 
         // Default to Township if present, otherwise Section, otherwise Intersected, otherwise first selection layer
         if (townshipIdx >= 0) {
@@ -5229,6 +5345,47 @@ function buildDataSourcesSection() {
             return layers;
         }
 
+        // Patterns for fields that should be prioritized in search (name-like fields)
+        const NAME_FIELD_PATTERNS = [
+            /^name$/i, /name$/i, /_name$/i, /name_/i,
+            /^title$/i, /^label$/i, /^description$/i, /^desc$/i,
+            /comname/i, /sciname/i, /common.*name/i, /scientific.*name/i,
+            /plan.*name/i, /proj.*name/i, /unit.*name/i, /area.*name/i,
+            /site.*name/i, /allot.*name/i, /lup.*name/i, /permit/i
+        ];
+
+        // Fields that should be excluded from search entirely (IDs, codes, internal fields)
+        const EXCLUDED_FIELD_PATTERNS = [
+            /objectid/i, /globalid/i, /^oid$/i, /^fid$/i, /^id$/i,
+            /shape/i, /geometry/i, /^guid$/i, /uuid/i,
+            /_id$/i, /^.*id$/i, /code$/i, /_code$/i, /^code/i,
+            /serial/i, /row_?num/i, /unique/i, /key$/i,
+            /created/i, /modified/i, /edit.*date/i, /update/i,
+            /^gis_/i, /^sys_/i, /^db_/i, /^meta/i
+        ];
+
+        // Categorize fields into name fields (high priority) vs other searchable fields
+        function categorizeSearchFields(fields) {
+            const nameFields = [];
+            const otherFields = [];
+
+            for (const field of fields) {
+                const fname = field.name || "";
+                
+                // Skip excluded fields
+                if (EXCLUDED_FIELD_PATTERNS.some(p => p.test(fname))) continue;
+                
+                // Check if it's a name-like field
+                if (NAME_FIELD_PATTERNS.some(p => p.test(fname))) {
+                    nameFields.push(fname);
+                } else {
+                    otherFields.push(fname);
+                }
+            }
+
+            return { nameFields, otherFields };
+        }
+
         // Get string field names from a layer's field metadata (cached)
         async function getStringFieldsForLayer(url) {
             const cacheKey = url.replace(/\/$/, "");
@@ -5238,28 +5395,68 @@ function buildDataSourcesSection() {
                 const info = await fetchJson(pjsonUrl);
                 const fields = info?.fields || [];
                 
-                // Get string fields that are likely to contain searchable names
-                const stringFields = fields
-                    .filter(f => f.type === "esriFieldTypeString")
-                    .map(f => f.name);
+                // Get string fields and categorize them
+                const stringFields = fields.filter(f => f.type === "esriFieldTypeString");
+                const categorized = categorizeSearchFields(stringFields);
                 
-                fieldMetadataCache.set(cacheKey, stringFields);
-                return stringFields;
+                fieldMetadataCache.set(cacheKey, categorized);
+                return categorized;
             } catch (e) {
                 console.warn("Failed to get fields for", url, e);
-                return [];
+                return { nameFields: [], otherFields: [] };
             }
+        }
+
+        // Check if a result has a meaningful name match (not just ID match)
+        function hasNameFieldMatch(attributes, searchTerm, nameFields) {
+            const termLower = searchTerm.toLowerCase();
+            for (const field of nameFields) {
+                const val = attributes[field];
+                if (val && String(val).toLowerCase().includes(termLower)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Calculate relevance score for a search result
+        function calculateRelevance(attributes, searchTerm, nameFields) {
+            const termLower = searchTerm.toLowerCase();
+            let score = 0;
+            
+            // Check name fields for matches (high value)
+            for (const field of nameFields) {
+                const val = String(attributes[field] || "").toLowerCase();
+                if (val) {
+                    if (val === termLower) score += 100; // Exact match
+                    else if (val.startsWith(termLower)) score += 50; // Starts with
+                    else if (val.includes(termLower)) score += 25; // Contains
+                }
+            }
+            
+            // Check if display name would show the match (important for UX)
+            const displayName = getFeatureDisplayName(attributes).toLowerCase();
+            if (displayName.includes(termLower)) {
+                score += 30;
+            }
+            
+            return score;
         }
 
         // Search a single layer for matching features
         async function searchLayer(layerInfo, searchTerm, signal, maxResults = 5) {
             try {
-                const stringFields = await getStringFieldsForLayer(layerInfo.url);
-                if (!stringFields.length) return [];
+                const { nameFields, otherFields } = await getStringFieldsForLayer(layerInfo.url);
+                
+                // If no searchable fields, skip this layer
+                if (!nameFields.length && !otherFields.length) return [];
 
-                // Build WHERE clause with LIKE for each string field
                 const escapedTerm = searchTerm.replace(/'/g, "''");
-                const whereClauses = stringFields.map(f => `UPPER(${f}) LIKE '%${escapedTerm.toUpperCase()}%'`);
+                
+                // Build WHERE clause - prioritize name fields, but include other fields too
+                // We search both but will score/filter results later
+                const allSearchFields = [...nameFields, ...otherFields];
+                const whereClauses = allSearchFields.map(f => `UPPER(${f}) LIKE '%${escapedTerm.toUpperCase()}%'`);
                 const where = whereClauses.join(" OR ");
 
                 const queryUrl = layerInfo.url.replace(/\/$/, "") + "/query";
@@ -5268,7 +5465,7 @@ function buildDataSourcesSection() {
                     outFields: "*",
                     returnGeometry: "true",
                     outSR: String(view?.spatialReference?.wkid || 102100),
-                    resultRecordCount: String(maxResults),
+                    resultRecordCount: String(maxResults * 2), // Fetch extra to filter
                     f: "json"
                 });
 
@@ -5278,12 +5475,42 @@ function buildDataSourcesSection() {
                 const data = await response.json();
                 const features = data?.features || [];
 
-                return features.map(f => ({
-                    layerTitle: layerInfo.title,
-                    layerUrl: layerInfo.url,
-                    attributes: f.attributes || {},
-                    geometry: f.geometry
-                }));
+                // Map features and calculate relevance
+                const results = features.map(f => {
+                    const attrs = f.attributes || {};
+                    const relevance = calculateRelevance(attrs, searchTerm, nameFields);
+                    const hasNameMatch = hasNameFieldMatch(attrs, searchTerm, nameFields);
+                    
+                    return {
+                        layerTitle: layerInfo.title,
+                        layerUrl: layerInfo.url,
+                        attributes: attrs,
+                        geometry: f.geometry,
+                        relevance,
+                        hasNameMatch
+                    };
+                });
+
+                // Filter: prefer results with name field matches or visible display name matches
+                // Only include low-relevance results if they have something meaningful to show
+                const filtered = results.filter(r => {
+                    // Always keep if there's a name field match
+                    if (r.hasNameMatch) return true;
+                    
+                    // Keep if the display name contains the search term
+                    const displayName = getFeatureDisplayName(r.attributes).toLowerCase();
+                    if (displayName.includes(searchTerm.toLowerCase())) return true;
+                    
+                    // Filter out results where the match is only in non-name fields
+                    // and the display name doesn't show the match (confusing for users)
+                    return false;
+                });
+
+                // Sort by relevance and limit results
+                return filtered
+                    .sort((a, b) => b.relevance - a.relevance)
+                    .slice(0, maxResults);
+
             } catch (e) {
                 if (e.name === "AbortError") throw e;
                 console.warn("Search failed for layer:", layerInfo.title, e);
@@ -5378,15 +5605,26 @@ function buildDataSourcesSection() {
                 
                 if (signal.aborted || myGen !== searchGeneration) return;
 
-                // Flatten all results into a single array for easy access
+                // Flatten all results and sort by global relevance
                 allSearchResults = [];
+                results.forEach((layerResults) => {
+                    layerResults.forEach(f => allSearchResults.push(f));
+                });
+                
+                // Sort all results by relevance (best matches first across all layers)
+                allSearchResults.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+                
+                // Limit total results to top 25
+                allSearchResults = allSearchResults.slice(0, 25);
+                
+                // Re-group by layer for display, preserving relevance order within groups
                 const groupedResults = new Map();
-                results.forEach((layerResults, idx) => {
-                    if (layerResults.length > 0) {
-                        const layerTitle = layers[idx].title;
-                        groupedResults.set(layerTitle, layerResults);
-                        layerResults.forEach(f => allSearchResults.push(f));
+                allSearchResults.forEach(f => {
+                    const layerTitle = f.layerTitle;
+                    if (!groupedResults.has(layerTitle)) {
+                        groupedResults.set(layerTitle, []);
                     }
+                    groupedResults.get(layerTitle).push(f);
                 });
 
                 // Build results HTML
