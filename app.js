@@ -214,7 +214,7 @@ function setBusy(isBusy) {
     let aoiSourcePlssTool = null; // "township" | "section" | "intersected" | null
     let aoiSourceLayerUrl = null;      // URL of the selection layer used to pick AOI (select mode)
     let plssParcelLayerUrl = null;     // URL of PLSS Intersected (UI will call "Parcel")
-    let plssStateLayerUrl = null;      // URL of PLSS State Boundaries (single canonical)
+    let plssStateLayerUrl = "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Public_Land_Survey_System_view/FeatureServer/0"; // Living Atlas State Boundary
     let aoiSourceObjectId = null;      // ObjectID of the clicked AOI polygon (select mode)
     let aoiSourceObjectIdField = null; // ObjectID field name for that layer
     let aoiSourceFeature = null;       // ✅ cached clicked feature (attributes for AOI Source card)
@@ -4659,60 +4659,10 @@ function buildDataSourcesSection() {
             }
         });
 
-        // Selection layers (may include MapServer roots that expand into many sublayers)
+        // Selection layers (Living Atlas PLSS FeatureServer — listed individually in config)
         const selCfgs = config.selectionLayers || [];
-        const expandedSelectionCfgs = [];
 
-        // Track PLSS State Boundaries so it can be report-only (not selectable)
-        let plssStateBoundary = null; // { title, url }
-
-        for (const cfg of selCfgs) {
-            const url = String(cfg?.url || "");
-            if (isMapServerRoot(url)) {
-                // Expand MapServer into polygon sublayers for selection
-                const subs = await expandMapServerToSublayers(url, { polygonOnly: true });
-
-                subs.forEach(sl => {
-                    let subTitle = String(sl.title || "");
-                    subTitle = subTitle.replace(/intersected/ig, "Parcel");
-
-                    // ✅ Item 4: remove "State Boundaries" from Selection (but keep for Report)
-                    if (subTitle.toLowerCase() === "state boundaries") {
-                        plssStateBoundary = {
-                            title: `${cfg.title}: ${subTitle}`,
-                            url: sl.url
-                        };
-                        plssStateLayerUrl = sl.url;
-                        return; // skip adding to selection
-                    }
-
-                    expandedSelectionCfgs.push({
-                        title: `${cfg.title}: ${subTitle}`,
-                        url: sl.url,
-                        visible: true
-                    });
-                });
-            } else {
-                expandedSelectionCfgs.push(cfg);
-            }
-        }
-
-        // ✅ Ensure State Boundaries still appears in REPORT layers
-        if (plssStateBoundary) {
-            const alreadyInReport = (config.reportLayers || []).some(r => {
-                return String(r?.url || "").replace(/\/+$/, "") === String(plssStateBoundary.url).replace(/\/+$/, "");
-            });
-
-            if (!alreadyInReport) {
-                config.reportLayers = config.reportLayers || [];
-                config.reportLayers.push({
-                    title: plssStateBoundary.title,
-                    url: plssStateBoundary.url
-                });
-            }
-        }
-
-        selectionLayers = expandedSelectionCfgs.map(cfg => ({
+        selectionLayers = selCfgs.map(cfg => ({
             cfg,
             layer: new FeatureLayer({
                 url: cfg.url,
@@ -4724,34 +4674,6 @@ function buildDataSourcesSection() {
         }));
 
         selectionLayers.forEach(e => map.add(e.layer));
-
-        // Auto-refresh selection layers when tile requests fail.
-        // BLM MapServer endpoints are unreliable and intermittently drop requests,
-        // causing blank tiles.  This watches each layer view: when it finishes
-        // updating but isn't fully opaque yet (tiles missing), it schedules a refresh.
-        selectionLayers.forEach(e => {
-            view.whenLayerView(e.layer).then(lv => {
-                let retryCount = 0;
-                const MAX_RETRIES = 3;
-                lv.watch("updating", (updating) => {
-                    if (updating || retryCount >= MAX_RETRIES) return;
-                    // If the layer should be visible but the layerView still has
-                    // suspended or connection issues, refresh after a delay
-                    if (e.layer.visible && lv.suspended) {
-                        retryCount++;
-                        console.warn(`Layer "${e.layer.title}" suspended, retry ${retryCount}/${MAX_RETRIES}…`);
-                        setTimeout(() => { e.layer.refresh(); }, 2000 * retryCount);
-                    }
-                });
-                // Also: one extra refresh 5s after initial load to catch
-                // intermittent tile failures from slow BLM endpoints
-                setTimeout(() => {
-                    if (e.layer.visible && e.layer.loaded) {
-                        e.layer.refresh();
-                    }
-                }, 5000);
-            }).catch(() => {});
-        });
 
         // ✅ NEW: build report layers (for map display toggles)
         await buildReportDisplayLayers();
