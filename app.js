@@ -4568,19 +4568,31 @@ function buildDataSourcesSection() {
         view.watch("extent", syncMiniMap);
         view.watch("stationary", (s) => { if (s) syncMiniMap(); });
 
-        // After a basemap swap the new basemap may reset the miniView extent
-        // while its tiles load.  This watcher keeps correcting the zoom until
-        // it actually matches the expected zoomed-out value, then stops.
-        let swapCorrecting = false;
-        miniView.watch("stationary", (s) => {
-            if (!s || !swapCorrecting) return;
-            const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
-            if (Math.abs(miniView.zoom - targetZoom) > 0.5) {
-                syncMiniMap();
-            } else {
-                swapCorrecting = false;
-            }
-        });
+        // After a basemap swap, vector-tile basemaps (e.g. "gray-vector")
+        // abort any in-flight goTo() while loading their style / sprites.
+        // The silent .catch() in syncMiniMap means the miniView ends up at
+        // whatever zoom the basemap change defaulted to (the main map's
+        // extent).  Raster basemaps (imagery) don't have this problem.
+        //
+        // Fix: poll every 200 ms and keep re-issuing goTo() until the
+        // zoomed-out level actually sticks.  Stops as soon as it's correct
+        // or after 5 s.
+        let swapInterval = null;
+        function startSwapCorrection() {
+            if (swapInterval) { clearInterval(swapInterval); swapInterval = null; }
+            let attempts = 0;
+            swapInterval = setInterval(() => {
+                attempts++;
+                const targetZoom = Math.max(1, Math.round(view.zoom - zoomOffset));
+                if (Math.abs(miniView.zoom - targetZoom) > 0.5) {
+                    syncMiniMap();
+                }
+                if (attempts >= 25 || Math.abs(miniView.zoom - targetZoom) <= 0.5) {
+                    clearInterval(swapInterval);
+                    swapInterval = null;
+                }
+            }, 200);
+        }
 
         const extentBox = document.getElementById("miniMapExtentBox");
         function updateExtentBox() {
@@ -4620,12 +4632,11 @@ function buildDataSourcesSection() {
                     view.map.basemap = imageryBasemapId;
                     miniMap.basemap = defaultBasemapId;
                 }
-                // Activate swap-correction: keeps fixing miniView zoom
-                // until it sticks at the expected zoomed-out value.
-                swapCorrecting = true;
+                // Re-sync then activate swap-correction: keeps fixing
+                // miniView zoom until the basemap finishes loading and
+                // the zoomed-out value sticks.
                 syncMiniMap();
-                // Hard safety stop after 5 s to avoid any runaway corrections.
-                setTimeout(() => { swapCorrecting = false; }, 5000);
+                startSwapCorrection();
             });
             if (miniLabel) miniLabel.textContent = "Click to change basemap";
         }
