@@ -191,6 +191,12 @@
     {
       "title": "BLM Land and Water Conservation Fund (LWCF)",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Land_and_Water_Conservation_Fund_LWCF_Polygons/FeatureServer/2"
+    },
+    {
+      "title": "BLM Administrative Units",
+      "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer",
+      "useServiceRenderer": true,
+      "alwaysVisible": true
     }
   ],
   "report": {

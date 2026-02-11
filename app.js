@@ -206,6 +206,9 @@ function setBusy(isBusy) {
     // Renderer lookup helpers
     let layerCfgByUrl = new Map(); // url -> {kind, cfg}
 
+    // Always-visible layers (e.g. BLM Admin Units) — kept visible on main map + all report maps
+    const alwaysVisibleLayers = [];
+
     let selectionLayers = []; // { cfg, layer }
     let activeSelectionLayer = null; // FeatureLayer
     let activeSelectionLayerView = null;
@@ -957,6 +960,22 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
         return out;
     }
 
+    // Expand a FeatureServer root into ALL sublayers (points, lines, polygons).
+    async function expandFeatureServerToAllSublayers(serviceUrl) {
+        const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
+        const info = await fetchJson(pjsonUrl);
+        const layers = Array.isArray(info?.layers) ? info.layers : [];
+
+        const out = [];
+        for (const l of layers) {
+            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
+            let title = l?.name ? String(l.name) : `Layer ${l.id}`;
+            out.push({ title, url: layerUrl });
+        }
+
+        return out;
+    }
+
 async function buildReportDisplayLayers() {
     if (!map) return;
 
@@ -970,21 +989,35 @@ async function buildReportDisplayLayers() {
         // Skip if already built
         if (reportLayerViews.has(key)) continue;
 
-        // FeatureServer root: expand to polygon sublayers
+        const useServiceRenderer = cfg.useServiceRenderer === true;
+        const isAlwaysVisible = cfg.alwaysVisible === true;
+
+        // FeatureServer root: expand sublayers
         if (isFeatureServerRoot(key)) {
-            const subs = await expandFeatureServerToPolygonSublayers(key);
+            // If useServiceRenderer, expand to ALL sublayers (including points/lines);
+            // otherwise expand to polygon-only as before.
+            const subs = useServiceRenderer
+                ? await expandFeatureServerToAllSublayers(key)
+                : await expandFeatureServerToPolygonSublayers(key);
 
             const layers = [];
             for (const sl of subs) {
                 const geomType = await getLayerGeometryType(sl.url);
-                const lyr = new FeatureLayer({
+                const layerOpts = {
                     url: sl.url,
                     title: `${cfg.title}: ${sl.title}`,
                     outFields: ["*"],
-                    visible: false,
-                    renderer: getPresetRenderer("report", cfg, geomType) || undefined
-                });
+                    visible: isAlwaysVisible
+                };
+                // Only override renderer if NOT using service renderer
+                if (!useServiceRenderer) {
+                    layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
+                }
+                const lyr = new FeatureLayer(layerOpts);
                 layers.push(lyr);
+                if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
+                // Register sublayer URL in config index (inherits parent config flags)
+                layerCfgByUrl.set(sl.url, { kind: "report", cfg });
             }
 
             layers.forEach(l => map.add(l));
@@ -994,19 +1027,25 @@ async function buildReportDisplayLayers() {
 
         // MapServer root: expand to polygon sublayers
         if (isMapServerRoot(key)) {
-            const subs = await expandMapServerToSublayers(key, { polygonOnly: true });
+            const subs = await expandMapServerToSublayers(key, { polygonOnly: !useServiceRenderer });
 
             const layers = [];
             for (const sl of subs) {
                 const geomType = await getLayerGeometryType(sl.url);
-                const lyr = new FeatureLayer({
+                const layerOpts = {
                     url: sl.url,
                     title: `${cfg.title}: ${sl.title}`,
                     outFields: ["*"],
-                    visible: false,
-                    renderer: getPresetRenderer("report", cfg, geomType) || undefined
-                });
+                    visible: isAlwaysVisible
+                };
+                if (!useServiceRenderer) {
+                    layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
+                }
+                const lyr = new FeatureLayer(layerOpts);
                 layers.push(lyr);
+                if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
+                // Register sublayer URL in config index (inherits parent config flags)
+                layerCfgByUrl.set(sl.url, { kind: "report", cfg });
             }
 
             layers.forEach(l => map.add(l));
@@ -1016,13 +1055,17 @@ async function buildReportDisplayLayers() {
 
         // Normal single layer - get geometry type
         const geomType = await getLayerGeometryType(key);
-        const lyr = new FeatureLayer({
+        const layerOpts = {
             url: key,
             title: cfg.title,
             outFields: ["*"],
-            visible: false,
-            renderer: getPresetRenderer("report", cfg, geomType) || undefined
-        });
+            visible: isAlwaysVisible
+        };
+        if (!useServiceRenderer) {
+            layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
+        }
+        const lyr = new FeatureLayer(layerOpts);
+        if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
 
         map.add(lyr);
         reportLayerViews.set(key, lyr);
@@ -1193,7 +1236,8 @@ function clearAll() {
             const existing = reportLayerViews.get(key);
 
             // If existing is an array (expanded root), consider it checked if any layer exists
-            const isChecked = false;
+            const isAlwaysOn = l.alwaysVisible === true;
+            const isChecked = isAlwaysOn;
             const status = serviceStatus.get(l.url);
             const statusIcon = (status === "DOWN") 
                 ? `<span class="status-warning" title="Service is DOWN">⚠️</span>` 
@@ -1202,6 +1246,7 @@ function clearAll() {
             const checked = isChecked ? "checked" : "";
 
             // ✅ Do NOT disable FeatureServer roots anymore (we will expand them to drawable polygon sublayers)
+            // alwaysVisible layers default ON but user can toggle them off on the main map
             const disabled = "";
 
             // Update note text
@@ -2376,6 +2421,9 @@ async function generateVisualReportData(myOp, modal = null) {
                     // (We don’t have the variable here; keep TileLayers visible by default.)
                     if (l?.type === "tile") { l.visible = true; continue; }
 
+                    // Keep always-visible layers (e.g. BLM Admin Units) visible
+                    if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
+
                     // Hide everything else (selection layers, other report layers, etc.)
                     l.visible = false;
                 }
@@ -2421,20 +2469,27 @@ async function generateVisualReportData(myOp, modal = null) {
                 // Create a temporary layer for this URL, regardless of toggle state
                 // Get geometry type for appropriate renderer — fully opaque for visual report
                 const tempGeomType = await getLayerGeometryType(item.url);
-                const opaqueVRRenderer = makeRendererOpaque(
-                    getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType)
-                );
-                const temp = new FeatureLayer({
+                const vrItemCfg = layerCfgByUrl.get(item.url)?.cfg || null;
+                const vrUseNative = vrItemCfg?.useServiceRenderer === true;
+                const opaqueVRRenderer = vrUseNative
+                    ? undefined
+                    : makeRendererOpaque(getPresetRenderer("report", vrItemCfg, tempGeomType));
+                const tempOpts = {
                     url: item.url,
                     title: item.title,
                     outFields: ["*"],
-                    visible: true,
-                    renderer: opaqueVRRenderer || undefined
-                });
+                    visible: true
+                };
+                if (!vrUseNative) {
+                    tempOpts.renderer = opaqueVRRenderer || undefined;
+                }
+                const temp = new FeatureLayer(tempOpts);
 
-                // 🔒 Prevent scale-based rendering rules from forcing view scale changes
-                temp.minScale = 0;
-                temp.maxScale = 0;
+                // 🔒 Only force scale override for non-native-renderer layers
+                if (!vrUseNative) {
+                    temp.minScale = 0;
+                    temp.maxScale = 0;
+                }
 
                 // Add temp, hide everything else, screenshot, then remove temp
                 view.map.add(temp);
@@ -3268,6 +3323,74 @@ async function generateVisualReportData(myOp, modal = null) {
             }
         }
         
+        // BLM Administrative Units (Admin Unit boundaries, office points)
+        if (title.includes("administrative unit") || title.includes("admin unit") || title.includes("adminunit")) {
+            const unitNames = new Set();
+            const orgTypes = new Map();
+            const adminStates = new Map();
+            const parentNames = new Set();
+            const stateUrls = new Set();
+            const cityLabels = new Set();
+            
+            for (const row of rows) {
+                const name = row.ADMU_NAME || row.Label_Full_Name || row.Label || "";
+                if (name) unitNames.add(name);
+                
+                const orgType = row.BLM_ORG_TYPE || "";
+                if (orgType) orgTypes.set(orgType, (orgTypes.get(orgType) || 0) + 1);
+                
+                const adminSt = row.ADMIN_ST || "";
+                if (adminSt) adminStates.set(adminSt, (adminStates.get(adminSt) || 0) + 1);
+                
+                const parent = row.PARENT_NAME || "";
+                if (parent) parentNames.add(parent);
+                
+                const stUrl = row.ADMU_ST_URL || "";
+                if (stUrl) stateUrls.add(stUrl);
+                
+                const city = row.City_Label || "";
+                if (city) cityLabels.add(city);
+            }
+            
+            if (unitNames.size > 0 || orgTypes.size > 0 || adminStates.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>BLM Administrative Unit Details</b></td></tr>`;
+                
+                if (unitNames.size > 0) {
+                    const names = Array.from(unitNames).slice(0, 15).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Unit Names</td><td>${names}${unitNames.size > 15 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (orgTypes.size > 0) {
+                    const items = Array.from(orgTypes.entries())
+                        .map(([t, count]) => `${escapeHtml(t)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Organization Type</td><td>${items}</td></tr>`;
+                }
+                
+                if (adminStates.size > 0) {
+                    const items = Array.from(adminStates.entries())
+                        .map(([s, count]) => `${escapeHtml(s)} (${count})`)
+                        .join(", ");
+                    summaryHtml += `<tr><td>Admin State</td><td>${items}</td></tr>`;
+                }
+                
+                if (parentNames.size > 0) {
+                    const names = Array.from(parentNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Parent Office</td><td>${names}${parentNames.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (cityLabels.size > 0) {
+                    const cities = Array.from(cityLabels).slice(0, 10).map(n => escapeHtml(n)).join(", ");
+                    summaryHtml += `<tr><td>Office Location</td><td>${cities}${cityLabels.size > 10 ? " ..." : ""}</td></tr>`;
+                }
+                
+                if (stateUrls.size > 0) {
+                    const urls = Array.from(stateUrls).slice(0, 5).map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join("<br/>");
+                    summaryHtml += `<tr><td>State Office URL</td><td>${urls}</td></tr>`;
+                }
+            }
+        }
+        
         // Generic fallback: If no specific handler generated content, scan for common name/status fields
         if (!summaryHtml && rows.length > 0) {
             const genericNames = new Set();
@@ -3866,6 +3989,8 @@ async function buildFinalReportHtml() {
                     if (l?.type === "tile") { l.visible = true; continue; }
                     // ✅ Show PLSS Section layer on all per-layer maps
                     if (plssSectionLayer && l === plssSectionLayer) { l.visible = true; continue; }
+                    // ✅ Keep always-visible layers (e.g. BLM Admin Units) visible
+                    if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
                     l.visible = false;
                 }
                 if (tempLayer) tempLayer.visible = true;
@@ -3895,19 +4020,27 @@ async function buildFinalReportHtml() {
 
                 // Get geometry type for appropriate renderer — fully opaque for final report
                 const tempGeomType = await getLayerGeometryType(item.url);
-                const opaqueRenderer = makeRendererOpaque(
-                    getPresetRenderer("report", layerCfgByUrl.get(item.url)?.cfg || null, tempGeomType)
-                );
-                const temp = new FeatureLayer({
+                const itemCfg = layerCfgByUrl.get(item.url)?.cfg || null;
+                const useNativeRenderer = itemCfg?.useServiceRenderer === true;
+                const opaqueRenderer = useNativeRenderer
+                    ? undefined
+                    : makeRendererOpaque(getPresetRenderer("report", itemCfg, tempGeomType));
+                const tempOpts = {
                     url: item.url,
                     title: item.title,
                     outFields: ["*"],
-                    visible: true,
-                    renderer: opaqueRenderer || undefined
-                });
+                    visible: true
+                };
+                if (!useNativeRenderer) {
+                    tempOpts.renderer = opaqueRenderer || undefined;
+                }
+                const temp = new FeatureLayer(tempOpts);
 
-                temp.minScale = 0;
-                temp.maxScale = 0;
+                // Only force scale override for non-native-renderer layers
+                if (!useNativeRenderer) {
+                    temp.minScale = 0;
+                    temp.maxScale = 0;
+                }
 
                 view.map.add(temp);
                 try {
@@ -4060,6 +4193,8 @@ async function generateAoiMapsWithCircles() {
             if (l?.type === "tile") { l.visible = true; continue; }
             // ✅ Show PLSS Township layer on AOI maps
             if (plssTownshipLayer && l === plssTownshipLayer) { l.visible = true; continue; }
+            // ✅ Keep always-visible layers (e.g. BLM Admin Units) visible
+            if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
             l.visible = false;
         }
         ensureAoiOnTop(view.map);
