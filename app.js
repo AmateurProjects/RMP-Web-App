@@ -4546,8 +4546,7 @@ function buildDataSourcesSection() {
 
         const overviewExtentLayer = new GraphicsLayer();
         let overviewMap = new EsriMap({
-            basemap: imageryBasemapId,
-            layers: [overviewExtentLayer]
+            basemap: imageryBasemapId
         });
         const overviewView = new MapView({
             container: "overviewMapView",
@@ -4571,27 +4570,15 @@ function buildDataSourcesSection() {
         // Place the overview div into the main view's UI
         const overviewDiv = document.getElementById("overviewDiv");
         if (overviewDiv) {
-            view.ui.add(overviewDiv, "top-left");
+            view.ui.add(overviewDiv, "bottom-left");
         }
 
-        // --- Sync: update overview extent + extent graphic ---
-        const extentSymbol = {
-            type: "simple-fill",
-            color: [255, 60, 60, 0.12],
-            outline: { color: [255, 60, 60, 0.9], width: 1.5 }
-        };
+        // --- Sync: update overview extent ---
 
         function syncOverview() {
             if (!view.extent) return;
             const expanded = view.extent.expand(OVERVIEW_EXPAND);
             overviewView.goTo(expanded, { animate: false }).catch(() => {});
-
-            // Update the extent indicator graphic
-            overviewExtentLayer.removeAll();
-            overviewExtentLayer.add(new Graphic({
-                geometry: view.extent,
-                symbol: extentSymbol
-            }));
         }
 
         // Sync when main view settles
