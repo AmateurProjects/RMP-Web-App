@@ -4527,8 +4527,8 @@ async function buildFinalReportHtml() {
                 ensureAoiOnTop(view.map);
             }
 
-            // ✅ Calculate consistent extent for all per-layer maps (AOI with tight buffer)
-            const consistentExtent = selectionGeom.extent.expand(1.05);
+            // ✅ Calculate consistent extent for all per-layer maps (AOI with minimal buffer)
+            const consistentExtent = selectionGeom.extent.expand(1.01);
 
             // ✅ Switch to imagery basemap ONCE before all per-layer maps
             try {
