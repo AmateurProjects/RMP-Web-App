@@ -6,6 +6,7 @@ require([
     "app/query-engine",
     "app/final-report",
     "app/visual-report",
+    "app/feature-picker",
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
@@ -15,7 +16,7 @@ require([
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer"
-], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, featurePickerModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
 
     // ── Destructure config-helpers for functions already extracted ──
     const {
@@ -320,6 +321,10 @@ function setBusy(isBusy) {
     const {
         setVisualStatus, clearVisualReport, renderVisualSummary, generateVisualReportData
     } = visualReport;
+
+    // ── Initialize feature-picker module with shared state + deps ──
+    featurePickerModule.init(state, { GraphicsLayer, Graphic });
+    const { showFeaturePicker, hideFeaturePicker } = featurePickerModule;
 
     // Track layerView "updating" watch handles so we can remove them (prevents leaks)
     const spinnerWatchByLayerUid = new Map(); // layer.uid -> watchHandle
@@ -1492,248 +1497,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         }
     }
 
-    // ---------- Feature Picker Modal (for overlapping polygons) ----------
-    const featurePickerModal = document.getElementById("featurePickerModal");
-    const featurePickerList = document.getElementById("featurePickerList");
-    const featurePickerCancelBtn = document.getElementById("featurePickerCancelBtn");
-    const featurePickerConfirmBtn = document.getElementById("featurePickerConfirmBtn");
-    const featurePickerContent = document.querySelector(".feature-picker-content");
-    const featurePickerHeader = document.querySelector(".feature-picker-header");
-
-    // Drag functionality for feature picker
-    let pickerDragState = { isDragging: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
-
-    if (featurePickerHeader && featurePickerContent) {
-        featurePickerHeader.addEventListener("mousedown", (e) => {
-            if (e.target.tagName === "BUTTON") return; // Don't drag if clicking buttons
-            pickerDragState.isDragging = true;
-            pickerDragState.startX = e.clientX;
-            pickerDragState.startY = e.clientY;
-            const rect = featurePickerContent.getBoundingClientRect();
-            pickerDragState.offsetX = rect.left;
-            pickerDragState.offsetY = rect.top;
-            featurePickerContent.style.transition = "none";
-        });
-
-        document.addEventListener("mousemove", (e) => {
-            if (!pickerDragState.isDragging) return;
-            const dx = e.clientX - pickerDragState.startX;
-            const dy = e.clientY - pickerDragState.startY;
-            const newLeft = pickerDragState.offsetX + dx;
-            const newTop = pickerDragState.offsetY + dy;
-            featurePickerContent.style.position = "fixed";
-            featurePickerContent.style.left = newLeft + "px";
-            featurePickerContent.style.top = newTop + "px";
-            featurePickerContent.style.right = "auto";
-            featurePickerContent.style.margin = "0";
-        });
-
-        document.addEventListener("mouseup", () => {
-            pickerDragState.isDragging = false;
-            featurePickerContent.style.transition = "";
-        });
-    }
-
-    // State for feature picker
-    let pickerFeatures = [];
-    let pickerSelectedIdx = -1;
-    let pickerOnSelect = null;
-
-    function showFeaturePicker(features, onSelect) {
-        if (!featurePickerModal || !featurePickerList) return;
-
-        // Reset position for new selection
-        if (featurePickerContent) {
-            featurePickerContent.style.position = "";
-            featurePickerContent.style.left = "";
-            featurePickerContent.style.top = "";
-            featurePickerContent.style.right = "";
-            featurePickerContent.style.margin = "";
-        }
-
-        // Store state
-        pickerFeatures = features;
-        pickerSelectedIdx = -1;
-        pickerOnSelect = onSelect;
-
-        // Reset confirm button
-        if (featurePickerConfirmBtn) {
-            featurePickerConfirmBtn.disabled = true;
-            featurePickerConfirmBtn.textContent = "Select This Polygon";
-        }
-
-        // Build the list of features
-        featurePickerList.innerHTML = features.map((f, idx) => {
-            const attrs = f.graphic?.attributes || {};
-            const name = getFeaturePickerDisplayName(attrs);
-            const details = getFeaturePickerDetails(attrs);
-            
-            return `
-                <div class="feature-picker-item" data-idx="${idx}">
-                    <div class="feature-picker-index">${idx + 1}</div>
-                    <div class="feature-picker-info">
-                        <div class="feature-picker-name">${escapeHtml(name)}</div>
-                        ${details ? `<div class="feature-picker-details">${escapeHtml(details)}</div>` : ""}
-                    </div>
-                </div>
-            `;
-        }).join("");
-
-        // Add click handlers for preview (not immediate selection)
-        const items = featurePickerList.querySelectorAll(".feature-picker-item");
-        items.forEach((item) => {
-            item.addEventListener("click", () => {
-                const idx = parseInt(item.getAttribute("data-idx"), 10);
-                selectPickerRow(idx);
-            });
-        });
-
-        featurePickerModal.classList.remove("hidden");
-    }
-
-    function selectPickerRow(idx) {
-        if (idx < 0 || idx >= pickerFeatures.length) return;
-
-        pickerSelectedIdx = idx;
-
-        // Update visual selection state
-        const items = featurePickerList.querySelectorAll(".feature-picker-item");
-        items.forEach((item, i) => {
-            item.classList.toggle("selected", i === idx);
-        });
-
-        // Highlight the selected polygon on the map
-        highlightPickerFeature(pickerFeatures[idx]?.graphic);
-
-        // Enable confirm button and update text
-        if (featurePickerConfirmBtn) {
-            featurePickerConfirmBtn.disabled = false;
-            const name = getFeaturePickerDisplayName(pickerFeatures[idx]?.graphic?.attributes || {});
-            const shortName = name.length > 30 ? name.substring(0, 27) + "..." : name;
-            featurePickerConfirmBtn.textContent = `Select "${shortName}"`;
-        }
-    }
-
-    function confirmPickerSelection() {
-        if (pickerSelectedIdx < 0 || !pickerFeatures[pickerSelectedIdx]) return;
-
-        const selectedFeature = pickerFeatures[pickerSelectedIdx];
-        const callback = pickerOnSelect; // Save callback before hiding clears it
-        hideFeaturePicker();
-
-        if (callback) {
-            callback(selectedFeature);
-        }
-    }
-
-    function hideFeaturePicker() {
-        if (featurePickerModal) {
-            featurePickerModal.classList.add("hidden");
-        }
-        clearPickerHighlight();
-        pickerFeatures = [];
-        pickerSelectedIdx = -1;
-        pickerOnSelect = null;
-    }
-
-    // Highlight layer for picker hover
-    let pickerHighlightLayer = null;
-
-    function highlightPickerFeature(graphic) {
-        if (!graphic || !map || !view) return;
-        
-        clearPickerHighlight();
-        
-        pickerHighlightLayer = new GraphicsLayer({ title: "Picker Highlight" });
-        map.add(pickerHighlightLayer);
-        
-        const highlightGraphic = new Graphic({
-            geometry: graphic.geometry,
-            symbol: {
-                type: "simple-fill",
-                color: [0, 200, 100, 0.35],
-                outline: { color: [0, 150, 50], width: 3 }
-            }
-        });
-        pickerHighlightLayer.add(highlightGraphic);
-    }
-
-    function clearPickerHighlight() {
-        if (pickerHighlightLayer && map) {
-            try { map.remove(pickerHighlightLayer); } catch (e) {}
-            pickerHighlightLayer = null;
-        }
-    }
-
-    // Get display name for feature picker
-    function getFeaturePickerDisplayName(attrs) {
-        const nameFields = [
-            "NAME", "Name", "name",
-            "ALLOT_NAME", "ALLOTMENT_NAME", "Allotment",
-            "PASTURE_NAME", "PASTURE",
-            "LEASE_NAME", "LEASE_NUM", "CASE_FILE_N",
-            "PLAN_NAME", "UNIT_NAME", "AREA_NAME",
-            "LABEL", "TITLE", "DESCRIPTION"
-        ];
-        
-        for (const field of nameFields) {
-            if (attrs[field] && String(attrs[field]).trim()) {
-                return String(attrs[field]).trim();
-            }
-        }
-        
-        // Fallback
-        for (const [key, val] of Object.entries(attrs)) {
-            if (typeof val === "string" && val.trim() &&
-                !key.toLowerCase().includes("objectid") &&
-                !key.toLowerCase().includes("globalid") &&
-                !key.toLowerCase().includes("shape")) {
-                return val.trim().substring(0, 60);
-            }
-        }
-        
-        return "Unnamed Feature";
-    }
-
-    // Get details for feature picker
-    function getFeaturePickerDetails(attrs) {
-        const detailParts = [];
-        const skipFields = ["OBJECTID", "GLOBALID", "SHAPE", "SHAPE_LENGTH", "SHAPE_AREA"];
-        
-        let count = 0;
-        for (const [key, val] of Object.entries(attrs)) {
-            if (count >= 2) break;
-            if (skipFields.some(s => key.toUpperCase().includes(s))) continue;
-            if (val && String(val).trim() && typeof val !== "object") {
-                const displayVal = String(val).trim();
-                if (displayVal.length <= 50) {
-                    detailParts.push(`${key}: ${displayVal}`);
-                    count++;
-                }
-            }
-        }
-        
-        return detailParts.join(" • ");
-    }
-
-    // Cancel button handler
-    if (featurePickerCancelBtn) {
-        featurePickerCancelBtn.addEventListener("click", hideFeaturePicker);
-    }
-
-    // Confirm button handler
-    if (featurePickerConfirmBtn) {
-        featurePickerConfirmBtn.addEventListener("click", confirmPickerSelection);
-    }
-
-    // Close on click outside
-    if (featurePickerModal) {
-        featurePickerModal.addEventListener("click", (e) => {
-            if (e.target === featurePickerModal) {
-                hideFeaturePicker();
-            }
-        });
-    }
+    // Feature picker modal managed by feature-picker.js module
 
     // ---------- Selection layer setup ----------
     async function setActiveSelectionLayerByIndex(idx) {
