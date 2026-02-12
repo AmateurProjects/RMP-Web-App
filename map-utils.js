@@ -1,0 +1,550 @@
+/**
+ * map-utils.js — Map layer management, renderers, AOI display,
+ * screenshot helpers, and layer visibility utilities.
+ *
+ * AMD module. Depends on config-helpers + several Esri modules.
+ *
+ * Usage from app.js:
+ *   const mapUtils = mapUtilsFactory.init(state);
+ *   // state is the shared mutable state object
+ */
+define([
+    "app/config-helpers",
+    "esri/Graphic",
+    "esri/layers/FeatureLayer",
+    "esri/layers/ImageryLayer"
+], function (helpers, Graphic, FeatureLayer, ImageryLayer) {
+    "use strict";
+
+    // ── Module-level reference to shared state (set by init) ──
+    let S = null;
+
+    // ── Renderer / Symbology ─────────────────────────────────────────
+
+    function getPresetRenderer(kind, cfgObj, geometryType) {
+        const sym = S.config?.symbology || {};
+        const defaults = sym.defaults || {};
+        const presets = sym.presets || {};
+
+        let presetId =
+            (cfgObj && cfgObj.symbologyPreset) ||
+            (kind === "selection" ? defaults.selectionPreset :
+                kind === "report" ? defaults.reportPreset :
+                    defaults.aoiPreset);
+
+        if (kind === "report" && geometryType) {
+            const gt = String(geometryType).toLowerCase();
+            if (gt.includes("point")) {
+                presetId = "reportPoint";
+            } else if (gt.includes("line") || gt.includes("polyline")) {
+                presetId = "reportLine";
+            }
+        }
+
+        const r = presetId ? presets[presetId] : null;
+        return r || null;
+    }
+
+    async function getLayerGeometryType(layerUrl) {
+        try {
+            const pjsonUrl = layerUrl.replace(/\/$/, "") + "?f=pjson";
+            const pjson = await helpers.fetchJsonWithTimeout(pjsonUrl, 5000);
+            return pjson?.geometryType || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function makeRendererOpaque(renderer) {
+        if (!renderer) return renderer;
+        const r = JSON.parse(JSON.stringify(renderer));
+        const forceOpaque = (c) => {
+            if (Array.isArray(c) && c.length >= 4) c[3] = (c[3] <= 1) ? 1 : 255;
+        };
+        if (r.symbol) {
+            if (r.symbol.color) forceOpaque(r.symbol.color);
+            if (r.symbol.outline && r.symbol.outline.color) forceOpaque(r.symbol.outline.color);
+        }
+        return r;
+    }
+
+    // ── AOI Layer Management ─────────────────────────────────────────
+
+    function ensureAoiOnTop() {
+        const map = S.map;
+        const aoiLayer = S.aoiLayer;
+        if (!map || !aoiLayer) return;
+        map.reorder(aoiLayer, map.layers.length - 1);
+        if (S.aoiMaskLayer) {
+            map.reorder(S.aoiMaskLayer, map.layers.length - 2);
+        }
+    }
+
+    function updateAoiMask(show) {
+        if (show === undefined) show = true;
+        const aoiMaskLayer = S.aoiMaskLayer;
+        const view = S.view;
+
+        if (!aoiMaskLayer || !view) return;
+
+        aoiMaskLayer.removeAll();
+
+        if (!show || !S.selectionGeom) {
+            aoiMaskLayer.visible = false;
+            return;
+        }
+
+        const viewExt = view.extent;
+        if (!viewExt) {
+            aoiMaskLayer.visible = false;
+            return;
+        }
+
+        const expandedExt = viewExt.expand(5);
+
+        const outerRing = [
+            [expandedExt.xmin, expandedExt.ymin],
+            [expandedExt.xmin, expandedExt.ymax],
+            [expandedExt.xmax, expandedExt.ymax],
+            [expandedExt.xmax, expandedExt.ymin],
+            [expandedExt.xmin, expandedExt.ymin]
+        ];
+
+        let aoiRings = [];
+        if (S.selectionGeom.rings && S.selectionGeom.rings.length > 0) {
+            aoiRings = S.selectionGeom.rings.map(ring => [...ring].reverse());
+        } else if (S.selectionGeom.type === "polygon") {
+            const ext = S.selectionGeom.extent;
+            aoiRings = [[
+                [ext.xmin, ext.ymin],
+                [ext.xmax, ext.ymin],
+                [ext.xmax, ext.ymax],
+                [ext.xmin, ext.ymax],
+                [ext.xmin, ext.ymin]
+            ]];
+        }
+
+        if (aoiRings.length === 0) {
+            aoiMaskLayer.visible = false;
+            return;
+        }
+
+        const allRings = [outerRing, ...aoiRings];
+
+        const maskGraphic = new Graphic({
+            geometry: {
+                type: "polygon",
+                rings: allRings,
+                spatialReference: view.spatialReference
+            },
+            symbol: {
+                type: "simple-fill",
+                color: [255, 255, 255, 0.45],
+                outline: null
+            }
+        });
+
+        aoiMaskLayer.add(maskGraphic);
+        aoiMaskLayer.visible = true;
+    }
+
+    function hideAoiMask() {
+        if (S.aoiMaskLayer) {
+            S.aoiMaskLayer.visible = false;
+            S.aoiMaskLayer.removeAll();
+        }
+    }
+
+    function setAoiGeometry(geom) {
+        const aoiLayer = S.aoiLayer;
+        if (!aoiLayer) return;
+
+        aoiLayer.removeAll();
+        S.aoiGraphic = null;
+
+        if (!geom) return;
+
+        const aoiRenderer = getPresetRenderer("aoi", null);
+        const aoiSymbol = aoiRenderer?.symbol;
+
+        S.aoiGraphic = new Graphic({
+            geometry: geom,
+            symbol: aoiSymbol || undefined
+        });
+
+        aoiLayer.add(S.aoiGraphic);
+    }
+
+    // ── Layer Visibility / Scale ─────────────────────────────────────
+
+    async function ensureLayerVisibleAtScale(layer) {
+        const view = S.view;
+        if (!view || !layer) return;
+
+        const minScale = Number(layer.minScale || 0);
+        const maxScale = Number(layer.maxScale || 0);
+
+        let targetScale = null;
+
+        if (minScale > 0 && isFinite(minScale) && view.scale > minScale) {
+            targetScale = Math.max(1, Math.floor(minScale * 0.90));
+        } else if (maxScale > 0 && isFinite(maxScale) && view.scale < maxScale) {
+            targetScale = Math.ceil(maxScale * 1.10);
+        }
+
+        if (targetScale && isFinite(targetScale) && targetScale > 0) {
+            await view.goTo(
+                { center: view.center, scale: targetScale },
+                { animate: true, duration: 250 }
+            );
+        }
+    }
+
+    // ── Layer Updating / Spinner Helpers ──────────────────────────────
+
+    async function wireLayerUpdatingSpinner(layer, spinnerEl) {
+        const view = S.view;
+        if (!layer || !spinnerEl || !view) return null;
+
+        try {
+            await layer.when();
+            const lv = await view.whenLayerView(layer);
+
+            spinnerEl.classList.toggle("hidden", !lv.updating);
+
+            const handle = lv.watch("updating", (isUpdating) => {
+                spinnerEl.classList.toggle("hidden", !isUpdating);
+            });
+
+            return handle;
+        } catch (e) {
+            spinnerEl.classList.add("hidden");
+            return null;
+        }
+    }
+
+    function waitForViewStationary(timeoutMs) {
+        if (timeoutMs === undefined) timeoutMs = 1200;
+        const view = S.view;
+        if (!view) return Promise.resolve();
+        if (view.stationary) return Promise.resolve();
+
+        return new Promise(resolve => {
+            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
+            const h = view.watch("stationary", (s) => {
+                if (s) {
+                    window.clearTimeout(t);
+                    try { h.remove(); } catch (e) { }
+                    resolve();
+                }
+            });
+        });
+    }
+
+    // ── Screenshot / Capture Helpers ─────────────────────────────────
+
+    async function waitForLayerReadyToCapture(layer, view, opts) {
+        if (!opts) opts = {};
+        const timeoutMs = opts.timeoutMs || 8000;
+        if (!view || !layer) return;
+
+        try { await layer.when(); } catch (e) { console.warn("Layer.when() failed:", e); }
+
+        let lv = null;
+        try {
+            lv = await view.whenLayerView(layer);
+        } catch (e) {
+            console.warn("whenLayerView failed:", e);
+            return;
+        }
+
+        if (!lv) return;
+
+        // Wait for suspended state to resolve
+        if (lv.suspended) {
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, 3000);
+                const h = lv.watch("suspended", (s) => {
+                    if (!s) {
+                        clearTimeout(t);
+                        h.remove();
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        // Wait for initial updating to complete
+        if (lv.updating) {
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, timeoutMs);
+                const h = lv.watch("updating", (u) => {
+                    if (!u) {
+                        clearTimeout(t);
+                        h.remove();
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        // Final render settle time
+        try {
+            await new Promise(r => setTimeout(r, 300));
+        } catch (e) { }
+    }
+
+    async function captureScreenshotWithWait(screenConfig) {
+        if (!screenConfig) screenConfig = {};
+        const view = S.view;
+        if (!view) return null;
+
+        const width = screenConfig.width || (S.config?.visualReport?.screenshotWidth ?? 1400);
+
+        await waitForViewStationary(3000);
+
+        for (let i = 0; i < 4; i++) {
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        await waitForViewStationary(2000);
+
+        try {
+            const ss = await view.takeScreenshot({
+                format: "png",
+                quality: 100,
+                width: width,
+                height: Math.round(width * 0.5625)
+            });
+            return ss?.dataUrl || null;
+        } catch (e) {
+            console.error("Screenshot capture failed:", e);
+            return null;
+        }
+    }
+
+    async function hardRefreshLayer(layer, opts) {
+        if (!opts) opts = {};
+        const timeoutMs = opts.timeoutMs || 5000;
+        const view = S.view;
+        if (!view || !layer) return;
+
+        try { await layer.when(); } catch (e) { console.warn("Layer.when() error:", e); }
+
+        let lv = null;
+        try { lv = await view.whenLayerView(layer); } catch (e) {
+            console.warn("whenLayerView error:", e);
+            return;
+        }
+        if (!lv) return;
+
+        await waitForViewStationary(1500);
+
+        if (lv.suspended) {
+            await new Promise(resolve => {
+                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, 2000);
+                const h = lv.watch("suspended", (s) => {
+                    if (!s) {
+                        clearTimeout(t);
+                        h.remove();
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        if (typeof lv.refresh === "function") {
+            try {
+                lv.refresh();
+            } catch (e) {
+                console.warn("Layer refresh failed:", e);
+            }
+        }
+
+        await new Promise(resolve => {
+            const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, timeoutMs);
+            const h = lv.watch("updating", (u) => {
+                if (!u) {
+                    clearTimeout(t);
+                    h.remove();
+                    resolve();
+                }
+            });
+            if (!lv.updating) {
+                clearTimeout(t);
+                h.remove();
+                resolve();
+            }
+        });
+
+        try {
+            await new Promise(r => setTimeout(r, 200));
+        } catch (e) { }
+    }
+
+    // ── Build Report Display Layers ──────────────────────────────────
+
+    async function buildReportDisplayLayers() {
+        const map = S.map;
+        if (!map) return;
+
+        S.reportLayerViews.clear();
+
+        for (const cfg of (S.config.reportLayers || [])) {
+            const key = helpers.normalizeUrlKey(cfg.url);
+            if (!key) continue;
+            if (S.reportLayerViews.has(key)) continue;
+
+            const useServiceRenderer = cfg.useServiceRenderer === true;
+            const isAlwaysVisible = cfg.alwaysVisible === true;
+
+            try {
+                // FeatureServer root: expand sublayers
+                if (helpers.isFeatureServerRoot(key)) {
+                    const subs = useServiceRenderer
+                        ? await helpers.expandFeatureServerToAllSublayers(key)
+                        : await helpers.expandFeatureServerToPolygonSublayers(key);
+
+                    const layers = [];
+                    for (const sl of subs) {
+                        const geomType = await getLayerGeometryType(sl.url);
+                        const layerOpts = {
+                            url: sl.url,
+                            title: `${cfg.title}: ${sl.title}`,
+                            outFields: ["*"],
+                            visible: isAlwaysVisible
+                        };
+                        if (!useServiceRenderer) {
+                            layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
+                        }
+                        if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
+                        if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
+                        const lyr = new FeatureLayer(layerOpts);
+                        layers.push(lyr);
+                        if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
+                        S.layerCfgByUrl.set(sl.url, { kind: "report", cfg });
+                    }
+
+                    layers.forEach(l => map.add(l));
+                    S.reportLayerViews.set(key, layers);
+                    continue;
+                }
+
+                // MapServer root: expand to sublayers
+                if (helpers.isMapServerRoot(key)) {
+                    const subs = await helpers.expandMapServerToSublayers(key, { polygonOnly: !useServiceRenderer });
+
+                    const layers = [];
+                    for (const sl of subs) {
+                        const geomType = await getLayerGeometryType(sl.url);
+                        const layerOpts = {
+                            url: sl.url,
+                            title: `${cfg.title}: ${sl.title}`,
+                            outFields: ["*"],
+                            visible: isAlwaysVisible
+                        };
+                        if (!useServiceRenderer) {
+                            layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
+                        }
+                        if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
+                        if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
+                        const lyr = new FeatureLayer(layerOpts);
+                        layers.push(lyr);
+                        if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
+                        S.layerCfgByUrl.set(sl.url, { kind: "report", cfg });
+                    }
+
+                    layers.forEach(l => map.add(l));
+                    S.reportLayerViews.set(key, layers);
+                    continue;
+                }
+
+                // ImageServer: create ImageryLayer
+                if (cfg.imageService === true) {
+                    const layerOpts = {
+                        url: key,
+                        title: cfg.title,
+                        visible: isAlwaysVisible
+                    };
+                    if (cfg.renderingRule) {
+                        layerOpts.renderingRule = { functionName: cfg.renderingRule };
+                    }
+                    const lyr = new ImageryLayer(layerOpts);
+                    if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
+                    map.add(lyr);
+                    S.reportLayerViews.set(key, lyr);
+                    S.layerCfgByUrl.set(key, { kind: "report", cfg, isImageService: true });
+                    continue;
+                }
+
+                // Normal single layer
+                const geomType = await getLayerGeometryType(key);
+                const layerOpts = {
+                    url: key,
+                    title: cfg.title,
+                    outFields: ["*"],
+                    visible: isAlwaysVisible
+                };
+                if (!useServiceRenderer) {
+                    layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
+                }
+                if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
+                if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
+                const lyr = new FeatureLayer(layerOpts);
+                if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
+
+                map.add(lyr);
+                S.reportLayerViews.set(key, lyr);
+
+            } catch (e) {
+                console.warn(`[buildReportDisplayLayers] Failed to load "${cfg.title}" (${key}):`, e);
+            }
+        }
+
+        ensureAoiOnTop();
+    }
+
+    // ── Public interface ─────────────────────────────────────────────
+
+    /**
+     * Initialize module with shared state.
+     * @param {Object} state — mutable shared state object with view, map, config, etc.
+     * @returns {Object} — all exported functions
+     */
+    function init(state) {
+        S = state;
+        return api;
+    }
+
+    const api = {
+        init,
+
+        // Renderers
+        getPresetRenderer,
+        getLayerGeometryType,
+        makeRendererOpaque,
+
+        // AOI layer
+        ensureAoiOnTop,
+        updateAoiMask,
+        hideAoiMask,
+        setAoiGeometry,
+
+        // Layer visibility
+        ensureLayerVisibleAtScale,
+        wireLayerUpdatingSpinner,
+
+        // View / stationary
+        waitForViewStationary,
+
+        // Screenshot / capture
+        waitForLayerReadyToCapture,
+        captureScreenshotWithWait,
+        hardRefreshLayer,
+
+        // Report layers
+        buildReportDisplayLayers
+    };
+
+    return api;
+});

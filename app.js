@@ -2,6 +2,7 @@
 
 require([
     "app/config-helpers",
+    "app/map-utils",
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
@@ -11,7 +12,7 @@ require([
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer"
-], function (configHelpers, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+], function (configHelpers, mapUtilsModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
 
     // ── Destructure config-helpers for functions already extracted ──
     const {
@@ -248,6 +249,37 @@ function setBusy(isBusy) {
     let lastReportRowsByLayer = []; // for export-all
     let reportLayerViews = new Map();
 
+    // ── Shared state object for modules (properties updated by app.js) ──
+    const state = {
+        get config() { return config; },
+        get view() { return view; },
+        get map() { return map; },
+        get selectionGeom() { return selectionGeom; },
+        get aoiLayer() { return aoiLayer; },
+        get aoiMaskLayer() { return aoiMaskLayer; },
+        get aoiGraphic() { return aoiGraphic; },
+        set aoiGraphic(v) { aoiGraphic = v; },
+        get aoiSource() { return aoiSource; },
+        get aoiSourcePlssTool() { return aoiSourcePlssTool; },
+        get aoiSourceLayerTitle() { return aoiSourceLayerTitle; },
+        get reportLayerViews() { return reportLayerViews; },
+        get layerCfgByUrl() { return layerCfgByUrl; },
+        get alwaysVisibleLayers() { return alwaysVisibleLayers; },
+        get serviceStatus() { return serviceStatus; },
+        get selectionLayers() { return selectionLayers; }
+    };
+
+    // ── Initialize map-utils module with shared state ──
+    const mapUtils = mapUtilsModule.init(state);
+    const {
+        getPresetRenderer, getLayerGeometryType, makeRendererOpaque,
+        ensureAoiOnTop, updateAoiMask, hideAoiMask, setAoiGeometry,
+        ensureLayerVisibleAtScale, wireLayerUpdatingSpinner,
+        waitForViewStationary, waitForLayerReadyToCapture,
+        captureScreenshotWithWait, hardRefreshLayer,
+        buildReportDisplayLayers
+    } = mapUtils;
+
     // Cached final report HTML
     let cachedFinalReportHtml = null;
 
@@ -467,7 +499,7 @@ function setActiveTab(tabName) {
         // ✅ DO NOT add/remove; selection layers are already added once in init()
         entry.layer.visible = true;
         updateSelectionToggleCheckbox(idx, true);
-        ensureAoiOnTop(map);
+        ensureAoiOnTop();
 
         // ✅ Make sure we're zoomed to a scale where this layer can draw
         await ensureLayerVisibleAtScale(entry.layer);
@@ -498,34 +530,6 @@ function setActiveTab(tabName) {
         if (activeSelectionLayer === entry.layer) {
             activeSelectionLayer = null;
             activeSelectionLayerView = null;
-        }
-    }
-
-    async function ensureLayerVisibleAtScale(layer) {
-        if (!view || !layer) return;
-
-        const minScale = Number(layer.minScale || 0);
-        const maxScale = Number(layer.maxScale || 0);
-
-        // ArcGIS scale logic:
-        // - If view.scale is GREATER than minScale (zoomed out too far), layer may not draw.
-        // - If view.scale is LESS than maxScale (zoomed in too far), layer may not draw.
-        let targetScale = null;
-
-        if (minScale > 0 && isFinite(minScale) && view.scale > minScale) {
-            // zoom IN a bit past minScale
-            targetScale = Math.max(1, Math.floor(minScale * 0.90));
-        } else if (maxScale > 0 && isFinite(maxScale) && view.scale < maxScale) {
-            // zoom OUT a bit past maxScale
-            targetScale = Math.ceil(maxScale * 1.10);
-        }
-
-        if (targetScale && isFinite(targetScale) && targetScale > 0) {
-            // Keep center fixed so extent stays "basically" locked (scale-only nudge)
-            await view.goTo(
-                { center: view.center, scale: targetScale },
-                { animate: true, duration: 250 }
-            );
         }
     }
 
@@ -665,342 +669,6 @@ function setActiveTab(tabName) {
         return m;
     }
 
-    function getPresetRenderer(kind, cfgObj, geometryType) {
-        const sym = config?.symbology || {};
-        const defaults = sym.defaults || {};
-        const presets = sym.presets || {};
-
-        // Allow per-layer override later (optional)
-        let presetId =
-            (cfgObj && cfgObj.symbologyPreset) ||
-            (kind === "selection" ? defaults.selectionPreset :
-                kind === "report" ? defaults.reportPreset :
-                    defaults.aoiPreset);
-
-        // For report layers, select point/line/polygon preset based on geometry type
-        if (kind === "report" && geometryType) {
-            const gt = String(geometryType).toLowerCase();
-            if (gt.includes("point")) {
-                presetId = "reportPoint";
-            } else if (gt.includes("line") || gt.includes("polyline")) {
-                presetId = "reportLine";
-            }
-            // polygons use default "report" preset
-        }
-
-        const r = presetId ? presets[presetId] : null;
-        return r || null;
-    }
-
-    // Helper to get geometry type from a layer URL via pjson
-    async function getLayerGeometryType(layerUrl) {
-        try {
-            const pjsonUrl = layerUrl.replace(/\/$/, "") + "?f=pjson";
-            const pjson = await fetchJsonWithTimeout(pjsonUrl, 5000);
-            return pjson?.geometryType || null;
-        } catch (e) {
-            return null;
-        }
-    }
-
-    function ensureAoiOnTop(map) {
-        if (!map || !aoiLayer) return;
-        // Put AOI layer at top draw order
-        map.reorder(aoiLayer, map.layers.length - 1);
-        // Keep mask layer just below AOI
-        if (aoiMaskLayer) {
-            map.reorder(aoiMaskLayer, map.layers.length - 2);
-        }
-    }
-
-    /**
-     * Update the AOI mask layer with a "donut" polygon that lightens areas outside the AOI.
-     * @param {boolean} show - Whether to show the mask
-     */
-    function updateAoiMask(show = true) {
-        if (!aoiMaskLayer || !view) return;
-        
-        aoiMaskLayer.removeAll();
-        
-        if (!show || !selectionGeom) {
-            aoiMaskLayer.visible = false;
-            return;
-        }
-
-        // Get a large extent that covers beyond the current view
-        const viewExt = view.extent;
-        if (!viewExt) {
-            aoiMaskLayer.visible = false;
-            return;
-        }
-
-        // Expand extent significantly to ensure full coverage when panning/zooming
-        const expandedExt = viewExt.expand(5);
-        
-        // Create outer ring (clockwise for exterior)
-        const outerRing = [
-            [expandedExt.xmin, expandedExt.ymin],
-            [expandedExt.xmin, expandedExt.ymax],
-            [expandedExt.xmax, expandedExt.ymax],
-            [expandedExt.xmax, expandedExt.ymin],
-            [expandedExt.xmin, expandedExt.ymin]
-        ];
-
-        // Get AOI ring(s) - need to reverse for hole (counter-clockwise)
-        let aoiRings = [];
-        if (selectionGeom.rings && selectionGeom.rings.length > 0) {
-            // For polygon geometry, get all rings and reverse them for holes
-            aoiRings = selectionGeom.rings.map(ring => [...ring].reverse());
-        } else if (selectionGeom.type === "polygon") {
-            // Fallback for different geometry structures
-            const ext = selectionGeom.extent;
-            aoiRings = [[
-                [ext.xmin, ext.ymin],
-                [ext.xmax, ext.ymin],
-                [ext.xmax, ext.ymax],
-                [ext.xmin, ext.ymax],
-                [ext.xmin, ext.ymin]
-            ]];
-        }
-
-        if (aoiRings.length === 0) {
-            aoiMaskLayer.visible = false;
-            return;
-        }
-
-        // Create donut polygon: outer ring + hole ring(s)
-        const allRings = [outerRing, ...aoiRings];
-        
-        const maskGraphic = new Graphic({
-            geometry: {
-                type: "polygon",
-                rings: allRings,
-                spatialReference: view.spatialReference
-            },
-            symbol: {
-                type: "simple-fill",
-                color: [255, 255, 255, 0.45], // Semi-transparent white
-                outline: null
-            }
-        });
-
-        aoiMaskLayer.add(maskGraphic);
-        aoiMaskLayer.visible = true;
-    }
-
-    /**
-     * Hide the AOI mask layer
-     */
-    function hideAoiMask() {
-        if (aoiMaskLayer) {
-            aoiMaskLayer.visible = false;
-            aoiMaskLayer.removeAll();
-        }
-    }
-
-    async function wireLayerUpdatingSpinner(layer, spinnerEl) {
-        if (!layer || !spinnerEl || !view) return null;
-
-        try {
-            await layer.when();
-            const lv = await view.whenLayerView(layer);
-
-            spinnerEl.classList.toggle("hidden", !lv.updating);
-
-            const handle = lv.watch("updating", (isUpdating) => {
-                spinnerEl.classList.toggle("hidden", !isUpdating);
-            });
-
-            return handle;
-        } catch (e) {
-            spinnerEl.classList.add("hidden");
-            return null;
-        }
-    }
-
-    function waitForViewStationary(timeoutMs = 1200) {
-        if (!view) return Promise.resolve();
-        if (view.stationary) return Promise.resolve();
-
-        return new Promise(resolve => {
-            const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
-            const h = view.watch("stationary", (s) => {
-                if (s) {
-                    window.clearTimeout(t);
-                    try { h.remove(); } catch (e) { }
-                    resolve();
-                }
-            });
-        });
-    }
-
-    // ✅ NEW: Comprehensive layer view ready check - waits for layer to be fully rendered
-    async function waitForLayerReadyToCapture(layer, view, { timeoutMs = 8000 } = {}) {
-        if (!view || !layer) return;
-
-        try { await layer.when(); } catch (e) { console.warn("Layer.when() failed:", e); }
-
-        let lv = null;
-        try {
-            lv = await view.whenLayerView(layer);
-        } catch (e) {
-            console.warn("whenLayerView failed:", e);
-            return;
-        }
-
-        if (!lv) return;
-
-        // Wait for suspended state to resolve
-        if (lv.suspended) {
-            await new Promise(resolve => {
-                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, 3000);
-                const h = lv.watch("suspended", (s) => {
-                    if (!s) {
-                        clearTimeout(t);
-                        h.remove();
-                        resolve();
-                    }
-                });
-            });
-        }
-
-        // Wait for initial updating to complete
-        if (lv.updating) {
-            await new Promise(resolve => {
-                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, timeoutMs);
-                const h = lv.watch("updating", (u) => {
-                    if (!u) {
-                        clearTimeout(t);
-                        h.remove();
-                        resolve();
-                    }
-                });
-            });
-        }
-
-        // Force a final render by clearing and reapplying visibility
-        try {
-            await new Promise(r => setTimeout(r, 300));
-        } catch (e) { }
-    }
-
-    // ✅ NEW: Improved screenshot capture with proper wait for tiles and basemap changes
-    async function captureScreenshotWithWait(screenConfig = {}) {
-        if (!view) return null;
-
-        const width = screenConfig.width || (config?.visualReport?.screenshotWidth ?? 1400);
-        
-        // ✅ Wait for view to be completely stationary and rendered
-        await waitForViewStationary(3000);
-
-        // ✅ Wait for tile loading in cycles with longer delays
-        for (let i = 0; i < 4; i++) {
-            await new Promise(r => setTimeout(r, 300)); // Longer delay for tiles to load
-        }
-
-        // ✅ Wait one more time after renders
-        await waitForViewStationary(2000);
-
-        // ✅ Capture with improved settings
-        try {
-            const ss = await view.takeScreenshot({
-                format: "png",
-                quality: 100,
-                width: width,
-                height: Math.round(width * 0.5625) // 16:9 aspect ratio
-            });
-            return ss?.dataUrl || null;
-        } catch (e) {
-            console.error("Screenshot capture failed:", e);
-            return null;
-        }
-    }
-
-
-async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
-    if (!view || !layer) return;
-
-    try { await layer.when(); } catch (e) { console.warn("Layer.when() error:", e); }
-
-    let lv = null;
-    try { lv = await view.whenLayerView(layer); } catch (e) {
-        console.warn("whenLayerView error:", e);
-        return;
-    }
-    if (!lv) return;
-
-    // Wait for view to stop moving
-    await waitForViewStationary(1500);
-
-    // If suspended, wait for resume
-    if (lv.suspended) {
-        await new Promise(resolve => {
-            const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, 2000);
-            const h = lv.watch("suspended", (s) => {
-                if (!s) {
-                    clearTimeout(t);
-                    h.remove();
-                    resolve();
-                }
-            });
-        });
-    }
-
-    // Single refresh
-    if (typeof lv.refresh === "function") {
-        try {
-            lv.refresh();
-        } catch (e) {
-            console.warn("Layer refresh failed:", e);
-        }
-    }
-
-    // Wait for updating to finish
-    await new Promise(resolve => {
-        const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, timeoutMs);
-        const h = lv.watch("updating", (u) => {
-            if (!u) {
-                clearTimeout(t);
-                h.remove();
-                resolve();
-            }
-        });
-        if (!lv.updating) {
-            clearTimeout(t);
-            h.remove();
-            resolve();
-        }
-    });
-
-    // Automatic render happens after state changes
-        try {
-            await new Promise(r => setTimeout(r, 200));
-        } catch (e) { }
-}
-
-
-
-    function setAoiGeometry(geom) {
-        // Clears and redraws AOI graphic so it’s always visible (and exportable later)
-        if (!aoiLayer) return;
-
-        aoiLayer.removeAll();
-        aoiGraphic = null;
-
-        if (!geom) return;
-
-        const aoiRenderer = getPresetRenderer("aoi", null);
-        const aoiSymbol = aoiRenderer?.symbol; // simple renderer expected
-
-        aoiGraphic = new Graphic({
-            geometry: geom,
-            symbol: aoiSymbol || undefined
-        });
-
-        aoiLayer.add(aoiGraphic);
-    }
-
-
     async function expandServiceToSublayers(serviceUrl) {
         // Returns array of { title, url } for each sublayer
         const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
@@ -1059,142 +727,6 @@ async function hardRefreshLayer(layer, { timeoutMs = 5000 } = {}) {
 
         return out;
     }
-
-async function buildReportDisplayLayers() {
-    if (!map) return;
-
-    // Clear any previous (defensive)
-    reportLayerViews.clear();
-
-    for (const cfg of (config.reportLayers || [])) {
-        const key = normalizeUrlKey(cfg.url);
-        if (!key) continue;
-
-        // Skip if already built
-        if (reportLayerViews.has(key)) continue;
-
-        const useServiceRenderer = cfg.useServiceRenderer === true;
-        const isAlwaysVisible = cfg.alwaysVisible === true;
-
-        try {
-
-        // FeatureServer root: expand sublayers
-        if (isFeatureServerRoot(key)) {
-            // If useServiceRenderer, expand to ALL sublayers (including points/lines);
-            // otherwise expand to polygon-only as before.
-            const subs = useServiceRenderer
-                ? await expandFeatureServerToAllSublayers(key)
-                : await expandFeatureServerToPolygonSublayers(key);
-
-            const layers = [];
-            for (const sl of subs) {
-                const geomType = await getLayerGeometryType(sl.url);
-                const layerOpts = {
-                    url: sl.url,
-                    title: `${cfg.title}: ${sl.title}`,
-                    outFields: ["*"],
-                    visible: isAlwaysVisible
-                };
-                // Only override renderer if NOT using service renderer
-                if (!useServiceRenderer) {
-                    layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
-                }
-                // Apply scale overrides if specified
-                if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
-                if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
-                const lyr = new FeatureLayer(layerOpts);
-                layers.push(lyr);
-                if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
-                // Register sublayer URL in config index (inherits parent config flags)
-                layerCfgByUrl.set(sl.url, { kind: "report", cfg });
-            }
-
-            layers.forEach(l => map.add(l));
-            reportLayerViews.set(key, layers);
-            continue;
-        }
-
-        // MapServer root: expand to polygon sublayers
-        if (isMapServerRoot(key)) {
-            const subs = await expandMapServerToSublayers(key, { polygonOnly: !useServiceRenderer });
-
-            const layers = [];
-            for (const sl of subs) {
-                const geomType = await getLayerGeometryType(sl.url);
-                const layerOpts = {
-                    url: sl.url,
-                    title: `${cfg.title}: ${sl.title}`,
-                    outFields: ["*"],
-                    visible: isAlwaysVisible
-                };
-                if (!useServiceRenderer) {
-                    layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
-                }
-                // Apply scale overrides if specified
-                if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
-                if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
-                const lyr = new FeatureLayer(layerOpts);
-                layers.push(lyr);
-                if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
-                // Register sublayer URL in config index (inherits parent config flags)
-                layerCfgByUrl.set(sl.url, { kind: "report", cfg });
-            }
-
-            layers.forEach(l => map.add(l));
-            reportLayerViews.set(key, layers);
-            continue;
-        }
-
-        // ImageServer: create ImageryLayer
-        if (cfg.imageService === true) {
-            const layerOpts = {
-                url: key,
-                title: cfg.title,
-                visible: isAlwaysVisible
-            };
-            // Apply rendering rule if specified
-            if (cfg.renderingRule) {
-                layerOpts.renderingRule = { functionName: cfg.renderingRule };
-            }
-            const lyr = new ImageryLayer(layerOpts);
-            if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
-            map.add(lyr);
-            reportLayerViews.set(key, lyr);
-            // Mark as image service in config index
-            layerCfgByUrl.set(key, { kind: "report", cfg, isImageService: true });
-            continue;
-        }
-
-        // Normal single layer - get geometry type
-        const geomType = await getLayerGeometryType(key);
-        const layerOpts = {
-            url: key,
-            title: cfg.title,
-            outFields: ["*"],
-            visible: isAlwaysVisible
-        };
-        if (!useServiceRenderer) {
-            layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
-        }
-        // Apply scale overrides if specified
-        if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
-        if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
-        const lyr = new FeatureLayer(layerOpts);
-        if (isAlwaysVisible) alwaysVisibleLayers.push(lyr);
-
-        map.add(lyr);
-        reportLayerViews.set(key, lyr);
-
-        } catch (e) {
-            console.warn(`[buildReportDisplayLayers] Failed to load "${cfg.title}" (${key}):`, e);
-            // Continue loading remaining layers
-        }
-    }
-
-    ensureAoiOnTop(map);
-}
-
-
 
 
 function clearAll() {
@@ -1312,7 +844,7 @@ function clearAll() {
             if (!isOnMapNow) map.add(e.layer);
 
             e.layer.visible = true;
-            ensureAoiOnTop(map);
+            ensureAoiOnTop();
             await hardRefreshLayer(e.layer);
 
             clearSpinnerWatch(e.layer);
@@ -1428,7 +960,7 @@ cb.addEventListener("change", async () => {
         setVisible(existing, false);
     }
 
-    ensureAoiOnTop(map);
+    ensureAoiOnTop();
     });
 
 });
@@ -2799,13 +2331,13 @@ async function generateVisualReportData(myOp, modal = null) {
                 if (tempLayer) tempLayer.visible = true;
                 // Show AOI mask to lighten areas outside AOI
                 updateAoiMask(true);
-                ensureAoiOnTop(view.map);
+                ensureAoiOnTop();
             }
 
             function restoreVisibility() {
                 visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
                 hideAoiMask();
-                ensureAoiOnTop(view.map);
+                ensureAoiOnTop();
             }
 
             // AOI area in acres (used for context)
@@ -3957,18 +3489,6 @@ async function generateVisualReportData(myOp, modal = null) {
         return summaryHtml;
     }
 
-    // Helper: clone a renderer and force all color alphas to fully opaque
-    function makeRendererOpaque(renderer) {
-        if (!renderer) return renderer;
-        const r = JSON.parse(JSON.stringify(renderer));
-        const forceOpaque = (c) => { if (Array.isArray(c) && c.length >= 4) c[3] = (c[3] <= 1) ? 1 : 255; };
-        if (r.symbol) {
-            if (r.symbol.color) forceOpaque(r.symbol.color);
-            if (r.symbol.outline && r.symbol.outline.color) forceOpaque(r.symbol.outline.color);
-        }
-        return r;
-    }
-
 
     function openHtmlInNewTab(htmlString) {
         const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
@@ -4543,13 +4063,13 @@ async function buildFinalReportHtml() {
                 if (tempLayer) tempLayer.visible = true;
                 // Show AOI mask to lighten areas outside AOI
                 updateAoiMask(true);
-                ensureAoiOnTop(view.map);
+                ensureAoiOnTop();
             }
 
             function restoreVisibility() {
                 visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
                 hideAoiMask();
-                ensureAoiOnTop(view.map);
+                ensureAoiOnTop();
             }
 
             // ✅ Calculate consistent extent for all per-layer maps (AOI fills frame)
@@ -4895,13 +4415,13 @@ async function generateAoiMapsWithCircles() {
             if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
             l.visible = false;
         }
-        ensureAoiOnTop(view.map);
+        ensureAoiOnTop();
     }
 
     function restoreVisibility() {
         visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
         hideAoiMask();
-        ensureAoiOnTop(view.map);
+        ensureAoiOnTop();
     }
 
     /**
@@ -5617,7 +5137,7 @@ function buildDataSourcesSection() {
                 }
 
                 // Ensure AOI stays on top and extent indicator is current
-                ensureAoiOnTop(map);
+                ensureAoiOnTop();
                 updateOverviewExtentGraphic();
             });
         }
@@ -5686,7 +5206,7 @@ function buildDataSourcesSection() {
         await buildReportDisplayLayers();
 
         renderLayerToggles(map);
-        ensureAoiOnTop(map);
+        ensureAoiOnTop();
 
         setLoadingState("Waiting for map view...", 65);
 
