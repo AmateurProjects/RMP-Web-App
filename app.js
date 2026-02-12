@@ -4639,8 +4639,8 @@ async function buildFinalReportHtml() {
                         setVisibilityForScreenshot(temp);
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                         await view.goTo(consistentExtent, { animate: false });
-                        // ✅ Zoom in tighter after fitting extent (reduce scale by 15%)
-                        await view.goTo({ center: view.center, scale: view.scale * 0.85 }, { animate: false });
+                        // ✅ Zoom in tighter after fitting extent (reduce scale by 50% for closer framing)
+                        await view.goTo({ center: view.center, scale: view.scale * 0.5 }, { animate: false });
                         await waitForViewStationary(2500);
                         
                         const dataUrl = await captureScreenshotWithWait({ width });
@@ -4716,8 +4716,8 @@ async function buildFinalReportHtml() {
 
                     // ✅ Zoom in to consistent extent (AOI with small buffer) for all per-layer maps
                     await view.goTo(consistentExtent, { animate: false });
-                    // ✅ Zoom in tighter after fitting extent (reduce scale by 15%)
-                    await view.goTo({ center: view.center, scale: view.scale * 0.85 }, { animate: false });
+                    // ✅ Zoom in tighter after fitting extent (reduce scale by 50% for closer framing)
+                    await view.goTo({ center: view.center, scale: view.scale * 0.5 }, { animate: false });
                     await waitForViewStationary(2000);
 
                     // ✅ Use improved screenshot capture with tile wait logic
