@@ -5,6 +5,7 @@ require([
     "app/map-utils",
     "app/query-engine",
     "app/final-report",
+    "app/visual-report",
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
@@ -14,7 +15,7 @@ require([
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer"
-], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
 
     // ── Destructure config-helpers for functions already extracted ──
     const {
@@ -82,11 +83,7 @@ require([
     const tabVisualPanel = document.getElementById("tabVisualPanel");      
     const tabReportFinalPanel = document.getElementById("tabReportFinalPanel");
 
-    // Visual report DOM
-    const visualReportStatusEl = document.getElementById("visualReportStatus");
-    const visualReportMapWrapEl = document.getElementById("visualReportMapWrap");
-    const visualReportOutputsEl = document.getElementById("visualReportOutputs");
-    const visualReportSummaryEl = document.getElementById("visualReportSummary");
+    // Visual report DOM managed by visual-report.js module
 
     // Final report DOM
     const viewReportBtn = document.getElementById("viewReportBtn");
@@ -314,6 +311,15 @@ function setBusy(isBusy) {
         generateAoiMapsWithCircles, buildFinalReportHtml, viewFinalReport,
         getCachedFinalReportHtml, setCachedFinalReportHtml
     } = finalReport;
+
+    // ── Initialize visual-report module with shared state + deps ──
+    const visualReport = visualReportModule.init(state, {
+        mapUtils, queryEngine, ImageryLayer, FeatureLayer, geometryEngine,
+        isReportCanceled
+    });
+    const {
+        setVisualStatus, clearVisualReport, renderVisualSummary, generateVisualReportData
+    } = visualReport;
 
     // Track layerView "updating" watch handles so we can remove them (prevents leaks)
     const spinnerWatchByLayerUid = new Map(); // layer.uid -> watchHandle
@@ -560,8 +566,7 @@ function clearAll() {
     lastReportRowsByLayer = [];
     
     // Clear map outputs
-    if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = "";
-    if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
+    clearVisualReport();
     
     // Clear final report
     setCachedFinalReportHtml(null);
@@ -1441,338 +1446,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
 
 
-    function setVisualStatus(msg) {
-        if (visualReportStatusEl) visualReportStatusEl.textContent = msg || "";
-    }
-
-    function renderVisualSummary() {
-        if (!visualReportSummaryEl) return;
-
-        if (!selectionGeom) {
-            visualReportSummaryEl.innerHTML = `<div class="small">(No AOI selected.)</div>`;
-            return;
-        }
-
-        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-            visualReportSummaryEl.innerHTML = `<div class="small">(Run the report to populate layer counts.)</div>`;
-            return;
-        }
-
-        const totalLayers = lastReportRowsByLayer.length;
-        const layersWithHits = lastReportRowsByLayer.filter(x => (x.count || 0) > 0);
-        const totalHits = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
-
-        const top = layersWithHits
-            .slice()
-            .sort((a, b) => (b.count || 0) - (a.count || 0))
-            .slice(0, 12);
-
-        const listHtml = top.length
-            ? `<div style="margin-top:8px;">
-                ${top.map(x => `<div class="small">• ${escapeHtml(x.title)} <span class="mono">(${x.count})</span></div>`).join("")}
-            </div>`
-            : `<div class="small" style="margin-top:8px;">(No intersect hits.)</div>`;
-
-        visualReportSummaryEl.innerHTML = `
-        <div class="small">Layers queried: <b>${totalLayers}</b></div>
-        <div class="small">Layers with hits: <b>${layersWithHits.length}</b></div>
-        <div class="small">Total intersecting features (sum of counts): <b>${totalHits}</b></div>
-        ${listHtml}
-        `;
-    }
-
-async function generateVisualReportData(myOp, modal = null) {
-
-        if (!view) return;
-
-        if (!selectionGeom) {
-            setVisualStatus("No AOI selected.");
-            return;
-        }
-
-        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-            setVisualStatus("No query results available.");
-            return;
-        }
-
-        setVisualStatus("Generating maps for intersecting layers…");
-
-        if (visualReportMapWrapEl) visualReportMapWrapEl.classList.add("hidden");
-        if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = "";
-
-        try {
-            // Only layers with real intersect hits AND usable query objects
-            // Include ImageServer layers even though they don't have _layer/_exportQuery
-            const targets = lastReportRowsByLayer
-                .filter(x => (x?.count || 0) > 0)
-                .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService) // excludes pinned AOI source etc.
-                .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")))
-                .filter(x => !(x.title && x.title.toLowerCase().includes("administrative unit")));
-
-            if (!targets.length) {
-                setVisualStatus("No intersecting layers to map (all counts are 0).");
-                if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
-                return;
-            }
-
-            // Zoom to AOI with padding once (we’ll keep the view there)
-            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
-            const width = config?.visualReport?.screenshotWidth ?? 1400;
-
-            // 🔒 Compute and lock a single extent for ALL screenshots
-            let fixedExtent = null;
-            const ext = selectionGeom?.extent;
-
-            if (ext && ext.expand) {
-                fixedExtent = ext.expand(paddingFactor);
-                await view.goTo(fixedExtent, { animate: true, duration: 450 });
-            } else {
-                await view.goTo(selectionGeom, { animate: true, duration: 450 });
-            }
-
-            // Snapshot current layer visibility so we can restore after each screenshot
-            const allLayers = view.map.layers.toArray();
-
-            const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
-
-            // Helper to hide everything except AOI + basemap overlay + a temp target layer
-            function setVisibilityForScreenshot(tempLayer) {
-                for (const l of allLayers) {
-                    // Keep AOI layer visible
-                    if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                    // Keep AOI mask layer visible for per-layer maps
-                    if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
-
-                    // Keep SMA overlay visible (your TileLayer at bottom) if present
-                    // (We don’t have the variable here; keep TileLayers visible by default.)
-                    if (l?.type === "tile") { l.visible = true; continue; }
-
-                    // Keep always-visible layers (e.g. BLM Admin Units) visible
-                    if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
-
-                    // Hide everything else (selection layers, other report layers, etc.)
-                    l.visible = false;
-                }
-
-                if (tempLayer) tempLayer.visible = true;
-                // Show AOI mask to lighten areas outside AOI
-                updateAoiMask(true);
-                ensureAoiOnTop();
-            }
-
-            function restoreVisibility() {
-                visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
-                hideAoiMask();
-                ensureAoiOnTop();
-            }
-
-            // AOI area in acres (used for context)
-            let aoiAcres = 0;
-            try {
-                const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
-                aoiAcres = aoiSqm / SQM_PER_ACRE;
-            } catch (e) {
-                aoiAcres = 0;
-            }
-
-            const outCards = [];
-
-            for (let i = 0; i < targets.length; i++) {
-                if (isReportCanceled(myOp)) { 
-                    setVisualStatus("canceled");
-                    break;
-                }
-
-                const item = targets[i];
-
-                // ✅ Update modal progress
-                if (modal) {
-                    const progress = 60 + (25 * (i / targets.length)); // 60% → 85%
-                    modal.setProgress(progress);
-                    modal.setStep(`Step 3/4: Generating map ${i + 1}/${targets.length}...`);
-                    modal.addLog(`Generating map for: ${item.title}`);
-                }
-
-                setVisualStatus(`Generating map ${i + 1} / ${targets.length}…`);
-
-                // Handle ImageServer layers differently
-                if (item.__isImageService) {
-                    const imgLayerOpts = {
-                        url: item.url,
-                        title: item.title,
-                        visible: true
-                    };
-                    if (item.__renderingRule) {
-                        imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
-                    }
-                    const temp = new ImageryLayer(imgLayerOpts);
-                    view.map.add(temp);
-                    
-                    try {
-                        setVisibilityForScreenshot(temp);
-                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
-                        await view.goTo(fixedExtent, { animate: false });
-                        await waitForViewStationary(2500);
-                        
-                        const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
-                        if (!ss?.dataUrl) throw new Error("Screenshot failed");
-                        const dataUrl = ss.dataUrl;
-
-                        const meta = item.__serviceMeta || {};
-                        
-                        // Compute elevation statistics for the AOI
-                        const elevStats = await computeElevationStats(item.url, selectionGeom);
-                        
-                        let elevStatsHtml = '';
-                        if (elevStats) {
-                            elevStatsHtml = `
-                                <tr><td colspan="2" style="font-weight:600; padding-top:8px;">Elevation (AOI)</td></tr>
-                                <tr><td>Min</td><td>${formatNumber(elevStats.minFt, 0)} ft</td></tr>
-                                <tr><td>Max</td><td>${formatNumber(elevStats.maxFt, 0)} ft</td></tr>
-                                <tr><td>Change</td><td>${formatNumber(elevStats.elevationChangeFt, 0)} ft</td></tr>
-                            `;
-                        }
-                        
-                        outCards.push(`
-                          <div class="visual-output-card">
-                            <div class="visual-output-title">${escapeHtml(item.title)}</div>
-                            <img class="visual-output-img" src="${dataUrl}" alt="${escapeHtml(item.title)}" />
-                            <div class="visual-output-meta">
-                              <table>
-                                <tr><td>Type</td><td>Image Service</td></tr>
-                                <tr><td>Service</td><td>${escapeHtml(meta.name || item.title)}</td></tr>
-                                ${elevStatsHtml}
-                                ${meta.copyright ? `<tr><td>Source</td><td>${escapeHtml(meta.copyright)}</td></tr>` : ''}
-                              </table>
-                            </div>
-                          </div>
-                        `);
-                    } finally {
-                        try { view.map.remove(temp); } catch (e) { }
-                        restoreVisibility();
-                    }
-                    continue;
-                }
-
-                // Create a temporary layer for this URL, regardless of toggle state
-                // Get geometry type for appropriate renderer — fully opaque for visual report
-                const tempGeomType = await getLayerGeometryType(item.url);
-                const vrItemCfg = layerCfgByUrl.get(item.url)?.cfg || null;
-                const vrUseNative = vrItemCfg?.useServiceRenderer === true;
-                const opaqueVRRenderer = vrUseNative
-                    ? undefined
-                    : makeRendererOpaque(getPresetRenderer("report", vrItemCfg, tempGeomType));
-                const tempOpts = {
-                    url: item.url,
-                    title: item.title,
-                    outFields: ["*"],
-                    visible: true
-                };
-                if (!vrUseNative) {
-                    tempOpts.renderer = opaqueVRRenderer || undefined;
-                }
-                const temp = new FeatureLayer(tempOpts);
-
-                // 🔒 Only force scale override for non-native-renderer layers
-                if (!vrUseNative) {
-                    temp.minScale = 0;
-                    temp.maxScale = 0;
-                }
-
-                // Add temp, hide everything else, screenshot, then remove temp
-                view.map.add(temp);
-                try {
-                    setVisibilityForScreenshot(temp);
-
-                    // Wait for layer to load
-                    try { await temp.when(); } catch (e) { }
-
-                    // ✅ Wait until layerView is not suspended AND not updating (best effort)
-                    try {
-                        const lv = await view.whenLayerView(temp);
-
-                        // Wait for suspended -> false OR timeout
-                        if (lv?.suspended) {
-                            await new Promise(resolve => {
-                                const h = lv.watch("suspended", (s) => {
-                                    if (!s) { h.remove(); resolve(); }
-                                });
-                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 4000);
-                            });
-                        }
-
-                        // Wait for updating -> false OR timeout
-                        if (lv?.updating) {
-                            await new Promise(resolve => {
-                                const h = lv.watch("updating", (u) => {
-                                    if (!u) { h.remove(); resolve(); }
-                                });
-                                window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, 6000);
-                            });
-                        }
-                    } catch (e) { }
-
-                    // 🔒 Re-apply locked extent to guarantee identical framing
-                    if (fixedExtent) {
-                        await view.goTo(fixedExtent, { animate: false });
-                    }
-
-                    const ss = await view.takeScreenshot({ format: "png", quality: 100, width });
-                    const dataUrl = ss?.dataUrl;
-                    if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
-
-                    // Compute coverage stats (acres + % AOI covered)
-                    const cov = await computeLayerCoverageStats(item, selectionGeom);
-
-                    // Render a card for this layer
-                    const acresCovered = cov ? cov.acresCovered : 0;
-                    const pctCovered = cov ? cov.pctAoiCovered : 0;
-
-                    // Check for low coverage warning (single feature with <3% coverage)
-                    const isSingleFeatureLowCoverage = (item.count === 1 && pctCovered < 3);
-                    const lowCoverageWarningHtml = isSingleFeatureLowCoverage
-                        ? `<div style="margin-top:8px; padding:6px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px; font-size:11px;">
-                            <span style="color:#856404;">⚠️ Low coverage (&lt;3%) — possible sliver or boundary artifact</span>
-                           </div>`
-                        : "";
-
-                    outCards.push(`
-                  <div class="visual-output-card">
-                    <div class="visual-output-title">${escapeHtml(item.title)}</div>
-                    <img class="visual-output-img" src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}" />
-                    <div class="visual-output-meta">
-                      <table>
-                        <tr><td>AOI area</td><td><span class="mono">${formatNumber(aoiAcres, 2)}</span> acres</td></tr>
-                        <tr><td>Intersecting features</td><td><span class="mono">${escapeHtml(String(item.count || 0))}</span></td></tr>
-                        <tr><td>AOI covered by layer</td><td><span class="mono">${formatNumber(acresCovered, 2)}</span> acres</td></tr>
-                        <tr><td>% AOI covered</td><td><span class="mono">${formatNumber(pctCovered, 2)}</span>%${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage — possible sliver">⚠️</span>' : ''}</td></tr>
-                      </table>
-                      ${lowCoverageWarningHtml}
-                    </div>
-                  </div>
-                `);
-
-                } finally {
-                    // Remove temp layer and restore visibility
-                    try { view.map.remove(temp); } catch (e) { }
-                    restoreVisibility();
-                }
-            }
-
-            if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = outCards.join("");
-            if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
-
-            // Keep your existing summary panel behavior
-            renderVisualSummary();
-
-            setVisualStatus("Maps generated.");
-        } catch (e) {
-            console.error(e);
-            setVisualStatus("Failed to generate maps (see console).");
-        }    
-    }
-
+    // setVisualStatus, renderVisualSummary, generateVisualReportData moved to visual-report.js
     // buildFinalReportHtml moved to final-report.js module
+
+
+
+
 
     async function getFullFeatureGeometryFromLayer(layer, graphic) {
         if (!layer || !graphic) {
