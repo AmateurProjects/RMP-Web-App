@@ -3,6 +3,7 @@
 require([
     "app/config-helpers",
     "app/map-utils",
+    "app/query-engine",
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
@@ -12,13 +13,21 @@ require([
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer"
-], function (configHelpers, mapUtilsModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+], function (configHelpers, mapUtilsModule, queryEngineModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
 
     // ── Destructure config-helpers for functions already extracted ──
     const {
         escapeHtml, normalize, plssToolLabel,
         isPlssLayerTitleOrUrl, isPlssIntersectedLayerTitle,
-        isFeatureServerRoot, isMapServerRoot
+        isFeatureServerRoot, isMapServerRoot,
+        safeFilename, formatNumber,
+        fetchJson, fetchJsonWithTimeout,
+        normalizePjsonUrl, normalizeUrlKey,
+        pickServiceDescription, buildLayerCfgIndex, getConfiguredServices,
+        setBasemapBaseLayerOpacity, isImageryBasemap,
+        expandMapServerToSublayers, expandServiceToSublayers,
+        expandFeatureServerToPolygonSublayers, expandFeatureServerToAllSublayers,
+        flattenAttributes, toCsv, downloadText
     } = configHelpers;
 
 
@@ -280,6 +289,17 @@ function setBusy(isBusy) {
         buildReportDisplayLayers
     } = mapUtils;
 
+    // ── Initialize query-engine module with shared state ──
+    const queryEngine = queryEngineModule.init(state);
+    const {
+        queryAllFeaturesPaged, queryAllFeaturesPagedWithGeometry,
+        filterTouchingOnly, getReportGeometry, unionGeomsChunked,
+        querySingleLayer, computeElevationStats,
+        computeLayerCoverageStats, buildPerFeatureTable,
+        getAoiKey, resetCoverageCacheForAoi, SQM_PER_ACRE,
+        sampleWithoutReplacement, makeTable
+    } = queryEngine;
+
     // Cached final report HTML
     let cachedFinalReportHtml = null;
 
@@ -414,26 +434,6 @@ function setActiveTab(tabName) {
 }
 
 
-    function filterTouchingOnly(features, aoiGeom) {
-        // Drops polygon features that only touch AOI at an edge/vertex (intersection area == 0)
-        if (!features?.length || !aoiGeom) return features || [];
-        const EPS = 0.000001; // sq meters
-
-        return features.filter(f => {
-            const g = f?.geometry;
-            if (!g) return false;
-            try {
-                const inter = geometryEngine.intersect(aoiGeom, g);
-                if (!inter) return false;
-                const area = geometryEngine.geodesicArea(inter, "square-meters");
-                return area > EPS;
-            } catch (e) {
-                // If geometry ops fail, keep it (don’t accidentally drop legit hits)
-                return true;
-            }
-        });
-    }
-
     function findSelectionLayerIndexByNameIncludes(needle) {
         const n = normalize(needle);
         return (selectionLayers || []).findIndex(e => normalize(e?.cfg?.title).includes(n));
@@ -532,202 +532,6 @@ function setActiveTab(tabName) {
             activeSelectionLayerView = null;
         }
     }
-
-    // Optionally filters to polygon layers only (best for “click a polygon to select”).
-    async function expandMapServerToSublayers(serviceUrl, { polygonOnly = true } = {}) {
-        const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
-        const info = await fetchJson(pjsonUrl);
-        const layers = Array.isArray(info?.layers) ? info.layers : [];
-
-        // If polygonOnly: we need each layer’s pjson to know geometryType (MapServer root doesn’t always include it).
-        const out = [];
-
-        for (const l of layers) {
-            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
-
-            if (polygonOnly) {
-                try {
-                    const lpjson = await fetchJson(layerUrl + "?f=pjson");
-                    const g = String(lpjson?.geometryType || "");
-                    // ArcGIS geometry types are like "esriGeometryPolygon"
-                    if (!g.toLowerCase().includes("polygon")) continue;
-                } catch (e) {
-                    // If a sublayer doesn’t return pjson, skip it (safer)
-                    continue;
-                }
-            }
-
-            let title = String(l.name || "");
-
-            // Normalize PLSS naming (handles "Intersected" and "PLSS Intersected", etc.)
-            title = title.replace(/intersected/ig, "Parcel");
-
-            out.push({
-                title,
-                url: layerUrl
-            });
-        }
-
-        return out;
-    }
-
-    function setBasemapBaseLayerOpacity(basemap, opacity) {
-        try {
-            const baseLayers = basemap?.baseLayers?.toArray ? basemap.baseLayers.toArray() : [];
-            baseLayers.forEach(l => { l.opacity = opacity; });
-        } catch (e) {
-            // ignore
-        }
-    }
-
-    function isImageryBasemap(basemap) {
-        // For ArcGIS JS basemap IDs like "satellite", "hybrid"
-        const id = (basemap && (basemap.id || basemap.portalItem?.id || basemap.title)) ? String(basemap.id || basemap.title || "") : "";
-        const title = basemap?.title ? String(basemap.title).toLowerCase() : "";
-        return title.includes("satellite") || title.includes("imagery") || title.includes("hybrid") || id.toLowerCase().includes("satellite") || id.toLowerCase().includes("hybrid");
-    }
-
-    async function fetchJson(url) {
-        const res = await fetch(url, { credentials: "omit" });
-        if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText} for ${url}`);
-        return res.json();
-    }
-
-    // timed JSON fetch for "UP/DOWN" checks
-    async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
-        const controller = new AbortController();
-        const t = window.setTimeout(() => controller.abort(), timeoutMs);
-
-        try {
-            // ✅ avoid stale cached pjson making DOWN services look UP
-            const res = await fetch(url, {
-                credentials: "omit",
-                signal: controller.signal,
-                cache: "no-store"
-            });
-
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-            // Read as text first so we can give a better error if it isn't JSON
-            const txt = await res.text();
-
-            let json = null;
-            try {
-                json = JSON.parse(txt);
-            } catch (e) {
-                // Common if server returns an HTML error page with HTTP 200
-                throw new Error("Non-JSON response (possible HTML error page)");
-            }
-
-            // ✅ ArcGIS often returns HTTP 200 with an error payload
-            if (json && json.error) {
-                const code = json.error.code != null ? json.error.code : "";
-                const msg = json.error.message || "ArcGIS error";
-                throw new Error(`ArcGIS error ${code}: ${msg}`);
-            }
-
-            return json;
-        } finally {
-            window.clearTimeout(t);
-        }
-    }
-
-    // read basic description from service/layer pjson
-    function pickServiceDescription(pjson) {
-        // Different services expose different fields; we pick the first useful one.
-        const candidates = [
-            pjson?.serviceDescription,
-            pjson?.description,
-            pjson?.documentInfo?.Title,
-            pjson?.name
-        ].filter(Boolean);
-
-        return candidates.length ? String(candidates[0]) : "";
-    }
-
-    function normalizePjsonUrl(u) {
-        return u.replace(/\/$/, "") + "?f=pjson";
-    }
-
-    function normalizeUrlKey(u) {
-        return String(u || "").replace(/\/+$/, "");
-    }
-
-    function buildLayerCfgIndex(cfg) {
-        const m = new Map();
-
-        const addList = (kind, arr) => {
-            (arr || []).forEach(l => {
-                if (!l || !l.url) return;
-                m.set(String(l.url), { kind, cfg: l });
-            });
-        };
-
-        addList("selection", cfg?.selectionLayers);
-        addList("report", cfg?.reportLayers);
-
-        return m;
-    }
-
-    async function expandServiceToSublayers(serviceUrl) {
-        // Returns array of { title, url } for each sublayer
-        const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
-        const info = await fetchJson(pjsonUrl);
-        const layers = (info && info.layers) ? info.layers : [];
-        return layers.map(l => ({
-            title: (l && l.name) ? String(l.name) : `Layer ${l.id}`,
-            url: serviceUrl.replace(/\/$/, "") + "/" + l.id
-        }));
-    }
-
-    // Expand a FeatureServer root into polygon sublayers (drawable FeatureLayer URLs).
-    async function expandFeatureServerToPolygonSublayers(serviceUrl) {
-        const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
-        const info = await fetchJson(pjsonUrl);
-        const layers = Array.isArray(info?.layers) ? info.layers : [];
-
-        const out = [];
-        for (const l of layers) {
-            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
-
-            try {
-                const lpjson = await fetchJson(layerUrl + "?f=pjson");
-                const g = String(lpjson?.geometryType || "").toLowerCase();
-                if (!g.includes("polygon")) continue;
-            } catch (e) {
-                continue;
-            }
-
-            let title = l?.name ? String(l.name) : `Layer ${l.id}`;
-
-            // Normalize PLSS naming (handles "Intersected" and "PLSS Intersected", etc.)
-            title = title.replace(/intersected/ig, "Parcel");
-
-            out.push({
-                title,
-                url: layerUrl
-            });
-        }
-
-        return out;
-    }
-
-    // Expand a FeatureServer root into ALL sublayers (points, lines, polygons).
-    async function expandFeatureServerToAllSublayers(serviceUrl) {
-        const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
-        const info = await fetchJson(pjsonUrl);
-        const layers = Array.isArray(info?.layers) ? info.layers : [];
-
-        const out = [];
-        for (const l of layers) {
-            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
-            let title = l?.name ? String(l.name) : `Layer ${l.id}`;
-            out.push({ title, url: layerUrl });
-        }
-
-        return out;
-    }
-
 
 function clearAll() {
     selectionGeom = null;
@@ -966,52 +770,11 @@ cb.addEventListener("change", async () => {
 });
 }
 
-    async function queryAllFeaturesPaged(layer, baseQuery, pageSize, maxExportFeatures) {
-        const all = [];
-        let offset = 0;
-
-        while (true) {
-            const q = baseQuery.clone();
-            q.num = pageSize;
-            q.start = offset;               // ArcGIS JS uses start for resultOffset
-            q.returnGeometry = false;
-
-            const fs = await layer.queryFeatures(q);
-            const feats = (fs && fs.features) ? fs.features : [];
-
-            all.push(...feats);
-
-            if (feats.length < pageSize) break;
-            offset += pageSize;
-
-            if (maxExportFeatures && all.length >= maxExportFeatures) break;
-        }
-
-        return all;
-    }
-
     // ---------- Services tab ----------
-    function getConfiguredServices() {
-        // Show the “services used by the app itself” from config
-        const seen = new Set();
-        const out = [];
-
-        const add = (kind, title, url) => {
-            const key = `${kind}||${url}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            out.push({ kind, title, url });
-        };
-
-        (config.selectionLayers || []).forEach(l => add("Selection", l.title, l.url));
-        (config.reportLayers || []).forEach(l => add("Report", l.title, l.url));
-
-        return out;
-    }
 
 
 async function checkServiceStatusBackground() {
-    const items = getConfiguredServices();
+    const items = getConfiguredServices(config);
     const timeoutMs = config?.services?.timeoutMs ?? 8000;
 
     // ✅ Parallel: all service pings are independent
@@ -1043,7 +806,7 @@ async function checkServiceStatusBackground() {
     async function refreshServicesTab() {
         if (!servicesListEl) return;
 
-        const items = getConfiguredServices();
+        const items = getConfiguredServices(config);
         if (!items.length) {
             servicesListEl.innerHTML = `<div class="small">No services configured.</div>`;
             return;
@@ -1143,216 +906,6 @@ async function checkServiceStatusBackground() {
     }
 
 
-    function sampleWithoutReplacement(arr, n) {
-        const a = (arr || []).slice();
-        if (a.length <= n) return a;
-        // Fisher–Yates shuffle partial
-        for (let i = a.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [a[i], a[j]] = [a[j], a[i]];
-        }
-        return a.slice(0, n);
-    }
-
-    function makeTable(features, maxFields, totalCount) {
-        if (!features || !features.length) return `<div class="small">No sample features fetched.</div>`;
-
-        const picked = sampleWithoutReplacement(features, 4);
-
-        const attrs0 = picked[0].attributes || {};
-        const keysAll = Object.keys(attrs0);
-
-        // ✅ Show ALL columns so horizontal scrolling actually reveals more fields
-        const keys = keysAll;
-
-        // ✅ “Default view” target: ~5 columns visible in the panel before scrolling
-        const defaultVisibleCols = 5;
-        const colPx = 140; // keep aligned with your CSS td max-width
-        const minTableWidth = Math.max(520, keys.length * colPx);
-
-        const th = keys.map(k => `<th title="${escapeHtml(k)}">${escapeHtml(k)}</th>`).join("");
-
-        const rows = picked.map(f => {
-            const a = f.attributes || {};
-            const tds = keys.map(k => {
-                const raw = (a[k] == null) ? "" : String(a[k]);
-
-                // truncate values longer than the *column name*
-                const maxLen = Math.max(4, String(k).length);
-                let shown = raw;
-
-                if (raw.length > maxLen) {
-                    shown = raw.slice(0, Math.max(1, maxLen - 1)) + "…";
-                }
-
-                const safeFull = escapeHtml(raw);
-                const safeShown = escapeHtml(shown);
-
-                return `<td title="${safeFull}">${safeShown}</td>`;
-            }).join("");
-            return `<tr>${tds}</tr>`;
-        }).join("");
-
-        // “more rows” message stays the same
-        let moreRowHtml = "";
-        const total = Number(totalCount || 0);
-        const shown = picked.length;
-
-        if (total > shown) {
-            const more = total - shown;
-            const msg = `… ${more} more row${more === 1 ? "" : "s"} (see FULL export)`;
-            moreRowHtml = `<tr><td colspan="${keys.length}" class="small" style="opacity:.8;">${escapeHtml(msg)}</td></tr>`;
-        }
-
-        // ✅ Hint about horizontal scrolling + “first 5 columns by default”
-        const colHint = (keys.length > defaultVisibleCols)
-            ? `<div class="small table-hint">Table has ${keys.length} columns — scroll → for more.</div>`
-            : "";
-
-        return `
-        <div class="table-wrap">
-            <table class="result-table" style="min-width:${minTableWidth}px">
-            <thead><tr>${th}</tr></thead>
-            <tbody>${rows}${moreRowHtml}</tbody>
-            </table>
-        </div>
-        ${colHint}
-        `;
-    }
-
-
-    function downloadText(filename, text) {
-        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-    }
-
-    function toCsv(rows, preferredFirstCols = []) {
-        if (!rows || !rows.length) return "";
-
-        // Union of all keys across all rows
-        const colSet = new Set();
-        for (const r of rows) {
-            if (!r) continue;
-            Object.keys(r).forEach(k => colSet.add(k));
-        }
-
-        // Put preferred columns first (if present), then the rest alphabetically
-        const preferred = (preferredFirstCols || []).filter(c => colSet.has(c));
-        preferred.forEach(c => colSet.delete(c));
-
-        const rest = Array.from(colSet).sort((a, b) => a.localeCompare(b));
-        const cols = [...preferred, ...rest];
-
-        const escape = (v) => {
-            const s = (v == null) ? "" : String(v);
-            if (/[,"\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-            return s;
-        };
-
-        const header = cols.map(escape).join(",");
-        const body = rows.map(r => cols.map(c => escape(r ? r[c] : "")).join(",")).join("\n");
-        return header + "\n" + body;
-    }
-
-
-    function flattenAttributes(features) {
-        return (features || []).map(f => (f && f.attributes) ? f.attributes : {});
-    }
-
-    function getReportGeometry() {
-        if (!selectionGeom) return null;
-
-        // Only shrink when AOI was selected from PLSS (boundary-touch neighbors)
-        if (aoiSource !== "select") return selectionGeom;
-
-        // Only shrink polygons
-        if (selectionGeom.type !== "polygon") return selectionGeom;
-
-        try {
-            // Shrink inward ~1 meter so touching neighbors don't count as intersects
-            const shrunk = geometryEngine.geodesicBuffer(selectionGeom, -1, "meters");
-            return shrunk || selectionGeom;
-        } catch (e) {
-            console.warn("AOI shrink failed; using original geometry", e);
-            return selectionGeom;
-        }
-    }
-
-
-    // ---------- Query logic ----------
-    async function querySingleLayer(layerUrl, layerTitle, geom, spatialRel = "intersects", options = {}) {
-        const applyTouchFilter = !!options.applyTouchFilter;
-        const objectId = options.objectId ?? null;
-        const objectIdField = options.objectIdField || "OBJECTID";
-
-        const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
-
-        const q = layer.createQuery();
-        q.outFields = ["*"];
-
-        // ✅ Special case: AOI-source layer should return the exact clicked feature (1 row)
-        if (objectId != null) {
-            // Ensure layer is loaded so objectIdField is correct
-            await layer.load();
-
-            const trueOidField = layer.objectIdField || objectIdField || "OBJECTID";
-
-            // Coerce OID to number if it looks numeric (ArcGIS OIDs are typically numeric)
-            const oidNum = Number(objectId);
-            const oidIsNumeric = Number.isFinite(oidNum);
-
-            // Use WHERE instead of objectIds (more robust across services)
-            q.where = oidIsNumeric
-                ? `${trueOidField} = ${oidNum}`
-                : `${trueOidField} = '${String(objectId).replace(/'/g, "''")}'`;
-
-            q.returnGeometry = false;
-            q.outFields = ["*"];
-
-            const fs = await layer.queryFeatures(q);
-            const feats = fs?.features ?? [];
-
-            // Optional: debug if it ever happens again
-            // console.log("AOI-source query", { layerUrl, trueOidField, objectId, oidNum, featsLen: feats.length });
-
-            return {
-                title: layerTitle,
-                url: layerUrl,
-                count: feats.length,
-                features: feats,
-                layer,
-                exportQuery: q
-            };
-        }
-
-
-        // Default: geometry intersect behavior for normal report layers
-        q.geometry = geom;
-        q.spatialRelationship = spatialRel;
-        q.returnGeometry = applyTouchFilter; // only return geometry when filtering touching-only
-
-        const count = await layer.queryFeatureCount(q);
-
-        const maxSamples = config.report?.maxSampleFeaturesPerLayer ?? 25;
-        let features = [];
-
-        if (count > 0 && maxSamples > 0) {
-            const q2 = q.clone();
-            q2.num = Math.min(maxSamples, 2000);
-            const fs = await layer.queryFeatures(q2);
-            const raw = fs?.features ?? [];
-            features = applyTouchFilter ? filterTouchingOnly(raw, geom) : raw;
-        }
-
-        return { title: layerTitle, url: layerUrl, count, features, layer, exportQuery: q };
-    }
 
 // ========================================
 // REFACTORED ANALYSIS FUNCTIONS
@@ -1872,351 +1425,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     }
 
 
-    function safeFilename(name) {
-        return String(name).replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "export";
-    }
 
 
-    // ---------- Coverage stats (AOI acres + % covered by layer) ----------
-    const SQM_PER_ACRE = 4046.8564224;
-    const coverageCache = new Map(); // key: `${aoiKey}||${layerUrl}` -> { acresCovered, pctAoiCovered }
-    let coverageAoiKey = "";         // changes whenever AOI changes
-
-    function getAoiKey(geom) {
-        // stable-enough signature: extent + rounded area
-        try {
-            const ex = geom?.extent;
-            const area = geometryEngine.geodesicArea(geom, "square-meters");
-            return [
-                ex?.xmin, ex?.ymin, ex?.xmax, ex?.ymax,
-                Math.round(area)
-            ].join("|");
-        } catch (e) {
-            return String(Date.now());
-        }
-    }
-
-    function resetCoverageCacheForAoi(geom) {
-        coverageCache.clear();
-        coverageAoiKey = getAoiKey(geom);
-    }
-
-    function formatNumber(n, digits = 2) {
-        const x = Number(n);
-        if (!isFinite(x)) return "";
-        return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
-    }
-
-    async function queryAllFeaturesPagedWithGeometry(layer, baseQuery, pageSize, maxExportFeatures) {
-        const all = [];
-        let offset = 0;
-
-        while (true) {
-            const q = baseQuery.clone();
-            q.num = pageSize;
-            q.start = offset;
-            q.returnGeometry = true;              // ✅ geometry required for area
-            q.outFields = [];                    // we only need geometry
-            q.outSpatialReference = view?.spatialReference;
-
-            const fs = await layer.queryFeatures(q);
-            const feats = (fs && fs.features) ? fs.features : [];
-
-            all.push(...feats);
-
-            if (feats.length < pageSize) break;
-            offset += pageSize;
-
-            if (maxExportFeatures && all.length >= maxExportFeatures) break;
-        }
-
-        return all;
-    }
-
-    /**
-     * Compute elevation statistics (min/max) for an AOI from an ImageServer
-     * Uses the computeHistograms endpoint
-     * @param {string} imageServerUrl - URL of the ImageServer
-     * @param {object} geometry - AOI geometry (polygon)
-     * @returns {Promise<{min: number, max: number, mean: number}|null>}
-     */
-    async function computeElevationStats(imageServerUrl, geometry) {
-        if (!imageServerUrl || !geometry) return null;
-
-        try {
-            // Convert geometry to JSON for the request
-            const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
-            
-            // Use computeHistograms endpoint with geometry (POST to handle large polygons)
-            const url = `${imageServerUrl}/computeHistograms`;
-            const params = new URLSearchParams({
-                f: "json",
-                geometry: geomJson,
-                geometryType: "esriGeometryPolygon"
-            });
-
-            const response = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: params.toString()
-            });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
-            
-            if (data.histograms && data.histograms.length > 0) {
-                const hist = data.histograms[0];
-                // Elevation values are in meters by default
-                const minElev = hist.min;
-                const maxElev = hist.max;
-                // Calculate mean from histogram if available
-                let mean = null;
-                if (hist.counts && hist.size) {
-                    const binWidth = (maxElev - minElev) / hist.counts.length;
-                    let sum = 0, total = 0;
-                    for (let i = 0; i < hist.counts.length; i++) {
-                        const binCenter = minElev + (i + 0.5) * binWidth;
-                        sum += binCenter * hist.counts[i];
-                        total += hist.counts[i];
-                    }
-                    mean = total > 0 ? sum / total : null;
-                }
-                
-                return {
-                    min: minElev,
-                    max: maxElev,
-                    mean: mean,
-                    // Convert to feet as well
-                    minFt: minElev * 3.28084,
-                    maxFt: maxElev * 3.28084,
-                    meanFt: mean ? mean * 3.28084 : null,
-                    elevationChange: maxElev - minElev,
-                    elevationChangeFt: (maxElev - minElev) * 3.28084
-                };
-            }
-            
-            return null;
-        } catch (e) {
-            console.warn("Failed to compute elevation statistics:", e);
-            return null;
-        }
-    }
-
-    function unionGeomsChunked(geoms) {
-        // geometryEngine.union can choke on huge arrays; do it in chunks.
-        const CHUNK = 25;
-        let acc = null;
-
-        for (let i = 0; i < geoms.length; i += CHUNK) {
-            const chunk = geoms.slice(i, i + CHUNK).filter(Boolean);
-            if (!chunk.length) continue;
-
-            const u = geometryEngine.union(chunk);
-            if (!acc) acc = u;
-            else acc = geometryEngine.union([acc, u]);
-        }
-
-        return acc;
-    }
-
-    async function computeLayerCoverageStats(item, aoiGeom) {
-        // Returns: { acresCovered, pctAoiCovered }
-        if (!item || !item._layer || !item._exportQuery || !aoiGeom) return null;
-
-        const layerUrlKey = String(item.url || "").replace(/\/+$/, "");
-        const aoiKey = coverageAoiKey || getAoiKey(aoiGeom);
-        const cacheKey = `${aoiKey}||${layerUrlKey}`;
-
-        if (coverageCache.has(cacheKey)) {
-            return coverageCache.get(cacheKey);
-        }
-
-
-        // AOI area (sqm)
-        let aoiAreaSqm = 0;
-        try {
-            aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters"));
-        } catch (e) {
-            aoiAreaSqm = 0;
-        }
-        if (!aoiAreaSqm) return { acresCovered: 0, pctAoiCovered: 0 };
-
-        const pageSize = config.report?.pageSize ?? 1000;
-        const maxExport = config.report?.maxExportFeatures ?? 50000;
-
-        // Page through intersecting features WITH geometry
-        const feats = await queryAllFeaturesPagedWithGeometry(item._layer, item._exportQuery, pageSize, maxExport);
-
-        // Intersect each feature with AOI and collect intersection geometries
-        const interGeoms = [];
-        for (const f of feats) {
-            const g = f?.geometry;
-            if (!g) continue;
-
-            try {
-                const inter = geometryEngine.intersect(aoiGeom, g);
-                if (!inter) continue;
-
-                // Drop pure edge-touch (0 area) intersections
-                const area = geometryEngine.geodesicArea(inter, "square-meters");
-                if (area <= 0) continue;
-
-                interGeoms.push(inter);
-            } catch (e) {
-                // ignore bad geometries
-            }
-        }
-
-        if (!interGeoms.length) return { acresCovered: 0, pctAoiCovered: 0 };
-
-        // Union intersections to avoid double-counting overlap
-        let unionGeom = null;
-        try {
-            unionGeom = unionGeomsChunked(interGeoms);
-        } catch (e) {
-            unionGeom = null;
-        }
-
-        let coveredSqm = 0;
-        try {
-            coveredSqm = unionGeom
-                ? Math.max(0, geometryEngine.geodesicArea(unionGeom, "square-meters"))
-                : 0;
-        } catch (e) {
-            coveredSqm = 0;
-        }
-
-        const acresCovered = coveredSqm / SQM_PER_ACRE;
-        const pctAoiCovered = Math.min(100, Math.max(0, (coveredSqm / aoiAreaSqm) * 100));
-
-        const out = { acresCovered, pctAoiCovered };
-        coverageCache.set(cacheKey, out);
-        return out;
-    }
-
-    /**
-     * Build a per-feature breakdown table for layers with multiple intersecting features.
-     * Each row = one feature, with relevant attribute columns + Acres + % AOI.
-     */
-    async function buildPerFeatureTable(item, aoiGeom) {
-        if (!item || !item._layer || !item._exportQuery || !aoiGeom) return "";
-        if ((item.count || 0) < 2) return ""; // only for multiple features
-
-        // AOI area
-        let aoiAreaSqm = 0;
-        try {
-            aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters"));
-        } catch (e) { aoiAreaSqm = 0; }
-        if (!aoiAreaSqm) return "";
-
-        const pageSize = config.report?.pageSize ?? 1000;
-        const maxExport = config.report?.maxExportFeatures ?? 50000;
-
-        // Query all features WITH geometry + attributes
-        let feats = [];
-        try {
-            const q = item._exportQuery.clone();
-            q.returnGeometry = true;
-            q.outFields = ["*"];
-            q.outSpatialReference = view?.spatialReference;
-
-            const all = [];
-            let offset = 0;
-            while (true) {
-                const pq = q.clone();
-                pq.num = pageSize;
-                pq.start = offset;
-                const fs = await item._layer.queryFeatures(pq);
-                const batch = fs?.features ?? [];
-                all.push(...batch);
-                if (batch.length < pageSize) break;
-                offset += pageSize;
-                if (all.length >= maxExport) break;
-            }
-            feats = all;
-        } catch (e) {
-            console.warn("buildPerFeatureTable: query failed", e);
-            return "";
-        }
-
-        if (feats.length < 2) return "";
-
-        // Determine relevant attribute columns (skip OID-like, shape, and GlobalID fields)
-        const skipPatterns = /^(objectid|oid|fid|shape|shape_area|shape_length|shape\.area|shape\.len|globalid|st_area|st_length|st_perimeter)$/i;
-        const allKeys = new Set();
-        for (const f of feats) {
-            if (!f.attributes) continue;
-            for (const k of Object.keys(f.attributes)) {
-                if (!skipPatterns.test(k)) allKeys.add(k);
-            }
-        }
-
-        // Pick up to 6 attribute columns to keep the table readable
-        const maxAttrCols = 6;
-        const attrKeys = Array.from(allKeys).slice(0, maxAttrCols);
-
-        // Build rows: compute per-feature intersection area
-        const tableRows = [];
-        for (const f of feats) {
-            const attrs = f.attributes || {};
-            const geom = f.geometry;
-
-            let acresCovered = 0;
-            let pctAoi = 0;
-
-            if (geom) {
-                try {
-                    const inter = geometryEngine.intersect(aoiGeom, geom);
-                    if (inter) {
-                        const areaSqm = Math.max(0, geometryEngine.geodesicArea(inter, "square-meters"));
-                        acresCovered = areaSqm / SQM_PER_ACRE;
-                        pctAoi = Math.min(100, Math.max(0, (areaSqm / aoiAreaSqm) * 100));
-                    }
-                } catch (e) { /* skip bad geometry */ }
-            }
-
-            tableRows.push({ attrs, acresCovered, pctAoi });
-        }
-
-        // Sort by acres descending
-        tableRows.sort((a, b) => b.acresCovered - a.acresCovered);
-
-        // Build HTML
-        const thCells = attrKeys.map(k => `<th>${escapeHtml(k)}</th>`).join("");
-        const headerHtml = `<tr>${thCells}<th>Acres</th><th>% of AOI</th></tr>`;
-
-        let hasSliverWarning = false;
-        const bodyHtml = tableRows.map(row => {
-            const tdCells = attrKeys.map(k => {
-                const raw = (row.attrs[k] == null) ? "" : String(row.attrs[k]);
-                const truncated = raw.length > 40 ? raw.slice(0, 39) + "…" : raw;
-                return `<td title="${escapeHtml(raw)}">${escapeHtml(truncated)}</td>`;
-            }).join("");
-            // Flag rows with <3% coverage as potential sliver/anomaly
-            const isSliverWarning = row.pctAoi < 3;
-            if (isSliverWarning) hasSliverWarning = true;
-            const rowStyle = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
-            const warningIcon = isSliverWarning ? '<span style="color:#856404;">⚠️</span> ' : '';
-            return `<tr${rowStyle}>${tdCells}<td style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td><td style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td></tr>`;
-        }).join("");
-
-        const sliverNote = hasSliverWarning
-            ? `<div style="margin-top:8px; font-size:10px; color:#856404; background:#fff3cd; padding:6px 8px; border-radius:4px;">
-                <b>⚠️ Note:</b> Highlighted rows cover less than 3% of the AOI and may represent slivers, boundary artifacts, or minor overlaps rather than meaningful intersections.
-            </div>`
-            : '';
-
-        return `
-            <div style="margin-top:16px;">
-                <b>Per-Feature Breakdown</b>
-                <table class="metaTbl" style="margin-top:8px; width:100%; font-size:11px;">
-                    <thead>${headerHtml}</thead>
-                    <tbody>${bodyHtml}</tbody>
-                </table>
-                ${sliverNote}
-            </div>
-        `;
-    }
 
 
     function setVisualStatus(msg) {
@@ -4555,7 +3765,7 @@ async function generateAoiMapsWithCircles() {
 // HELPER: Build data sources appendix (IMPROVED TABLE)
 // ========================================
 function buildDataSourcesSection() {
-    const services = getConfiguredServices();
+    const services = getConfiguredServices(config);
     
     const rows = services.map(svc => {
         const status = serviceStatus.get(svc.url) || "UNKNOWN";
