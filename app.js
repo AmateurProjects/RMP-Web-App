@@ -1947,7 +1947,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             // Convert geometry to JSON for the request
             const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
             
-            // Use computeHistograms endpoint with geometry
+            // Use computeHistograms endpoint with geometry (POST to handle large polygons)
             const url = `${imageServerUrl}/computeHistograms`;
             const params = new URLSearchParams({
                 f: "json",
@@ -1955,7 +1955,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 geometryType: "esriGeometryPolygon"
             });
 
-            const response = await fetch(`${url}?${params.toString()}`);
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: params.toString()
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
