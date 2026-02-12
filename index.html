@@ -6,6 +6,17 @@
   <title>Parcel Explorer</title>
 
   <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
+
+  <!-- Configure AMD loader to find custom app modules in the same directory -->
+  <script>
+    var dojoConfig = {
+      packages: [{
+        name: "app",
+        location: location.pathname.replace(/\/[^/]+$/, '')
+      }]
+    };
+  </script>
+
   <script src="https://js.arcgis.com/4.30/"></script>
 
   <link rel="stylesheet" href="./styles.css" />

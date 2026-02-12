@@ -1,6 +1,7 @@
 /* global require */
 
 require([
+    "app/config-helpers",
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
@@ -10,7 +11,14 @@ require([
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer"
-], function (EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+], function (configHelpers, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+
+    // ── Destructure config-helpers for functions already extracted ──
+    const {
+        escapeHtml, normalize, plssToolLabel,
+        isPlssLayerTitleOrUrl, isPlssIntersectedLayerTitle,
+        isFeatureServerRoot, isMapServerRoot
+    } = configHelpers;
 
 
     // ---------- DOM ----------
@@ -373,42 +381,6 @@ function setActiveTab(tabName) {
     }
 }
 
-    function plssToolLabel(which) {
-        return (which === "intersected") ? "Parcel" :
-            (which === "township") ? "Township" :
-                (which === "section") ? "Section" :
-                    "PLSS";
-    }
-
-
-    function escapeHtml(s) {
-        return String(s).replace(/[&<>"']/g, (c) => ({
-            "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;"
-        }[c]));
-    }
-
-    function normalize(s) { return String(s || "").toLowerCase(); }
-
-    function isPlssLayerTitleOrUrl(title, url) {
-        const t = normalize(title);
-        const u = normalize(url);
-        // Tune this if you want it stricter; this keeps it PLSS-focused.
-        return (
-            t.includes("plss") ||
-            t.includes("township") ||
-            t.includes("section") ||
-            t.includes("intersected") ||
-            u.includes("/plss") ||
-            u.includes("plss")
-        );
-    }
-
-    function isPlssIntersectedLayerTitle(title) {
-        const t = normalize(title);
-        // Match your naming: "PLSS: Intersected" etc.
-        return t.includes("intersected");
-    }
-
 
     function filterTouchingOnly(features, aoiGeom) {
         // Drops polygon features that only touch AOI at an edge/vertex (intersection area == 0)
@@ -557,17 +529,6 @@ function setActiveTab(tabName) {
         }
     }
 
-
-    function isFeatureServerRoot(url) {
-        // ends with /FeatureServer (no trailing /0 etc.)
-        return /\/FeatureServer\/?$/.test(url);
-    }
-
-    function isMapServerRoot(url) {
-        return /\/MapServer\/?$/.test(url);
-    }
-
-    // Expand a MapServer root into sublayers that can be used by FeatureLayer.
     // Optionally filters to polygon layers only (best for “click a polygon to select”).
     async function expandMapServerToSublayers(serviceUrl, { polygonOnly = true } = {}) {
         const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
@@ -1521,14 +1482,22 @@ async function checkServiceStatusBackground() {
     const items = getConfiguredServices();
     const timeoutMs = config?.services?.timeoutMs ?? 8000;
 
-    for (const it of items) {
-        const pjsonUrl = normalizePjsonUrl(it.url);
-        
-        try {
-            await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
-            serviceStatus.set(it.url, "UP");
-        } catch (e) {
-            serviceStatus.set(it.url, "DOWN");
+    // ✅ Parallel: all service pings are independent
+    const results = await Promise.allSettled(
+        items.map(async (it) => {
+            const pjsonUrl = normalizePjsonUrl(it.url);
+            try {
+                await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+                return { url: it.url, status: "UP" };
+            } catch (e) {
+                return { url: it.url, status: "DOWN" };
+            }
+        })
+    );
+
+    for (const r of results) {
+        if (r.status === "fulfilled") {
+            serviceStatus.set(r.value.url, r.value.status);
         }
     }
 
@@ -1552,31 +1521,38 @@ async function checkServiceStatusBackground() {
 
         const timeoutMs = config?.services?.timeoutMs ?? 8000;
 
-        // Run checks sequentially (simple + predictable). We can add concurrency later if needed.
-        const cards = [];
-        for (let i = 0; i < items.length; i++) {
-            const it = items[i];
-            const pjsonUrl = normalizePjsonUrl(it.url);
+        // ✅ Parallel: all service pings are independent — runs in ~timeoutMs instead of N×timeoutMs
+        const checkResults = await Promise.allSettled(
+            items.map(async (it) => {
+                const pjsonUrl = normalizePjsonUrl(it.url);
+                let status = "DOWN";
+                let desc = "";
+                let errText = "";
 
-            let status = "DOWN";
-            let desc = "";
-            let errText = "";
+                try {
+                    const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
 
-            try {
-                const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+                    if (pjson == null || (pjson.currentVersion == null && pjson.layers == null && pjson.type == null)) {
+                        throw new Error("Unexpected JSON (missing expected ArcGIS REST fields)");
+                    }
 
-                // ✅ basic “looks like ArcGIS REST” sanity
-                // (many valid pjson payloads include currentVersion)
-                if (pjson == null || (pjson.currentVersion == null && pjson.layers == null && pjson.type == null)) {
-                    throw new Error("Unexpected JSON (missing expected ArcGIS REST fields)");
+                    status = "UP";
+                    desc = pickServiceDescription(pjson);
+                } catch (e) {
+                    status = "DOWN";
+                    errText = String(e?.message || e);
                 }
 
-                status = "UP";
-                desc = pickServiceDescription(pjson);
-            } catch (e) {
-                status = "DOWN";
-                errText = String(e?.message || e);
-            }
+                return { it, status, desc, errText };
+            })
+        );
+
+        const cards = [];
+        checkResults.forEach((result, i) => {
+            if (result.status !== "fulfilled") return;
+            const { it, status, desc, errText } = result.value;
+
+                // ✅ basic “looks like ArcGIS REST” sanity
 
             serviceStatus.set(it.url, status);
 
@@ -1612,7 +1588,7 @@ async function checkServiceStatusBackground() {
             ${errHtml}
         </div>
         `);
-        }
+        });
 
         servicesListEl.innerHTML = cards.join("");
 
@@ -2069,65 +2045,38 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         expandedTargets.push({ title: cfg.title, url });
     }
 
-    const cards = [];
-    for (let i = 0; i < expandedTargets.length; i++) {
-        if (isReportCanceled(myOp)) {
-            setStatus("canceled");
-            break;
-        }
+    // ── Helper: process a single expanded target (returns { card, reportEntry }) ──
+    async function processOneTarget(t) {
+        const maxFields = (config.report && config.report.maxFieldsInTable)
+            ? config.report.maxFieldsInTable : 8;
 
-        const t = expandedTargets[i];
-
-        if (modal) {
-            const progress = 25 + (35 * (i / expandedTargets.length)); // 25% → 60%
-            modal.setProgress(progress);
-            modal.setStep(`Step 2/4: Querying ${t.title}...`);
-            modal.addLog(`Querying: ${t.title}`);
-        }
-
+        // 1. Pre-existing expansion error
         if (t.error) {
-            cards.push(`
+            return {
+                card: `
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
               <div class="badge">error</div>
             </div>
             <div class="small mono">${escapeHtml(String(t.error))}</div>
-          </div>
-        `);
-            continue;
+          </div>`,
+                reportEntry: null
+            };
         }
 
-        // Handle ImageServer layers - fetch metadata instead of feature query
+        // 2. ImageServer layers — fetch metadata
         if (t.__isImageService) {
-            try {
-                const metaUrl = `${t.url}?f=json`;
-                const resp = await fetch(metaUrl);
-                const meta = await resp.json();
+            const metaUrl = `${t.url}?f=json`;
+            const resp = await fetch(metaUrl);
+            const meta = await resp.json();
 
-                const serviceDesc = meta.description || meta.serviceDescription || "No description available.";
-                const copyright = meta.copyrightText || "";
-                const serviceName = meta.name || t.title;
+            const serviceDesc = meta.description || meta.serviceDescription || "No description available.";
+            const copyright = meta.copyrightText || "";
+            const serviceName = meta.name || t.title;
 
-                // Add to lastReportRowsByLayer with special imageService flag
-                lastReportRowsByLayer.push({
-                    title: t.title,
-                    url: t.url,
-                    count: 1, // Always show as having coverage
-                    rows: [],
-                    _layer: null,
-                    _exportQuery: null,
-                    fullRows: null,
-                    __isImageService: true,
-                    __renderingRule: t.__renderingRule,
-                    __serviceMeta: {
-                        name: serviceName,
-                        description: serviceDesc,
-                        copyright: copyright
-                    }
-                });
-
-                cards.push(`
+            return {
+                card: `
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
@@ -2141,185 +2090,182 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
               <div class="small" style="margin-top:4px;">${escapeHtml(serviceDesc.slice(0, 200))}${serviceDesc.length > 200 ? '…' : ''}</div>
               ${copyright ? `<div class="small" style="margin-top:4px; color: var(--muted);">${escapeHtml(copyright)}</div>` : ''}
             </div>
-          </div>
-        `);
-            } catch (e) {
-                console.warn(`Failed to fetch ImageServer metadata for ${t.title}:`, e);
-                cards.push(`
+          </div>`,
+                reportEntry: {
+                    title: t.title,
+                    url: t.url,
+                    count: 1,
+                    rows: [],
+                    _layer: null,
+                    _exportQuery: null,
+                    fullRows: null,
+                    __isImageService: true,
+                    __renderingRule: t.__renderingRule,
+                    __serviceMeta: { name: serviceName, description: serviceDesc, copyright }
+                }
+            };
+        }
+
+        // 3. Pinned AOI feature (synchronous — no network call)
+        if (t.__pinnedAoiFeature) {
+            const f = t.__pinnedAoiFeature;
+            const feats = f ? [f] : [];
+            const rows = flattenAttributes(feats);
+            const tableHtml = feats.length
+                ? makeTable(feats, maxFields, feats.length)
+                : `<div class="small">No sample rows.</div>`;
+
+            return {
+                card: `
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
-              <div class="badge">error</div>
+              <div class="badge">count: <b>${feats.length}</b></div>
             </div>
-            <div class="small mono">${escapeHtml(String(e))}</div>
-          </div>
-        `);
-            }
-            setStatus(`Running analysis... (querying ${i + 1}/${expandedTargets.length})`);
-            continue;
-        }
-
-        try {
-            const plss = isPlssLayerTitleOrUrl(t.title, t.url);
-            const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
-
-            const spatialRel =
-                (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
-                    ? "within"
-                    : "intersects";
-
-            if (t.__pinnedAoiFeature) {
-                const f = t.__pinnedAoiFeature;
-                const feats = f ? [f] : [];
-                const r = {
+            <div class="small mono">
+              <a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">Service URL</a>
+            </div>
+            <div style="margin-top:8px;">
+              ${tableHtml}
+              ${(feats.length > 0) ? `
+              <div class="row" style="margin-top:8px;">
+                <button class="btn subtle" data-export="${escapeHtml(t.title)}">Export CSV</button>
+              </div>` : ``}
+            </div>
+          </div>`,
+                reportEntry: {
                     title: t.title,
                     url: t.url,
                     count: feats.length,
-                    features: feats,
-                    layer: null,
-                    exportQuery: null
-                };
-
-                const rows = flattenAttributes(r.features);
-
-                lastReportRowsByLayer.push({
-                    title: r.title,
-                    url: r.url,
-                    count: r.count,
                     rows,
                     _layer: null,
                     _exportQuery: null,
                     fullRows: rows
-                });
-
-                const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
-                const tableHtml = feats.length
-                    ? makeTable(feats, maxFields, r.count)
-                    : `<div class="small">No sample rows.</div>`;
-
-                cards.push(`
-          <div class="result-card">
-            <div class="result-head">
-              <div class="result-title">${escapeHtml(r.title)}</div>
-                <div class="badge">
-                count: <b>${r.count}</b>
-                </div>
-            </div>
-                <div class="small mono">
-                <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
-                </div>
-            <div style="margin-top:8px;">
-              ${tableHtml}
-                ${(r.count > 0) ? `
-                <div class="row" style="margin-top:8px;">
-                    <button class="btn subtle" data-export="${escapeHtml(r.title)}">
-                    Export CSV
-                    </button>
-                </div>
-                ` : ``}
-            </div>
-          </div>
-        `);
-
-                setStatus(`Running analysis... (querying ${i + 1}/${expandedTargets.length})`);
-                continue;
-            }
-
-        const r = await querySingleLayer(
-                t.url,
-                t.title,
-                reportGeom,
-                spatialRel,
-            );
-            const rows = flattenAttributes(r.features);
-
-            lastReportRowsByLayer.push({
-                title: r.title,
-                url: r.url,
-                count: r.count,
-                rows,
-                _layer: r.layer,
-                _exportQuery: r.exportQuery,
-                fullRows: null  // ✅ Will be populated on-demand for State/Parcel
-            });
-
-            // ✅ Pre-fetch full rows for State Boundaries & Parcel (needed for Final Report)
-            const isStateBoundaries = r.title && r.title.toLowerCase().includes("state boundaries");
-            const isParcel = r.title && (r.title.toLowerCase().includes("parcel") || r.title.toLowerCase().includes("intersected"));
-
-            if ((isStateBoundaries || isParcel) && r.count > 0 && r.layer && r.exportQuery) {
-                try {
-                    const pageSize = config.report?.pageSize ?? 1000;
-                    const maxExport = config.report?.maxExportFeatures ?? 50000;
-
-                    const fullFeatures = await queryAllFeaturesPaged(
-                        r.layer,
-                        r.exportQuery,
-                        pageSize,
-                        Math.min(maxExport, 100)  // Cap at 100 for State/Parcel (they should be small)
-                    );
-
-                    // Store in the item we just pushed
-                    lastReportRowsByLayer[lastReportRowsByLayer.length - 1].fullRows = flattenAttributes(fullFeatures);
-                } catch (e) {
-                    console.warn(`Failed to pre-fetch full rows for ${r.title}:`, e);
                 }
+            };
+        }
+
+        // 4. Regular feature layer query
+        const plss = isPlssLayerTitleOrUrl(t.title, t.url);
+        const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
+        const spatialRel =
+            (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
+                ? "within" : "intersects";
+
+        const r = await querySingleLayer(t.url, t.title, reportGeom, spatialRel);
+        const rows = flattenAttributes(r.features);
+
+        const reportEntry = {
+            title: r.title,
+            url: r.url,
+            count: r.count,
+            rows,
+            _layer: r.layer,
+            _exportQuery: r.exportQuery,
+            fullRows: null
+        };
+
+        // Pre-fetch full rows for State Boundaries & Parcel (needed for Final Report)
+        const isStateBoundaries = r.title && r.title.toLowerCase().includes("state boundaries");
+        const isParcel = r.title && (r.title.toLowerCase().includes("parcel") || r.title.toLowerCase().includes("intersected"));
+
+        if ((isStateBoundaries || isParcel) && r.count > 0 && r.layer && r.exportQuery) {
+            try {
+                const pageSize = config.report?.pageSize ?? 1000;
+                const maxExport = config.report?.maxExportFeatures ?? 50000;
+                const fullFeatures = await queryAllFeaturesPaged(
+                    r.layer, r.exportQuery, pageSize, Math.min(maxExport, 100)
+                );
+                reportEntry.fullRows = flattenAttributes(fullFeatures);
+            } catch (e) {
+                console.warn(`Failed to pre-fetch full rows for ${r.title}:`, e);
             }
+        }
 
+        const tableHtml = (r.features && r.features.length)
+            ? makeTable(r.features, maxFields, r.count)
+            : `<div class="small">No sample rows.</div>`;
 
-
-            const maxFields = (config.report && config.report.maxFieldsInTable) ? config.report.maxFieldsInTable : 8;
-            const tableHtml = (r.features && r.features.length)
-                ? makeTable(r.features, maxFields, r.count)
-                : `<div class="small">No sample rows.</div>`;
-
-            cards.push(`
+        return {
+            card: `
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(r.title)}</div>
-                <div class="badge">
+              <div class="badge">
                 count: <b>${r.count}</b>
                 ${(config.report?.maxExportFeatures && r.count > config.report.maxExportFeatures)
                     ? `<span class="small" style="margin-left:8px; opacity:.85;">(FULL export capped at ${config.report.maxExportFeatures})</span>`
                     : ``
                 }
-                </div>
+              </div>
             </div>
-                <div class="small mono">
-                    <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
-                </div>
-            
+            <div class="small mono">
+              <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
+            </div>
             <div style="margin-top:8px;">
-            ${tableHtml}
-            ${(r.count > 0) ? `
-                <div class="row" style="margin-top:8px;">
-                <button class="btn subtle" data-export="${escapeHtml(r.title)}">
-                Export CSV
-                </button>
-                </div>
-            ` : ``}
+              ${tableHtml}
+              ${(r.count > 0) ? `
+              <div class="row" style="margin-top:8px;">
+                <button class="btn subtle" data-export="${escapeHtml(r.title)}">Export CSV</button>
+              </div>` : ``}
             </div>
-        </div>
-        `);
-        } catch (e) {
-            cards.push(`
-          <div class="result-card">
-            <div class="result-head">
-              <div class="result-title">${escapeHtml(t.title)}</div>
-              <div class="badge">error</div>
-            </div>
-            <div class="small mono">${escapeHtml(String(e))}</div>
-          </div>
-        `);
+          </div>`,
+            reportEntry
+        };
+    }
+    // ── End of processOneTarget ──
+
+    // ── Batched parallel queries (batches of 5) ──
+    const BATCH_SIZE = 5;
+    const cards = [];
+
+    for (let bStart = 0; bStart < expandedTargets.length; bStart += BATCH_SIZE) {
+        if (isReportCanceled(myOp)) {
+            setStatus("canceled");
+            break;
         }
 
-        // ✅ Update modal stats after each successful query
+        const bEnd = Math.min(bStart + BATCH_SIZE, expandedTargets.length);
+
+        if (modal) {
+            const progress = 25 + (35 * (bStart / expandedTargets.length));
+            modal.setProgress(progress);
+            modal.setStep(`Step 2/4: Querying layers ${bStart + 1}-${bEnd} of ${expandedTargets.length}...`);
+            for (let k = bStart; k < bEnd; k++) {
+                modal.addLog(`Querying: ${expandedTargets[k].title}`);
+            }
+        }
+
+        const batchResults = await Promise.allSettled(
+            expandedTargets.slice(bStart, bEnd).map(t => processOneTarget(t))
+        );
+
+        // Collect results in order
+        for (const r of batchResults) {
+            if (r.status === "fulfilled" && r.value) {
+                cards.push(r.value.card);
+                if (r.value.reportEntry) {
+                    lastReportRowsByLayer.push(r.value.reportEntry);
+                }
+            } else if (r.status === "rejected") {
+                cards.push(`
+          <div class="result-card">
+            <div class="result-head">
+              <div class="result-title">(query failed)</div>
+              <div class="badge">error</div>
+            </div>
+            <div class="small mono">${escapeHtml(String(r.reason))}</div>
+          </div>`);
+            }
+        }
+
+        // Update modal stats after each batch
         if (modal) {
             const totalFeatures = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
             modal.updateStats(lastReportRowsByLayer.length, totalFeatures, 0);
         }
 
-        setStatus(`Running analysis... (querying ${i + 1}/${expandedTargets.length})`);
+        setStatus(`Running analysis... (queried ${bEnd}/${expandedTargets.length})`);
     }
 
     renderResults(cards.join(""));
