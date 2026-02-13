@@ -17,7 +17,8 @@ define([
 
     const {
         escapeHtml, formatNumber, plssToolLabel,
-        getConfiguredServices, flattenAttributes
+        getConfiguredServices, flattenAttributes,
+        fetchJsonWithTimeout, normalizePjsonUrl, pickServiceDescription
     } = configHelpers;
 
     // ── Module-private state (set by init) ──
@@ -1156,7 +1157,7 @@ define([
                     vertical-align: top; 
                     word-wrap: break-word; 
                 }
-                table.data-sources-table tr:nth-child(even){
+                table.data-sources-table tr:nth-child(4n+3):not(.desc-row){
                     background: var(--blm-tan);
                 }
                 table.data-sources-table tr:last-child td{
@@ -1168,7 +1169,18 @@ define([
                     font-size: 10px; 
                     word-break: break-all;
                     color: var(--muted);
-                }    
+                }
+                table.data-sources-table .desc-row td{
+                    padding: 4px 14px 12px 14px;
+                    font-size: 11px;
+                    color: var(--muted);
+                    line-height: 1.5;
+                    border-bottom: 2px solid var(--border);
+                    background: var(--blm-tan);
+                    font-style: italic;
+                }
+                table.data-sources-table .feat-count{ font-weight: 600; text-align: center; }
+                table.data-sources-table .feat-count-zero{ color: var(--muted); opacity: 0.6; }    
                 .mono{ font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; }
                 .status-up{ color: #2e7d32; font-weight: 600; }
                 .status-down{ color: #c62828; font-weight: 600; }
@@ -1574,21 +1586,68 @@ define([
         return `${src}${srcDetail} \u2022 AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
     }
 
-    function buildDataSourcesSection() {
+    async function buildDataSourcesSection() {
         const services = getConfiguredServices(S.config);
+        const lastReport = S.lastReportRowsByLayer || [];
+
+        // Build a lookup: normalised URL → feature count from the analysis
+        const countByUrl = new Map();
+        for (const item of lastReport) {
+            if (item.url) countByUrl.set(String(item.url).replace(/\/+$/, ""), item.count || 0);
+        }
+
+        // Fetch descriptions in parallel (with timeout) for any service not already cached
+        const descFetchResults = await Promise.allSettled(
+            services.map(async svc => {
+                // Check cache first
+                const cached = S.serviceStatus.get(svc.url + "::desc");
+                if (cached) return { url: svc.url, desc: cached };
+
+                try {
+                    const pjsonUrl = normalizePjsonUrl(svc.url);
+                    const pjson = await fetchJsonWithTimeout(pjsonUrl, 5000);
+                    const desc = pickServiceDescription(pjson) || "";
+                    if (desc) S.serviceStatus.set(svc.url + "::desc", desc);
+                    return { url: svc.url, desc };
+                } catch (e) {
+                    return { url: svc.url, desc: "" };
+                }
+            })
+        );
+
+        // Merge fetched descriptions
+        const descByUrl = new Map();
+        for (const r of descFetchResults) {
+            if (r.status === "fulfilled" && r.value) {
+                descByUrl.set(r.value.url, r.value.desc);
+            }
+        }
 
         const rows = services.map(svc => {
             const status = S.serviceStatus.get(svc.url) || "UNKNOWN";
             const statusClass = status === "UP" ? "status-up" : "status-down";
-            const desc = S.serviceStatus.get(svc.url + "::desc") || "(Description not available)";
+            const desc = descByUrl.get(svc.url) || S.serviceStatus.get(svc.url + "::desc") || "";
+            const normalUrl = String(svc.url).replace(/\/+$/, "");
+            const featCount = countByUrl.has(normalUrl) ? countByUrl.get(normalUrl) : null;
+
+            const countDisplay = featCount === null
+                ? '<span class="feat-count-zero">&mdash;</span>'
+                : featCount > 0
+                    ? `<b>${escapeHtml(String(featCount))}</b>`
+                    : '<span class="feat-count-zero">0</span>';
+
+            const descRow = desc
+                ? `<tr class="desc-row"><td colspan="4">${escapeHtml(desc)}</td></tr>`
+                : `<tr class="desc-row"><td colspan="4" style="opacity:0.5;">(No description available)</td></tr>`;
 
             return `
                 <tr>
                     <td class="service-name-col">${escapeHtml(svc.title)}</td>
                     <td class="service-url-col"><a href="${escapeHtml(svc.url)}" target="_blank" rel="noopener">${escapeHtml(svc.url)}</a></td>
-                    <td class="service-desc-col">${escapeHtml(desc)}</td>
+                    <td class="feat-count">${countDisplay}</td>
                     <td class="service-status-col"><span class="${statusClass}">${status}</span></td>
                 </tr>
+                ${descRow}
             `;
         }).join("");
 
@@ -1601,10 +1660,10 @@ define([
                 <table class="data-sources-table">
                     <thead>
                         <tr>
-                            <th style="width: 20%;">Service Name</th>
-                            <th style="width: 25%;">Service URL</th>
-                            <th style="width: 45%;">Description</th>
-                            <th style="width: 10%;">Status</th>
+                            <th style="width: 30%;">Service Name</th>
+                            <th style="width: 40%;">Service URL</th>
+                            <th style="width: 15%;">Features in AOI</th>
+                            <th style="width: 15%;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1900,8 +1959,14 @@ define([
             const targets = lastReportRowsByLayer
                 .filter(x => (x?.count || 0) > 0)
                 .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
-                .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")))
-                .filter(x => !(x.title && x.title.toLowerCase().includes("administrative unit")));
+                .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+
+            // Sort so BLM Administrative Units comes first
+            targets.sort((a, b) => {
+                const aAdmin = a.title && a.title.toLowerCase().includes("administrative unit") ? 0 : 1;
+                const bAdmin = b.title && b.title.toLowerCase().includes("administrative unit") ? 0 : 1;
+                return aAdmin - bAdmin;
+            });
 
             let sectionsHtml = "";
 
@@ -1976,7 +2041,9 @@ define([
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                             if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
                             else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
-                            await waitForViewStationary(2500);
+                            // Re-check that layer has finished rendering at the new extent
+                            await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
+                            await waitForViewStationary(1500);
 
                             const dataUrl = await captureScreenshotWithWait({ width });
                             if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
@@ -2039,10 +2106,12 @@ define([
                     view.map.add(temp);
                     try {
                         setVisibilityForScreenshot(temp);
-                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 8000 });
+                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
                         if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
                         else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
-                        await waitForViewStationary(2000);
+                        // Re-check that layer has finished rendering at the new extent
+                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
+                        await waitForViewStationary(1500);
 
                         const dataUrl = await captureScreenshotWithWait({ width });
                         if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
@@ -2116,7 +2185,7 @@ define([
             }
 
             // STEP 4: Data Sources Appendix
-            const dataSourcesHtml = buildDataSourcesSection();
+            const dataSourcesHtml = await buildDataSourcesSection();
 
             // STEP 4b: Generate findings summary paragraph
             const findingsSummaryHtml = generateFindingsSummary(lastReportRowsByLayer, aoiAcres);
@@ -2147,63 +2216,7 @@ define([
                    </div>`
                 : "";
 
-            // Admin Unit table for AOI section
-            let adminUnitTableHtml = "";
-            if (lastReportRowsByLayer && lastReportRowsByLayer.length) {
-                const adminItems = lastReportRowsByLayer.filter(x =>
-                    x.title && x.title.toLowerCase().includes("administrative unit") && (x.count || 0) > 0
-                );
-                if (adminItems.length > 0) {
-                    const allAdminRows = [];
-                    for (const item of adminItems) {
-                        for (const row of (item.rows || [])) {
-                            allAdminRows.push({
-                                name: row.ADMU_NAME || row.Label_Full_Name || row.Label || "",
-                                orgType: row.BLM_ORG_TYPE || "",
-                                adminSt: row.ADMIN_ST || "",
-                                parent: row.PARENT_NAME || "",
-                                city: row.City_Label || "",
-                                url: row.ADMU_ST_URL || ""
-                            });
-                        }
-                    }
-                    const seen = new Set();
-                    const unique = allAdminRows.filter(r => {
-                        const key = `${r.name}|${r.orgType}`;
-                        if (!r.name || seen.has(key)) return false;
-                        seen.add(key);
-                        return true;
-                    });
-                    if (unique.length > 0) {
-                        const trs = unique.map(r => `
-                            <tr>
-                                <td>${escapeHtml(r.name)}</td>
-                                <td>${escapeHtml(r.orgType)}</td>
-                                <td>${escapeHtml(r.adminSt)}</td>
-                                <td>${escapeHtml(r.parent)}</td>
-                                <td>${escapeHtml(r.city)}</td>
-                                ${r.url ? `<td><a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Link</a></td>` : `<td></td>`}
-                            </tr>`).join("");
-                        adminUnitTableHtml = `
-                            <div style="margin-top:20px;">
-                                <span class="aoi-label" style="display:block; margin-bottom:8px;">BLM Administrative Units Intersecting AOI:</span>
-                                <table class="admin-unit-tbl">
-                                    <thead>
-                                        <tr>
-                                            <th>Unit Name</th>
-                                            <th>Type</th>
-                                            <th>State</th>
-                                            <th>Parent Office</th>
-                                            <th>Office Location</th>
-                                            <th>URL</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>${trs}</tbody>
-                                </table>
-                            </div>`;
-                    }
-                }
-            }
+
 
             const aoiSectionHtml = `
                 <h2>Area of Interest</h2>
@@ -2213,7 +2226,6 @@ define([
                     ${legalHtml}
                     <div class="aoi-field"><span class="aoi-label">Area:</span> ${formatNumber(aoiAcres, 2)} acres</div>
                     <div class="aoi-field"><span class="aoi-label">Method:</span> ${escapeHtml(aoiMethod)}</div>
-                    ${adminUnitTableHtml}
                 </div>
             `;
 

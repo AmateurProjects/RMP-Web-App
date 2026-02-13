@@ -139,7 +139,7 @@ define([
             },
             symbol: {
                 type: "simple-fill",
-                color: [255, 255, 255, 0.45],
+                color: [255, 255, 255, 0.6],
                 outline: null
             }
         });
@@ -274,10 +274,14 @@ define([
             });
         }
 
-        // Wait for initial updating to complete
-        if (lv.updating) {
+        // Wait for updating to complete, with a stability check:
+        // After updating goes false, wait 200ms and verify it's still false
+        // (some layers briefly go false then true again as sub-requests fire)
+        const deadline = Date.now() + timeoutMs;
+        while (lv.updating && Date.now() < deadline) {
             await new Promise(resolve => {
-                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, timeoutMs);
+                const remaining = Math.max(500, deadline - Date.now());
+                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, remaining);
                 const h = lv.watch("updating", (u) => {
                     if (!u) {
                         clearTimeout(t);
@@ -286,12 +290,15 @@ define([
                     }
                 });
             });
+            // Stability check: wait a moment and see if it stays non-updating
+            if (!lv.updating) {
+                await new Promise(r => setTimeout(r, 250));
+                // If it started updating again, loop continues
+            }
         }
 
-        // Final render settle time
-        try {
-            await new Promise(r => setTimeout(r, 300));
-        } catch (e) { }
+        // Final render settle
+        await new Promise(r => setTimeout(r, 300));
     }
 
     async function captureScreenshotWithWait(screenConfig) {
