@@ -2047,9 +2047,17 @@ define([
                         const dataUrl = await captureScreenshotWithWait({ width });
                         if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
-                        const cov = await computeLayerCoverageStats(item, selectionGeom);
-                        const acresCovered = cov ? cov.acresCovered : 0;
-                        const pctCovered   = cov ? cov.pctAoiCovered : 0;
+                        // Determine geometry class for this layer
+                        const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+
+                        // Only compute coverage stats for polygon layers
+                        let acresCovered = 0;
+                        let pctCovered   = 0;
+                        if (isPolygonLayer) {
+                            const cov = await computeLayerCoverageStats(item, selectionGeom);
+                            acresCovered = cov ? cov.acresCovered : 0;
+                            pctCovered   = cov ? cov.pctAoiCovered : 0;
+                        }
 
                         const layerAttrSummary = generateLayerAttributeSummary(item);
                         const perFeatureTableHtml = (item.count > 0)
@@ -2057,12 +2065,17 @@ define([
                             : "";
 
                         // Only flag low-coverage for polygon layers (not points or lines)
-                        const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
                         const isSingleFeatureLowCoverage = isPolygonLayer && (item.count === 1 && pctCovered < 3);
                         const lowCoverageWarningHtml = isSingleFeatureLowCoverage
                             ? `<div style="margin-top:12px; padding:12px 16px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:6px; font-size:14px; line-height:1.5;">
                                 <span style="color:#856404;">\u26A0\uFE0F <b>Low Coverage Warning:</b> This feature covers less than 3% of the AOI. This may indicate a polygon sliver or boundary artifact rather than meaningful overlap.</span>
                                </div>`
+                            : "";
+
+                        // Coverage rows only for polygon layers
+                        const coverageRowsHtml = isPolygonLayer
+                            ? `<tr><td>Layer Coverage</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
+                                <tr><td>Percent of AOI Covered</td><td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver or boundary artifact">\u26A0\uFE0F</span>' : ''}</td></tr>`
                             : "";
 
                         sectionsHtml += `
@@ -2079,8 +2092,7 @@ define([
                             <table class="metaTbl">
                                 <tr><td>AOI Area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
                                 <tr><td>Intersecting Features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
-                                <tr><td>Layer Coverage</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
-                                <tr><td>Percent of AOI Covered</td><td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver or boundary artifact">\u26A0\uFE0F</span>' : ''}</td></tr>
+                                ${coverageRowsHtml}
                                 ${layerAttrSummary}
                             </table>
                             ${lowCoverageWarningHtml}

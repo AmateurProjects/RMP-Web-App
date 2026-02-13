@@ -248,24 +248,74 @@
               <span>Find Existing Permit or Lease</span>
             </div>
             <div class="aoi-method-panel-body">
-              <select id="wizPermitType">
-                <option value="" disabled selected>Choose permit type…</option>
-                <optgroup label="Grazing">
-                  <option value="allotment">Grazing Allotment</option>
-                  <option value="pasture">Grazing Pasture</option>
-                </optgroup>
-                <optgroup label="Energy &amp; Minerals">
-                  <option value="oilgas">Oil &amp; Gas Lease</option>
-                  <option value="geothermal">Geothermal Lease</option>
-                  <option value="coal">Coal Lease / Case</option>
-                  <option value="mining">Mining Claim (Active)</option>
-                </optgroup>
-                <optgroup label="Land Use Authorizations">
-                  <option value="row">Right-of-Way (ROW)</option>
-                  <option value="lua">Lease, Permit, or Easement</option>
-                </optgroup>
-              </select>
-              <div class="hint" style="margin-top:10px;">Select a type, then click its boundary on the map to use as your project area.</div>
+              <div id="wizPermitList" class="permit-list">
+                <div class="permit-group-label">Grazing</div>
+                <button class="permit-item" data-permit="allotment" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Grazing Allotment</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+                <button class="permit-item" data-permit="pasture" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Grazing Pasture</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+
+                <div class="permit-group-label">Energy &amp; Minerals</div>
+                <button class="permit-item" data-permit="oilgas" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Oil &amp; Gas Lease</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+                <button class="permit-item" data-permit="geothermal" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Geothermal Lease</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+                <button class="permit-item" data-permit="coal" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Coal Lease / Case</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+                <button class="permit-item" data-permit="mining" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Mining Claim (Active)</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+
+                <div class="permit-group-label">Land Use Authorizations</div>
+                <button class="permit-item" data-permit="row" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Right-of-Way (ROW)</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+                <button class="permit-item" data-permit="lua" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Lease, Permit, or Easement</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+              </div>
+              <div class="permit-legend">
+                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="found" style="position:static;"></span> Features in view</span>
+                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="none" style="position:static;"></span> None in view</span>
+              </div>
+              <div class="hint" style="margin-top:8px;">Select a type, then click its boundary on the map to use as your project area.</div>
             </div>
           </div>
 

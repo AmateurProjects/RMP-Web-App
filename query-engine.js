@@ -17,6 +17,8 @@ define([
 
     // ── Coverage cache (module-private) ──
     const SQM_PER_ACRE   = 4046.8564224;
+    const METERS_PER_FOOT = 0.3048;
+    const FEET_PER_MILE   = 5280;
     const coverageCache  = new Map();   // `${aoiKey}||${layerUrl}` → { acresCovered, pctAoiCovered }
     let   coverageAoiKey = "";
 
@@ -454,6 +456,24 @@ define([
 
         if (feats.length < 1) return "";
 
+        // Determine geometry type
+        let geomClass = 'unknown'; // 'polygon', 'polyline', 'point'
+        try {
+            const layerGeomType = (item._layer.geometryType || '').toLowerCase();
+            if (layerGeomType.includes('polygon')) geomClass = 'polygon';
+            else if (layerGeomType.includes('polyline') || layerGeomType.includes('line')) geomClass = 'polyline';
+            else if (layerGeomType.includes('point')) geomClass = 'point';
+        } catch (e) {
+            if (feats[0] && feats[0].geometry && feats[0].geometry.type) {
+                const ft = feats[0].geometry.type.toLowerCase();
+                if (ft.includes('polygon')) geomClass = 'polygon';
+                else if (ft.includes('polyline') || ft.includes('line')) geomClass = 'polyline';
+                else if (ft.includes('point')) geomClass = 'point';
+            }
+        }
+        const isPolygonLayer  = (geomClass === 'polygon');
+        const isPolylineLayer = (geomClass === 'polyline');
+
         // Determine relevant attribute columns
         const skipPatterns = /^(objectid|oid|fid|shape|shape_area|shape_length|shape\.area|shape\.len|globalid|st_area|st_length|st_perimeter)$/i;
         const allKeys = new Set();
@@ -466,7 +486,7 @@ define([
 
         const attrKeys = Array.from(allKeys);
 
-        // Build rows: compute per-feature intersection area
+        // Build rows: compute per-feature intersection metrics
         const tableRows = [];
         for (const f of feats) {
             const attrs = f.attributes || {};
@@ -474,27 +494,49 @@ define([
 
             let acresCovered = 0;
             let pctAoi       = 0;
+            let lengthFeet   = 0;
+            let lengthMiles  = 0;
 
             if (geom) {
                 try {
                     const inter = geometryEngine.intersect(aoiGeom, geom);
                     if (inter) {
-                        const areaSqm = Math.max(0, geometryEngine.geodesicArea(inter, "square-meters"));
-                        acresCovered  = areaSqm / SQM_PER_ACRE;
-                        pctAoi        = Math.min(100, Math.max(0, (areaSqm / aoiAreaSqm) * 100));
+                        if (isPolygonLayer) {
+                            const areaSqm = Math.max(0, geometryEngine.geodesicArea(inter, "square-meters"));
+                            acresCovered  = areaSqm / SQM_PER_ACRE;
+                            pctAoi        = Math.min(100, Math.max(0, (areaSqm / aoiAreaSqm) * 100));
+                        }
+                        if (isPolylineLayer) {
+                            const lengthM = Math.max(0, geometryEngine.geodesicLength(inter, "meters"));
+                            lengthFeet    = lengthM / METERS_PER_FOOT;
+                            lengthMiles   = lengthFeet / FEET_PER_MILE;
+                        }
                     }
                 } catch (e) { /* skip bad geometry */ }
             }
 
-            tableRows.push({ attrs, acresCovered, pctAoi });
+            tableRows.push({ attrs, acresCovered, pctAoi, lengthFeet, lengthMiles });
         }
 
-        // Sort by acres descending
-        tableRows.sort((a, b) => b.acresCovered - a.acresCovered);
+        // Sort: polygons by acres desc, lines by length desc, points by first attr
+        if (isPolygonLayer) {
+            tableRows.sort((a, b) => b.acresCovered - a.acresCovered);
+        } else if (isPolylineLayer) {
+            tableRows.sort((a, b) => b.lengthFeet - a.lengthFeet);
+        }
+
+        // Build column labels depending on geometry type
+        const extraCols = [];
+        if (isPolygonLayer) {
+            extraCols.push('Acres', '% of AOI');
+        } else if (isPolylineLayer) {
+            extraCols.push('Length (ft)', 'Length (mi)');
+        }
+        // Points get NO extra columns
 
         // Build interactive table HTML
         const tId = tableId != null ? tableId : Math.floor(Math.random() * 100000);
-        const colLabels = [...attrKeys, 'Acres', '% of AOI'];
+        const colLabels = [...attrKeys, ...extraCols];
         const totalCols = colLabels.length;
         const tableTitle = feats.length === 1 ? 'Feature Attributes' : 'Per-Feature Breakdown';
 
@@ -503,18 +545,6 @@ define([
         ).join("");
         const headerHtml = `<tr>${thCells}</tr>`;
 
-        // Determine if this is a polygon layer — skip sliver warnings for points/lines
-        let isPolygonLayer = false;
-        try {
-            const layerGeomType = item._layer.geometryType || '';
-            isPolygonLayer = layerGeomType.toLowerCase().includes('polygon');
-        } catch (e) {
-            // Fallback: check the first feature
-            if (feats[0] && feats[0].geometry && feats[0].geometry.type) {
-                isPolygonLayer = feats[0].geometry.type.toLowerCase().includes('polygon');
-            }
-        }
-
         let hasSliverWarning = false;
         const bodyHtml = tableRows.map(row => {
             const tdCells = attrKeys.map((k, ci) => {
@@ -522,15 +552,27 @@ define([
                 const display = raw.length > 100 ? raw.slice(0, 99) + "\u2026" : raw;
                 return `<td data-col="${ci}" data-sort-val="${escapeHtml(raw)}" title="${escapeHtml(raw)}">${escapeHtml(display)}</td>`;
             });
-            const isSliverWarning = isPolygonLayer && row.pctAoi < 3;
-            if (isSliverWarning) hasSliverWarning = true;
-            const acresIdx = attrKeys.length;
-            const pctIdx = attrKeys.length + 1;
-            tdCells.push(`<td data-col="${acresIdx}" data-sort-val="${row.acresCovered.toFixed(6)}" style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td>`);
-            const warningIcon = isSliverWarning ? '<span style="color:#856404;">\u26A0\uFE0F</span> ' : '';
-            tdCells.push(`<td data-col="${pctIdx}" data-sort-val="${row.pctAoi.toFixed(6)}" style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td>`);
-            const rowStyle = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
-            return `<tr${rowStyle}>${tdCells.join("")}</tr>`;
+
+            if (isPolygonLayer) {
+                const isSliverWarning = row.pctAoi < 3;
+                if (isSliverWarning) hasSliverWarning = true;
+                const acresIdx = attrKeys.length;
+                const pctIdx   = attrKeys.length + 1;
+                tdCells.push(`<td data-col="${acresIdx}" data-sort-val="${row.acresCovered.toFixed(6)}" style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td>`);
+                const warningIcon = isSliverWarning ? '<span style="color:#856404;">\u26A0\uFE0F</span> ' : '';
+                tdCells.push(`<td data-col="${pctIdx}" data-sort-val="${row.pctAoi.toFixed(6)}" style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td>`);
+                const rowStyle = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
+                return `<tr${rowStyle}>${tdCells.join("")}</tr>`;
+            } else if (isPolylineLayer) {
+                const ftIdx = attrKeys.length;
+                const miIdx = attrKeys.length + 1;
+                tdCells.push(`<td data-col="${ftIdx}" data-sort-val="${row.lengthFeet.toFixed(2)}" style="text-align:right;">${formatNumber(row.lengthFeet, 1)}</td>`);
+                tdCells.push(`<td data-col="${miIdx}" data-sort-val="${row.lengthMiles.toFixed(6)}" style="text-align:right;">${formatNumber(row.lengthMiles, 3)}</td>`);
+                return `<tr>${tdCells.join("")}</tr>`;
+            } else {
+                // Point layers — attrs only
+                return `<tr>${tdCells.join("")}</tr>`;
+            }
         }).join("");
 
         const sliverNote = hasSliverWarning

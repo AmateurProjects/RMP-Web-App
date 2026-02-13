@@ -113,7 +113,7 @@ require([
     const wizTownshipBtn = document.getElementById("wizTownshipBtn");
     const wizSectionBtn = document.getElementById("wizSectionBtn");
     const wizParcelBtn = document.getElementById("wizParcelBtn");
-    const wizPermitType = document.getElementById("wizPermitType");
+    const wizPermitList = document.getElementById("wizPermitList");
     const wizLocationInput = document.getElementById("wizLocationInput");
     const wizLocationResults = document.getElementById("wizLocationResults");
     const tierLayerCountEl = document.getElementById("tierLayerCount");
@@ -817,6 +817,12 @@ function setActiveTab(tabName) {
     }
 
     function setPermitToolActive(which) {
+        // Update aria-pressed on all permit-item buttons in the custom list
+        document.querySelectorAll("#wizPermitList .permit-item").forEach(btn => {
+            const val = btn.dataset.permit;
+            btn.setAttribute("aria-pressed", val === which ? "true" : "false");
+        });
+        // Also update legacy advanced-mode buttons (may be null)
         const set = (btn, on) => {
             if (!btn) return;
             btn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -1790,7 +1796,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             setStatus("exporting ALL (FULL)…");
             const pageSize = config.report?.pageSize ?? 1000;
             const maxExport = config.report?.maxExportFeatures ?? 50000;
-            const allRows = [];
+
+            // Build per-layer CSV blocks separated by a header row
+            const blocks = [];
             for (let i = 0; i < lastReportRowsByLayer.length; i++) {
                 const item = lastReportRowsByLayer[i];
                 if (!item._layer || !item._exportQuery) continue;
@@ -1801,11 +1809,14 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     );
                     item.fullRows = flattenAttributes(fullFeatures);
                 }
-                for (const r of (item.fullRows || [])) {
-                    allRows.push({ __layer: item.title, ...r });
+                if (item.fullRows && item.fullRows.length) {
+                    // Layer header row
+                    blocks.push(`\n"=== ${item.title.replace(/"/g, '""')} ==="`);
+                    // CSV for this layer's data
+                    blocks.push(toCsv(item.fullRows));
                 }
             }
-            const csv = toCsv(allRows, ["__layer"]);
+            const csv = blocks.join("\n");
             downloadText("intersect_report_ALL_FULL.csv", csv || "");
             setStatus("exported ALL (FULL)");
         } catch (e) {
@@ -2504,19 +2515,109 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         if (wizSectionBtn) wizSectionBtn.addEventListener("click", () => { activatePlss("section", sectionIdx); setWizPlssActive("section"); });
         if (wizParcelBtn) wizParcelBtn.addEventListener("click", () => { activatePlss("intersected", intersectedIdx); setWizPlssActive("intersected"); });
 
-        // Wizard permit type dropdown
-        if (wizPermitType) {
-            wizPermitType.addEventListener("change", () => {
-                const val = wizPermitType.value;
-                if (val === "allotment") activatePermitLayer("allotment", allotmentIdx);
-                else if (val === "pasture") activatePermitLayer("pasture", pastureIdx);
-                else if (val === "oilgas") activatePermitLayer("oilgas", oilGasIdx);
-                else if (val === "row") activatePermitLayer("row", rowIdx);
-                else if (val === "mining") activatePermitLayer("mining", miningIdx);
-                else if (val === "lua") activatePermitLayer("lua", luaIdx);
-                else if (val === "geothermal") activatePermitLayer("geothermal", geothermalIdx);
-                else if (val === "coal") activatePermitLayer("coal", coalIdx);
+        // Wizard permit type list — click handlers on custom buttons
+        const permitValueToIdx = {
+            allotment: allotmentIdx,
+            pasture: pastureIdx,
+            oilgas: oilGasIdx,
+            row: rowIdx,
+            mining: miningIdx,
+            lua: luaIdx,
+            geothermal: geothermalIdx,
+            coal: coalIdx
+        };
+
+        if (wizPermitList) {
+            wizPermitList.querySelectorAll(".permit-item").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const val = btn.dataset.permit;
+                    const idx = permitValueToIdx[val];
+                    if (val && idx !== undefined) {
+                        activatePermitLayer(val, idx);
+                    }
+                });
             });
+        }
+
+        // ── Permit layer feature-in-view indicators ──
+        // Query each permit layer to see if features exist in the current map extent.
+        // Debounced on extent change, runs when the permit panel is visible.
+        let _permitExtentTimer = null;
+
+        function updatePermitIndicators() {
+            if (!wizPermitList) return;
+            // Only run if the permit panel is visible
+            const panel = document.getElementById("aoiMethodPermit");
+            if (!panel || panel.classList.contains("hidden")) return;
+
+            const extent = view?.extent;
+            if (!extent) return;
+
+            // For each permit item, query feature count within extent
+            wizPermitList.querySelectorAll(".permit-item").forEach(btn => {
+                const val = btn.dataset.permit;
+                const idx = permitValueToIdx[val];
+                if (idx === undefined || idx < 0) return;
+
+                const layer = selectionLayers[idx]?.layer;
+                if (!layer) return;
+
+                const dot = btn.querySelector(".permit-feat-dot");
+                const spinner = btn.querySelector(".permit-spinner");
+                if (!dot) return;
+
+                // Show spinner, set dot to checking
+                if (spinner) spinner.classList.remove("hidden");
+                dot.dataset.status = "checking";
+                dot.title = "Checking…";
+
+                const query = layer.createQuery();
+                query.geometry = extent;
+                query.spatialRelationship = "intersects";
+                query.returnGeometry = false;
+
+                layer.queryFeatureCount(query).then(count => {
+                    if (spinner) spinner.classList.add("hidden");
+                    if (count > 0) {
+                        dot.dataset.status = "found";
+                        dot.title = `${count.toLocaleString()} feature${count !== 1 ? "s" : ""} in view`;
+                    } else {
+                        dot.dataset.status = "none";
+                        dot.title = "No features in current view";
+                    }
+                }).catch(() => {
+                    if (spinner) spinner.classList.add("hidden");
+                    dot.dataset.status = "error";
+                    dot.title = "Could not query layer";
+                });
+            });
+        }
+
+        function schedulePermitIndicatorUpdate() {
+            clearTimeout(_permitExtentTimer);
+            _permitExtentTimer = setTimeout(updatePermitIndicators, 600);
+        }
+
+        // Watch for extent changes (debounced)
+        if (view) {
+            view.watch("stationary", (stationary) => {
+                if (stationary) schedulePermitIndicatorUpdate();
+            });
+        }
+
+        // Also update when the permit panel becomes visible
+        const _origShowAoiMethod = typeof showAoiMethod === "function" ? showAoiMethod : null;
+        if (_origShowAoiMethod) {
+            // Patch showAoiMethod to trigger indicator update when "permit" panel opens
+            const _aoiMethodPermitPanel = document.getElementById("aoiMethodPermit");
+            if (_aoiMethodPermitPanel) {
+                const observer = new MutationObserver(() => {
+                    if (!_aoiMethodPermitPanel.classList.contains("hidden")) {
+                        schedulePermitIndicatorUpdate();
+                    }
+                });
+                observer.observe(_aoiMethodPermitPanel, { attributes: true, attributeFilter: ["class"] });
+            }
         }
 
         // Wizard draw buttons
