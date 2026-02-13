@@ -8,6 +8,7 @@ require([
     "app/visual-report",
     "app/feature-picker",
     "app/search",
+    "app/upload-aoi",
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
@@ -17,7 +18,7 @@ require([
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer"
-], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, featurePickerModule, searchModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, featurePickerModule, searchModule, uploadAoiModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
 
     // ── Destructure config-helpers for functions already extracted ──
     const {
@@ -266,7 +267,7 @@ function setBusy(isBusy) {
 
     let view = null;
     let selectionGeom = null;
-    let aoiSource = null;            // "draw" | "select"
+    let aoiSource = null;            // "draw" | "select" | "upload"
     let aoiSourceLayerTitle = null;  // optional: which selection layer was clicked
     let map = null; // <-- add (so PLSS buttons can add/remove selection layers)
 
@@ -304,7 +305,7 @@ function setBusy(isBusy) {
     // ── Permitting Mode State ──
     let currentAppMode = "permit"; // "permit" | "advanced"
     let currentWizardStep = 1;
-    let currentAoiMethod = null; // "search" | "permit" | "select" | "draw"
+    let currentAoiMethod = null; // "search" | "permit" | "select" | "draw" | "upload"
     let currentInteractionMode = "select"; // PERF-TEST: tracks draw/select without modeSelect DOM
 
     // ── Shared state object for modules (properties updated by app.js) ──
@@ -600,7 +601,7 @@ function setActiveTab(tabName) {
         currentAoiMethod = method;
         const methodsEl = document.getElementById("aoiMethods");
         if (methodsEl) methodsEl.classList.add("hidden");
-        const panels = { search: "aoiMethodSearch", permit: "aoiMethodPermit", select: "aoiMethodSelect", draw: "aoiMethodDraw" };
+        const panels = { search: "aoiMethodSearch", permit: "aoiMethodPermit", select: "aoiMethodSelect", draw: "aoiMethodDraw", upload: "aoiMethodUpload" };
         for (const [key, id] of Object.entries(panels)) {
             const p = document.getElementById(id);
             if (p) p.classList.toggle("hidden", key !== method);
@@ -615,7 +616,7 @@ function setActiveTab(tabName) {
     }
 
     function hideAoiMethodPanels() {
-        ["aoiMethodSearch", "aoiMethodPermit", "aoiMethodSelect", "aoiMethodDraw"].forEach(id => {
+        ["aoiMethodSearch", "aoiMethodPermit", "aoiMethodSelect", "aoiMethodDraw", "aoiMethodUpload"].forEach(id => {
             const p = document.getElementById(id);
             if (p) p.classList.add("hidden");
         });
@@ -646,6 +647,7 @@ function setActiveTab(tabName) {
         const sourceEl = document.getElementById("wizAoiSource");
         if (sourceEl) {
             if (aoiSource === "draw") sourceEl.textContent = "Custom drawn polygon";
+            else if (aoiSource === "upload") sourceEl.textContent = "Uploaded file: " + (aoiSourceLayerTitle || "unknown");
             else if (aoiSourceLayerTitle) sourceEl.textContent = aoiSourceLayerTitle;
             else sourceEl.textContent = "Map selection";
         }
@@ -956,6 +958,10 @@ function clearAll() {
     const summaryEl = document.getElementById("permitResultsSummary");
     if (summaryEl) summaryEl.innerHTML = "";
     document.querySelectorAll("#permitBucketTabs .permit-tab .bucket-badge").forEach(b => b.remove());
+
+    // Clear upload status
+    const uploadStatusEl = document.getElementById("uploadStatus");
+    if (uploadStatusEl) uploadStatusEl.classList.add("hidden");
 }
 
     function setGeometryFromSelection(geom) {
@@ -2509,6 +2515,99 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         document.querySelectorAll(".aoi-back-btn").forEach(btn => {
             btn.addEventListener("click", hideAoiMethodPanels);
         });
+
+        // ── File Upload AOI wiring ──
+        (function wireUploadAoi() {
+            const dropZone     = document.getElementById("uploadDropZone");
+            const fileInput    = document.getElementById("aoiFileInput");
+            const uploadStatus = document.getElementById("uploadStatus");
+            if (!dropZone || !fileInput) return;
+
+            function showUploadStatus(msg, cls) {
+                if (!uploadStatus) return;
+                uploadStatus.className = "upload-status " + cls;
+                uploadStatus.innerHTML = msg;
+                uploadStatus.classList.remove("hidden");
+            }
+            function hideUploadStatus() {
+                if (uploadStatus) uploadStatus.classList.add("hidden");
+            }
+
+            async function handleFile(file) {
+                if (!file) return;
+                hideUploadStatus();
+                showUploadStatus('<span class="spinner" style="width:14px;height:14px;"></span> Processing <b>' + configHelpers.escapeHtml(file.name) + '</b>…', "loading");
+
+                try {
+                    const viewSR = state.view ? state.view.spatialReference : null;
+                    const result = await uploadAoiModule.processFile(file, viewSR);
+
+                    // Set as AOI
+                    selectionGeom = result.geometry;
+                    aoiSource = "upload";
+                    aoiSourceLayerTitle = result.fileName;
+
+                    setAoiGeometry(result.geometry);
+
+                    if (runBtn) runBtn.disabled = false;
+
+                    // Zoom to extent
+                    if (view && result.geometry && result.geometry.extent) {
+                        await view.goTo(result.geometry.extent.expand(1.3), { animate: true, duration: 600 });
+                    }
+
+                    // Update mask
+                    if (typeof updateAoiMask === "function") updateAoiMask();
+
+                    const countLabel = result.featureCount === 1
+                        ? "1 polygon"
+                        : result.featureCount + " polygons (dissolved)";
+                    showUploadStatus("✅ <b>" + configHelpers.escapeHtml(result.fileName) + "</b> loaded — " + countLabel, "success");
+
+                    // Advance wizard to Step 2
+                    if (currentAppMode === "permit" && currentWizardStep === 1) {
+                        populateAoiConfirmation();
+                        goToWizardStep(2);
+                    }
+                } catch (err) {
+                    console.error("Upload AOI error:", err);
+                    showUploadStatus("❌ " + configHelpers.escapeHtml(err.message || "Failed to process file"), "error");
+                }
+            }
+
+            // File input change
+            fileInput.addEventListener("change", function () {
+                if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+                fileInput.value = ""; // allow re-uploading same file
+            });
+
+            // Click on drop zone triggers file browse
+            dropZone.addEventListener("click", function (e) {
+                // Don't trigger if clicking the browse button's label (it already triggers input)
+                if (e.target.closest(".upload-browse-btn")) return;
+                fileInput.click();
+            });
+
+            // Drag-and-drop events
+            ["dragenter", "dragover"].forEach(function (evtName) {
+                dropZone.addEventListener(evtName, function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.add("drag-over");
+                });
+            });
+            ["dragleave", "drop"].forEach(function (evtName) {
+                dropZone.addEventListener(evtName, function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.remove("drag-over");
+                });
+            });
+            dropZone.addEventListener("drop", function (e) {
+                const files = e.dataTransfer && e.dataTransfer.files;
+                if (files && files.length > 0) handleFile(files[0]);
+            });
+        })();
 
         // Wizard PLSS buttons
         if (wizTownshipBtn) wizTownshipBtn.addEventListener("click", () => { activatePlss("township", townshipIdx); setWizPlssActive("township"); });

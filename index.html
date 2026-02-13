@@ -226,6 +226,14 @@
               </div>
               <div class="aoi-method-arrow">›</div>
             </button>
+            <button class="aoi-method-card" data-method="upload" type="button">
+              <div class="aoi-method-icon">📂</div>
+              <div class="aoi-method-text">
+                <div class="aoi-method-title">Upload Shapefile / GeoJSON</div>
+                <div class="aoi-method-desc">Upload a .zip, .geojson, .kml, or .kmz file</div>
+              </div>
+              <div class="aoi-method-arrow">›</div>
+            </button>
           </div>
 
           <!-- Search by Location sub-panel -->
@@ -248,6 +256,10 @@
               <span>Find Existing Permit or Lease</span>
             </div>
             <div class="aoi-method-panel-body">
+              <div class="permit-legend">
+                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="found" style="position:static;"></span> Features in view</span>
+                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="none" style="position:static;"></span> None in view</span>
+              </div>
               <div id="wizPermitList" class="permit-list">
                 <div class="permit-group-label">Grazing</div>
                 <button class="permit-item" data-permit="allotment" type="button" aria-pressed="false">
@@ -311,10 +323,6 @@
                   </span>
                 </button>
               </div>
-              <div class="permit-legend">
-                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="found" style="position:static;"></span> Features in view</span>
-                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="none" style="position:static;"></span> None in view</span>
-              </div>
               <div class="hint" style="margin-top:8px;">Select a type, then click its boundary on the map to use as your project area.</div>
             </div>
           </div>
@@ -339,6 +347,28 @@
                 </button>
               </div>
               <div class="hint">Choose a boundary size, then click on the map to select your project area.</div>
+            </div>
+          </div>
+
+          <!-- Upload File sub-panel -->
+          <div id="aoiMethodUpload" class="aoi-method-panel hidden">
+            <div class="aoi-method-panel-head">
+              <button class="aoi-back-btn" data-back="upload" type="button">← Back</button>
+              <span>Upload Spatial File</span>
+            </div>
+            <div class="aoi-method-panel-body">
+              <div id="uploadDropZone" class="upload-drop-zone">
+                <div class="upload-drop-icon">📂</div>
+                <div class="upload-drop-text">Drag &amp; drop a file here</div>
+                <div class="upload-drop-or">or</div>
+                <label class="btn subtle upload-browse-btn">
+                  Browse Files
+                  <input type="file" id="aoiFileInput" accept=".zip,.geojson,.json,.kml,.kmz" style="display:none;">
+                </label>
+                <div class="upload-drop-formats">Shapefile (.zip), GeoJSON, KML, KMZ &bull; Max 10 MB</div>
+              </div>
+              <div id="uploadStatus" class="upload-status hidden"></div>
+              <div class="hint">Upload a spatial file containing polygon boundaries to use as your project area. Multiple polygons will be merged into one AOI.</div>
             </div>
           </div>
 

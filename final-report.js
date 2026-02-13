@@ -1963,6 +1963,8 @@ define([
             if (S.aoiSource === "select") {
                 const tool = plssToolLabel(S.aoiSourcePlssTool);
                 aoiMethod = `Selected ${tool}`;
+            } else if (S.aoiSource === "upload") {
+                aoiMethod = `Uploaded File: ${S.aoiSourceLayerTitle || "unknown"}`;
             }
 
             // 2d. AOI Maps

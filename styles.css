@@ -177,19 +177,460 @@ html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
   transform: rotate(180deg);
 }
 
-/* Mobile-friendly minimized state */
+/* ============================================
+   RESPONSIVE / MOBILE OVERRIDES
+   ============================================ */
+
+/* ── Mid-size screens (tablets, small laptops) ── */
+@media (max-width: 900px) {
+  .feature-search-widget {
+    max-width: calc(100vw - 520px);
+  }
+}
+
+/* ── Small screens (phones, narrow windows) ── */
 @media (max-width: 600px) {
+
+  /* ── Panel ── */
   #panel {
-    width: calc(100vw - 24px);
+    width: calc(100vw - 16px);
+    left: 8px;
+    right: 8px;
+    top: 8px;
     max-height: 70vh;
+    border-radius: var(--radius-lg);
   }
   #panel.minimized {
     width: auto;
-    min-width: 180px;
+    min-width: 160px;
+    max-height: none;
+  }
+
+  .panel-header {
+    padding: 12px 14px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
   .panel-toggle-btn {
     width: 40px;
     height: 40px;
+  }
+
+  .title {
+    font-size: 16px;
+    gap: 8px;
+  }
+  .title::before {
+    width: 4px;
+    height: 18px;
+  }
+
+  /* ── Panel header actions (mode toggle + collapse) ── */
+  .panel-header-actions {
+    gap: 4px;
+  }
+  .mode-toggle {
+    padding: 1px;
+    gap: 1px;
+  }
+  .mode-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  /* ── Search widget ── */
+  .feature-search-widget {
+    position: fixed;
+    top: auto;
+    bottom: 12px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    transform: none;
+    z-index: 200;
+  }
+  .feature-search-input {
+    padding: 14px 44px 14px 14px;
+    font-size: 16px; /* prevents iOS zoom on focus */
+    border-radius: var(--radius-lg);
+    box-shadow: 0 -2px 16px rgba(0,0,0,0.2);
+  }
+  .feature-search-results {
+    top: auto;
+    bottom: calc(100% + 6px);
+    max-height: 50vh;
+    border-radius: var(--radius-lg);
+  }
+
+  /* ── Wizard steps ── */
+  .wizard-steps {
+    padding: 10px 12px 6px;
+    gap: 0;
+  }
+  .wizard-step-label {
+    font-size: 10px;
+  }
+  .wizard-step-num {
+    width: 22px;
+    height: 22px;
+    font-size: 10px;
+  }
+  .wizard-connector {
+    min-width: 10px;
+    max-width: 20px;
+    margin: 0 4px;
+  }
+  .wizard-question {
+    font-size: 14px;
+  }
+  .wizard-subtext {
+    font-size: 12px;
+  }
+
+  /* ── Cards & spacing ── */
+  .card {
+    margin: 8px 10px;
+    padding: 12px;
+  }
+  .result-card {
+    margin: 8px 10px;
+    padding: 12px;
+  }
+  .service-card {
+    margin: 8px 10px;
+    padding: 12px;
+  }
+  .layers-section {
+    margin: 8px 10px;
+  }
+
+  /* ── Tabs ── */
+  .tabs {
+    padding: 6px 10px 0;
+    gap: 2px;
+  }
+  .tab-btn {
+    padding: 10px 6px;
+    font-size: 11px;
+  }
+
+  /* ── Toolgroup (PLSS selection buttons) ── */
+  .toolgroup {
+    flex-wrap: wrap;
+  }
+  .toolbtn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .tooltext {
+    font-size: 11px;
+  }
+
+  /* ── Status bar ── */
+  .status {
+    margin: 8px 10px;
+    padding: 10px 12px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  /* ── Row layout: allow wrapping ── */
+  .row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .label {
+    min-width: 80px;
+    font-size: 11px;
+  }
+
+  /* ── Banner ── */
+  .banner-warn {
+    margin: 8px 10px;
+    font-size: 11px;
+  }
+  .banner-disclaimer {
+    margin: 8px 10px;
+    font-size: 11px;
+  }
+
+  /* ── AOI method cards ── */
+  .aoi-method-card {
+    padding: 12px 10px;
+    gap: 10px;
+  }
+  .aoi-method-icon {
+    font-size: 18px;
+    min-width: 28px;
+  }
+  .aoi-method-title {
+    font-size: 13px;
+  }
+  .aoi-method-desc {
+    font-size: 11px;
+  }
+
+  /* ── Permit items ── */
+  .permit-item {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .permit-legend {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── Permit bucket tabs: wrap tighter ── */
+  .permit-bucket-tabs {
+    padding: 6px 10px;
+    gap: 2px;
+  }
+  .permit-tab {
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  /* ── Permit summary grid: single column ── */
+  .permit-summary-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  /* ── Analysis modal ── */
+  .analysis-modal-content {
+    width: 96%;
+    max-height: 85vh;
+    border-radius: var(--radius-lg);
+  }
+  .analysis-header {
+    padding: 16px 16px 12px;
+  }
+  .analysis-header h2 {
+    font-size: 17px;
+  }
+  .analysis-body {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+  .analysis-stats {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 12px 16px 0;
+  }
+  .analysis-stat-value {
+    font-size: 20px;
+  }
+  .analysis-stat-label {
+    font-size: 10px;
+  }
+  .analysis-log {
+    height: 120px;
+    max-height: 120px;
+    font-size: 12px;
+  }
+  .analysis-step-value {
+    font-size: 14px;
+  }
+
+  /* ── Feature picker modal ── */
+  .feature-picker-content {
+    width: calc(100vw - 24px);
+  }
+
+  /* ── Overview map: smaller & tighter to corner ── */
+  #overviewDiv {
+    width: 130px;
+    height: 100px;
+  }
+
+  /* ── Tables: allow horizontal scroll, prevent clip ── */
+  .table-wrap {
+    border-radius: var(--radius-sm);
+  }
+  th, td {
+    padding: 8px 8px;
+    font-size: 11px;
+  }
+
+  /* ── Tier selector ── */
+  .tier-card {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .tier-name {
+    font-size: 12px;
+  }
+  .tier-desc {
+    font-size: 10px;
+  }
+
+  /* ── AOI confirm card ── */
+  .aoi-confirm-card {
+    padding: 10px;
+  }
+  .aoi-confirm-label {
+    font-size: 11px;
+  }
+  .aoi-confirm-value {
+    font-size: 13px;
+  }
+
+  /* ── Bucket cards ── */
+  .bucket-card {
+    margin: 8px 10px;
+    padding: 12px;
+  }
+  .bucket-alert {
+    margin: 6px 10px;
+    font-size: 12px;
+  }
+  .overview-table {
+    margin: 8px 10px;
+    max-width: calc(100% - 20px);
+    font-size: 12px;
+  }
+
+  /* ── Subtitle ── */
+  .subtitle {
+    font-size: 12px;
+  }
+
+  /* ── Hint ── */
+  .hint {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+
+  /* ── Scrollbar: thinner on mobile ── */
+  #panel::-webkit-scrollbar {
+    width: 4px;
+  }
+}
+
+/* ============================================
+   UPLOAD DROP ZONE
+   ============================================ */
+.upload-drop-zone {
+    border: 2px dashed var(--border-medium);
+    border-radius: var(--radius-lg);
+    padding: 28px 20px;
+    text-align: center;
+    background: var(--bg-subtle);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+}
+.upload-drop-zone:hover,
+.upload-drop-zone.drag-over {
+    border-color: var(--blm-green);
+    background: var(--blm-green-pale);
+}
+.upload-drop-zone.drag-over {
+    box-shadow: inset 0 0 0 2px var(--blm-green-pale);
+}
+.upload-drop-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+    line-height: 1;
+}
+.upload-drop-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+.upload-drop-or {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 6px 0;
+}
+.upload-browse-btn {
+    display: inline-flex;
+    cursor: pointer;
+}
+.upload-drop-formats {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 10px;
+}
+.upload-status {
+    margin-top: 10px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.upload-status.hidden { display: none; }
+.upload-status.loading {
+    background: var(--blm-green-pale);
+    color: var(--blm-green);
+}
+.upload-status.success {
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+    color: #2e7d32;
+}
+.upload-status.error {
+    background: #fde8e8;
+    border: 1px solid #f0aaaa;
+    color: #c62828;
+}
+
+/* ── Very narrow screens (small phones, split-screen) ── */
+@media (max-width: 380px) {
+  #panel {
+    width: calc(100vw - 8px);
+    left: 4px;
+    right: 4px;
+    top: 4px;
+  }
+
+  .panel-header {
+    padding: 10px 10px;
+  }
+  .title {
+    font-size: 14px;
+  }
+
+  .wizard-step-label {
+    display: none; /* show only numbers on very small screens */
+  }
+
+  .toolgroup {
+    gap: 4px;
+  }
+  .toolbtn {
+    padding: 6px 8px;
+  }
+  .tooltext {
+    font-size: 10px;
+  }
+
+  .tabs {
+    padding: 4px 6px 0;
+  }
+  .tab-btn {
+    padding: 8px 4px;
+    font-size: 10px;
+  }
+
+  .analysis-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-search-widget {
+    left: 4px;
+    right: 4px;
+    bottom: 8px;
   }
 }
 
