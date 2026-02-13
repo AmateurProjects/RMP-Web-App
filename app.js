@@ -116,6 +116,22 @@ require([
     const wizPermitType = document.getElementById("wizPermitType");
     const wizLocationInput = document.getElementById("wizLocationInput");
     const wizLocationResults = document.getElementById("wizLocationResults");
+    const tierLayerCountEl = document.getElementById("tierLayerCount");
+
+    /* ── Tier selection helper ── */
+    function getSelectedTier() {
+      const sel = document.querySelector('input[name="analysisTier"]:checked');
+      return sel ? parseInt(sel.value, 10) : 1;
+    }
+    function updateTierLayerCount() {
+      const tier = getSelectedTier();
+      const count = (config.reportLayers || []).filter(l => (l.tier || 1) <= tier).length;
+      if (tierLayerCountEl) tierLayerCountEl.textContent = count + " layer" + (count !== 1 ? "s" : "") + " will be screened";
+    }
+    // wire up radio change events
+    document.querySelectorAll('input[name="analysisTier"]').forEach(r => {
+      r.addEventListener("change", updateTierLayerCount);
+    });
 
     function setStatus(msg) {
         const text = "Status: " + msg;
@@ -503,28 +519,39 @@ function setActiveTab(tabName) {
     const PERMIT_BUCKETS = {
         "land-status": {
             label: "Land Status & Authority", icon: "🏛️",
-            description: "Federal land ownership, administrative boundaries, and jurisdictional authority over BLM-managed lands.",
-            patterns: [/federal lands/i, /admin.*unit/i, /state boundar/i, /usfws.*region/i, /aoi source/i]
+            description: "Federal land ownership, administrative boundaries, tribal lands, and jurisdictional authority over BLM-managed lands.",
+            patterns: [/federal lands/i, /admin.*unit/i, /state boundar/i, /usfws.*region/i, /aoi source/i,
+                        /bia.*aian/i, /indian/i, /alaska.*native/i, /tribal/i, /surface.*ownership/i,
+                        /land use planning bound/i]
         },
         "land-use": {
             label: "Land Use Plans & Allocations", icon: "📑",
             description: "Resource Management Plans, timber and mineral allocations that may govern permitted activities in this area.",
-            patterns: [/land use plan/i, /revision.*development/i, /timber/i, /locatable.*mineral/i]
+            patterns: [/land use plan/i, /revision.*development/i, /timber/i, /locatable.*mineral/i,
+                        /taylor grazing/i, /tga/i]
         },
         "special": {
             label: "Special Designations", icon: "⭐",
-            description: "ACECs, wilderness, conservation lands, and other designations that may restrict or condition activities.",
-            patterns: [/acec/i, /critical environmental/i, /nlcs/i, /conservation area/i, /national monument/i, /wilderness/i, /wsa/i, /recreation site/i, /lwcf/i, /conservation fund/i, /visual resource/i]
+            description: "ACECs, wilderness, conservation lands, wild & scenic rivers, roadless areas, and other designations that may restrict or condition activities.",
+            patterns: [/acec/i, /critical environmental/i, /nlcs/i, /conservation area/i, /national monument/i,
+                        /wilderness/i, /wsa/i, /recreation site/i, /lwcf/i, /conservation fund/i, /visual resource/i,
+                        /wild.*scenic.*river/i, /roadless/i, /national forest bound/i, /national wildlife refuge/i, /nwr/i]
         },
         "environmental": {
             label: "Environmental & ESA", icon: "🌿",
-            description: "Threatened and endangered species habitat, wildlife corridors, elevation data, and fire history.",
-            patterns: [/critical habitat/i, /ungulate/i, /migration/i, /wild horse/i, /burro/i, /elevation/i, /fire perim/i]
+            description: "Threatened and endangered species habitat, wetlands, hydrology, wildlife corridors, flood hazards, and fire history.",
+            patterns: [/critical habitat/i, /ungulate/i, /migration/i, /wild horse/i, /burro/i, /elevation/i, /fire perim/i,
+                        /wetland/i, /nwi/i, /riparian/i, /nhd/i, /hydrography/i, /watershed/i, /wbd/i,
+                        /flood/i, /nfhl/i, /fema/i, /sagebrush/i, /fiat/i, /danl/i, /disturbance/i,
+                        /at.risk.*species/i, /t\&e/i, /threatened/i]
         },
         "authorizations": {
             label: "Existing Authorizations", icon: "📝",
-            description: "Active permits, leases, rights-of-way, and other authorizations that currently overlap your project area.",
-            patterns: [/grazing allot/i, /grazing pasture/i, /oil.*gas/i, /mlrs.*row/i, /lua.*row/i, /eplanning/i, /plss.*parcel/i]
+            description: "Active permits, leases, rights-of-way, mining claims, and other authorizations that currently overlap your project area.",
+            patterns: [/grazing allot/i, /grazing pasture/i, /oil.*gas/i, /mlrs.*row/i, /lua.*row/i, /eplanning/i, /plss.*parcel/i,
+                        /mining claim/i, /lua.*lease/i, /lua.*permit/i, /lua.*easem/i, /geothermal/i, /coal case/i,
+                        /oil shale/i, /non.energy/i, /mineral material/i, /locatable notice/i, /locatable plan/i,
+                        /participating area/i, /agreement/i, /gtlf/i, /road.*trail/i]
         }
     };
 
@@ -622,6 +649,8 @@ function setActiveTab(tabName) {
             else if (aoiSourceLayerTitle) sourceEl.textContent = aoiSourceLayerTitle;
             else sourceEl.textContent = "Map selection";
         }
+        // Update tier layer count when step 2 is shown
+        updateTierLayerCount();
     }
 
     let wizLocationDebounce = null;
@@ -1288,7 +1317,9 @@ async function runAnalysis() {
     analysisModal.show();
     analysisModal.setProgress(0);
     analysisModal.setStep("Starting analysis...");
-    analysisModal.addLog("Analysis started");
+    const tier = getSelectedTier();
+    const tierLabel = tier === 1 ? "Essential" : tier === 2 ? "Comprehensive" : "Complete";
+    analysisModal.addLog("Analysis started — Tier " + tier + " (" + tierLabel + ")");
 
     setBusy(true);
 
@@ -1398,8 +1429,10 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
 
+    const selectedTier = getSelectedTier();
+
     const combinedCfgs = [
-        ...(config.reportLayers || [])
+        ...(config.reportLayers || []).filter(l => (l.tier || 1) <= selectedTier)
     ];
 
     if (plssStateLayerUrl) {

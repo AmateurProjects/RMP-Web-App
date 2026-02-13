@@ -313,12 +313,45 @@
               <span class="aoi-confirm-value" id="wizAoiSource">—</span>
             </div>
           </div>
+          <!-- Tier Selection -->
+          <div class="tier-selector" id="tierSelector">
+            <div class="tier-selector-label">Analysis Depth</div>
+            <div class="tier-options">
+              <label class="tier-option" data-tier="1">
+                <input type="radio" name="analysisTier" value="1" checked />
+                <div class="tier-card">
+                  <span class="tier-badge tier-1">Tier 1</span>
+                  <span class="tier-name">Essential</span>
+                  <span class="tier-desc">Core regulatory layers — fastest screening</span>
+                </div>
+              </label>
+              <label class="tier-option" data-tier="2">
+                <input type="radio" name="analysisTier" value="2" />
+                <div class="tier-card">
+                  <span class="tier-badge tier-2">Tier 2</span>
+                  <span class="tier-name">Comprehensive</span>
+                  <span class="tier-desc">Adds environmental, planning, and recreation layers</span>
+                </div>
+              </label>
+              <label class="tier-option" data-tier="3">
+                <input type="radio" name="analysisTier" value="3" />
+                <div class="tier-card">
+                  <span class="tier-badge tier-3">Tier 3</span>
+                  <span class="tier-name">Complete</span>
+                  <span class="tier-desc">All available layers — most thorough, takes longest</span>
+                </div>
+              </label>
+            </div>
+            <div class="tier-layer-count" id="tierLayerCount"></div>
+          </div>
+
           <div class="row" style="margin-top:14px;">
             <button id="wizBackToStep1" class="btn subtle" type="button">← Change Area</button>
             <button id="wizScreenBtn" class="btn primary" type="button">Screen for Considerations</button>
           </div>
           <div class="hint">
-            Screening checks your area against federal land records, environmental designations, and existing authorizations. This usually takes 30–60 seconds.
+            Screening checks your area against federal land records, environmental designations, and existing authorizations.
+            Time depends on the tier selected and your connection speed.
           </div>
         </div>
       </section>

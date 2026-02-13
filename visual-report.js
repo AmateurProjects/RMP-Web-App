@@ -32,6 +32,51 @@ define([
     let visualReportOutputsEl = null;
     let visualReportSummaryEl = null;
 
+    // ── Background-tab resilience helpers ──
+    let _wakeLock = null;
+
+    /** Request a Wake Lock to keep the screen active during analysis. */
+    async function requestWakeLock() {
+        try {
+            if (navigator.wakeLock) {
+                _wakeLock = await navigator.wakeLock.request("screen");
+                console.log("[visual-report] Wake Lock acquired");
+            }
+        } catch (e) {
+            console.warn("[visual-report] Wake Lock request failed:", e.message);
+        }
+    }
+
+    /** Release the Wake Lock when analysis is done. */
+    async function releaseWakeLock() {
+        try {
+            if (_wakeLock) { await _wakeLock.release(); _wakeLock = null; console.log("[visual-report] Wake Lock released"); }
+        } catch (e) { /* ignore */ }
+    }
+
+    /**
+     * Retry wrapper for view.takeScreenshot.
+     * Browsers throttle rendering in hidden/background tabs.  If the first
+     * attempt returns no data we wait a moment and retry.
+     */
+    async function takeScreenshotSafe(view, opts, maxRetries) {
+        if (maxRetries === undefined) maxRetries = 3;
+        for (var attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                var ss = await view.takeScreenshot(opts);
+                if (ss && ss.dataUrl) return ss;
+            } catch (e) {
+                console.warn("[visual-report] takeScreenshot attempt " + attempt + " failed:", e.message);
+            }
+            // Wait before retrying — give browser a chance to repaint
+            await new Promise(function (r) { setTimeout(r, 800 * attempt); });
+            // Force a frame to encourage the browser to paint
+            await new Promise(function (r) { requestAnimationFrame(r); });
+        }
+        // Final fallback attempt
+        return await view.takeScreenshot(opts);
+    }
+
     // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     // Public API
     // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -87,6 +132,9 @@ define([
 
     async function generateVisualReportData(myOp, modal) {
         if (modal === undefined) modal = null;
+
+        // Request Wake Lock to prevent browser throttling during screenshots
+        await requestWakeLock();
 
         const view = S.view;
         const selectionGeom = S.selectionGeom;
@@ -235,7 +283,7 @@ define([
                         await view.goTo(fixedExtent, { animate: false });
                         await waitForViewStationary(2500);
 
-                        var ss = await view.takeScreenshot({ format: "png", quality: 100, width: width });
+                        var ss = await takeScreenshotSafe(view, { format: "png", quality: 100, width: width });
                         if (!ss || !ss.dataUrl) throw new Error("Screenshot failed");
                         var dataUrl = ss.dataUrl;
 
@@ -338,7 +386,7 @@ define([
                         await view.goTo(fixedExtent, { animate: false });
                     }
 
-                    var ss2 = await view.takeScreenshot({ format: "png", quality: 100, width: width });
+                    var ss2 = await takeScreenshotSafe(view, { format: "png", quality: 100, width: width });
                     var dataUrl2 = ss2 && ss2.dataUrl;
                     if (!dataUrl2) throw new Error("Screenshot failed (no dataUrl).");
 
@@ -392,6 +440,9 @@ define([
         } catch (e) {
             console.error(e);
             setVisualStatus("Failed to generate maps (see console).");
+        } finally {
+            // Always release the Wake Lock when done
+            await releaseWakeLock();
         }
     }
 
