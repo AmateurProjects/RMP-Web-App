@@ -94,6 +94,28 @@ require([
     const servicesListEl = document.getElementById("servicesList");
     const refreshServicesBtn = document.getElementById("refreshServicesBtn");
 
+    // ── Permitting Mode DOM ──
+    const permitModePanel = document.getElementById("permitModePanel");
+    const advancedModePanel = document.getElementById("advancedModePanel");
+    const permitModeBtn = document.getElementById("permitModeBtn");
+    const advancedModeBtn = document.getElementById("advancedModeBtn");
+    const wizardStep1 = document.getElementById("wizardStep1");
+    const wizardStep2 = document.getElementById("wizardStep2");
+    const wizardStep3 = document.getElementById("wizardStep3");
+    const wizScreenBtn = document.getElementById("wizScreenBtn");
+    const wizBackToStep1 = document.getElementById("wizBackToStep1");
+    const wizNewScreening = document.getElementById("wizNewScreening");
+    const wizFullReport = document.getElementById("wizFullReport");
+    const wizExportAll = document.getElementById("wizExportAll");
+    const wizDrawBtn = document.getElementById("wizDrawBtn");
+    const wizStopDrawBtn = document.getElementById("wizStopDrawBtn");
+    const wizTownshipBtn = document.getElementById("wizTownshipBtn");
+    const wizSectionBtn = document.getElementById("wizSectionBtn");
+    const wizParcelBtn = document.getElementById("wizParcelBtn");
+    const wizPermitType = document.getElementById("wizPermitType");
+    const wizLocationInput = document.getElementById("wizLocationInput");
+    const wizLocationResults = document.getElementById("wizLocationResults");
+
     function setStatus(msg) {
         const text = "Status: " + msg;
         if (statusTextEl) statusTextEl.textContent = text;
@@ -145,7 +167,11 @@ function setBusy(isBusy) {
             if (successCloseBtn) {
                 successCloseBtn.addEventListener("click", () => {
                     this.hide();
-                    setActiveTab("report"); // Jump to Tables tab
+                    if (currentAppMode === "permit") {
+                        goToWizardStep(3);
+                    } else {
+                        setActiveTab("report"); // Jump to Tables tab
+                    }
                 });
             }
         },
@@ -257,6 +283,11 @@ function setBusy(isBusy) {
 
     let lastReportRowsByLayer = []; // for export-all
     let reportLayerViews = new Map();
+
+    // ── Permitting Mode State ──
+    let currentAppMode = "permit"; // "permit" | "advanced"
+    let currentWizardStep = 1;
+    let currentAoiMethod = null; // "search" | "permit" | "select" | "draw"
 
     // ── Shared state object for modules (properties updated by app.js) ──
     const state = {
@@ -463,6 +494,285 @@ function setActiveTab(tabName) {
         return (selectionLayers || []).findIndex(e => normalize(e?.cfg?.title).includes(n));
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // PERMITTING MODE — Mode switching, wizard, AOI methods, buckets
+    // ──────────────────────────────────────────────────────────────
+
+    const PERMIT_BUCKETS = {
+        "land-status": {
+            label: "Land Status & Authority", icon: "🏛️",
+            description: "Federal land ownership, administrative boundaries, and jurisdictional authority over BLM-managed lands.",
+            patterns: [/federal lands/i, /admin.*unit/i, /state boundar/i, /usfws.*region/i, /aoi source/i]
+        },
+        "land-use": {
+            label: "Land Use Plans & Allocations", icon: "📑",
+            description: "Resource Management Plans, timber and mineral allocations that may govern permitted activities in this area.",
+            patterns: [/land use plan/i, /revision.*development/i, /timber/i, /locatable.*mineral/i]
+        },
+        "special": {
+            label: "Special Designations", icon: "⭐",
+            description: "ACECs, wilderness, conservation lands, and other designations that may restrict or condition activities.",
+            patterns: [/acec/i, /critical environmental/i, /nlcs/i, /conservation area/i, /national monument/i, /wilderness/i, /wsa/i, /recreation site/i, /lwcf/i, /conservation fund/i, /visual resource/i]
+        },
+        "environmental": {
+            label: "Environmental & ESA", icon: "🌿",
+            description: "Threatened and endangered species habitat, wildlife corridors, elevation data, and fire history.",
+            patterns: [/critical habitat/i, /ungulate/i, /migration/i, /wild horse/i, /burro/i, /elevation/i, /fire perim/i]
+        },
+        "authorizations": {
+            label: "Existing Authorizations", icon: "📝",
+            description: "Active permits, leases, rights-of-way, and other authorizations that currently overlap your project area.",
+            patterns: [/grazing allot/i, /grazing pasture/i, /oil.*gas/i, /mlrs.*row/i, /lua.*row/i, /eplanning/i, /plss.*parcel/i]
+        }
+    };
+
+    function categorizeIntoBuckets(reportItems) {
+        const buckets = {};
+        for (const key of Object.keys(PERMIT_BUCKETS)) buckets[key] = [];
+        buckets["uncategorized"] = [];
+        for (const item of (reportItems || [])) {
+            const title = (item.title || "");
+            let placed = false;
+            for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
+                if (bd.patterns.some(p => p.test(title))) { buckets[bk].push(item); placed = true; break; }
+            }
+            if (!placed) buckets["uncategorized"].push(item);
+        }
+        return buckets;
+    }
+
+    function setAppMode(mode) {
+        currentAppMode = mode;
+        if (permitModePanel) permitModePanel.classList.toggle("hidden", mode !== "permit");
+        if (advancedModePanel) advancedModePanel.classList.toggle("hidden", mode !== "advanced");
+        if (permitModeBtn) permitModeBtn.classList.toggle("active", mode === "permit");
+        if (advancedModeBtn) advancedModeBtn.classList.toggle("active", mode === "advanced");
+        if (view) requestAnimationFrame(() => { try { view.resize(); } catch (e) {} });
+    }
+
+    function goToWizardStep(step) {
+        currentWizardStep = step;
+        document.querySelectorAll("#wizardSteps .wizard-step").forEach(el => {
+            const s = parseInt(el.dataset.step, 10);
+            el.classList.toggle("active", s === step);
+            el.classList.toggle("completed", s < step);
+        });
+        document.querySelectorAll("#wizardSteps .wizard-connector").forEach((conn, idx) => {
+            conn.style.background = (idx < step - 1) ? "var(--blm-green)" : "var(--border-light)";
+        });
+        [wizardStep1, wizardStep2, wizardStep3].forEach((panel, idx) => {
+            if (panel) panel.classList.toggle("active", idx + 1 === step);
+        });
+    }
+
+    function showAoiMethod(method) {
+        currentAoiMethod = method;
+        const methodsEl = document.getElementById("aoiMethods");
+        if (methodsEl) methodsEl.classList.add("hidden");
+        const panels = { search: "aoiMethodSearch", permit: "aoiMethodPermit", select: "aoiMethodSelect", draw: "aoiMethodDraw" };
+        for (const [key, id] of Object.entries(panels)) {
+            const p = document.getElementById(id);
+            if (p) p.classList.toggle("hidden", key !== method);
+        }
+        if (method === "draw") {
+            if (modeSelect) modeSelect.value = "draw";
+            setMode("draw");
+        } else if (method === "select" || method === "permit") {
+            if (modeSelect) modeSelect.value = "select";
+            setMode("select");
+        }
+    }
+
+    function hideAoiMethodPanels() {
+        ["aoiMethodSearch", "aoiMethodPermit", "aoiMethodSelect", "aoiMethodDraw"].forEach(id => {
+            const p = document.getElementById(id);
+            if (p) p.classList.add("hidden");
+        });
+        const methodsEl = document.getElementById("aoiMethods");
+        if (methodsEl) methodsEl.classList.remove("hidden");
+        currentAoiMethod = null;
+    }
+
+    function setWizPlssActive(which) {
+        const set = (btn, on) => { if (btn) btn.setAttribute("aria-pressed", on ? "true" : "false"); };
+        set(wizTownshipBtn, which === "township");
+        set(wizSectionBtn, which === "section");
+        set(wizParcelBtn, which === "intersected");
+    }
+
+    function populateAoiConfirmation() {
+        if (selectionGeom) {
+            try {
+                const areaSqm = geometryEngine.geodesicArea(selectionGeom, "square-meters");
+                const acres = Math.abs(areaSqm) / 4046.8564224;
+                const el = document.getElementById("wizAoiAcres");
+                if (el) el.textContent = formatNumber(acres, 2) + " acres";
+            } catch (e) {
+                const el = document.getElementById("wizAoiAcres");
+                if (el) el.textContent = "(unable to compute)";
+            }
+        }
+        const sourceEl = document.getElementById("wizAoiSource");
+        if (sourceEl) {
+            if (aoiSource === "draw") sourceEl.textContent = "Custom drawn polygon";
+            else if (aoiSourceLayerTitle) sourceEl.textContent = aoiSourceLayerTitle;
+            else sourceEl.textContent = "Map selection";
+        }
+    }
+
+    let wizLocationDebounce = null;
+    function performLocationSearch(query) {
+        if (!query || query.length < 3) {
+            if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
+            return;
+        }
+        clearTimeout(wizLocationDebounce);
+        wizLocationDebounce = setTimeout(async () => {
+            try {
+                const url = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest?text=" + encodeURIComponent(query) + "&maxSuggestions=5&f=json";
+                const data = await fetchJson(url);
+                const suggestions = (data && data.suggestions) ? data.suggestions : [];
+                if (!suggestions.length) {
+                    if (wizLocationResults) {
+                        wizLocationResults.innerHTML = '<div class="wiz-location-item" style="color:var(--text-muted);">No results found</div>';
+                        wizLocationResults.classList.remove("hidden");
+                    }
+                    return;
+                }
+                if (wizLocationResults) {
+                    wizLocationResults.innerHTML = suggestions.map(s =>
+                        '<div class="wiz-location-item" data-magic-key="' + escapeHtml(s.magicKey || "") + '" data-text="' + escapeHtml(s.text || "") + '">' + escapeHtml(s.text) + '</div>'
+                    ).join("");
+                    wizLocationResults.classList.remove("hidden");
+                    wizLocationResults.querySelectorAll(".wiz-location-item").forEach(item => {
+                        item.addEventListener("click", async () => {
+                            const mk = item.getAttribute("data-magic-key");
+                            const txt = item.getAttribute("data-text");
+                            if (wizLocationInput) wizLocationInput.value = txt;
+                            wizLocationResults.classList.add("hidden");
+                            try {
+                                const sr = (view && view.spatialReference && view.spatialReference.wkid) || 102100;
+                                const gUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?SingleLine=" + encodeURIComponent(txt) + "&magicKey=" + encodeURIComponent(mk) + "&outSR=" + sr + "&f=json";
+                                const gData = await fetchJson(gUrl);
+                                const c = gData && gData.candidates && gData.candidates[0];
+                                if (c && c.location) {
+                                    await view.goTo({ center: [c.location.x, c.location.y], zoom: 12 }, { animate: true, duration: 800 });
+                                    setStatus("Zoomed to location \u2014 now select a boundary or draw your area");
+                                    showAoiMethod("select");
+                                }
+                            } catch (e) {
+                                console.warn("Geocode failed:", e);
+                                setStatus("Location search failed \u2014 try another method");
+                            }
+                        });
+                    });
+                }
+            } catch (e) { console.warn("Location suggest failed:", e); }
+        }, 350);
+    }
+
+    function populatePermitBuckets() {
+        const buckets = categorizeIntoBuckets(lastReportRowsByLayer);
+
+        // Update tab badges
+        document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {
+            const bKey = tab.dataset.bucket;
+            if (!bKey || bKey === "overview" || bKey === "all-data") return;
+            const items = buckets[bKey] || [];
+            const hitCount = items.reduce((s, it) => s + (it.count || 0), 0);
+            const existing = tab.querySelector(".bucket-badge");
+            if (existing) existing.remove();
+            const badge = document.createElement("span");
+            badge.className = "bucket-badge" + (hitCount === 0 ? " zero" : "");
+            badge.textContent = String(hitCount);
+            tab.appendChild(badge);
+        });
+
+        // Overview bucket
+        const overviewEl = document.getElementById("bucketOverview");
+        if (overviewEl) {
+            const tl = lastReportRowsByLayer.length;
+            const th = lastReportRowsByLayer.reduce((s, x) => s + (x.count || 0), 0);
+            const lwh = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
+            let oh = '<div style="padding:0 16px 8px;"><div class="permit-summary-grid">';
+            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + tl + '</div><div class="permit-summary-stat-label">Datasets Checked</div></div>';
+            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + lwh + '</div><div class="permit-summary-stat-label">With Findings</div></div>';
+            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + th + '</div><div class="permit-summary-stat-label">Total Features</div></div>';
+            oh += '</div></div>';
+            for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
+                const items = buckets[bk] || [];
+                const hc = items.reduce((s, it) => s + (it.count || 0), 0);
+                const lhc = items.filter(it => (it.count || 0) > 0).length;
+                if (hc > 0) {
+                    const names = items.filter(it => (it.count || 0) > 0).map(it => '<strong>' + escapeHtml(it.title) + '</strong> (' + it.count + ')').join(", ");
+                    oh += '<div class="bucket-alert bucket-alert-caution"><strong>' + bd.icon + ' ' + escapeHtml(bd.label) + '</strong> \u2014 ' + lhc + ' layer' + (lhc !== 1 ? 's' : '') + ' with findings. <span style="font-size:12px;">' + names + '</span></div>';
+                } else {
+                    oh += '<div class="bucket-alert bucket-alert-clear"><strong>' + bd.icon + ' ' + escapeHtml(bd.label) + '</strong> \u2014 No features found in this category. This does not guarantee the absence of relevant considerations.</div>';
+                }
+            }
+            oh += '<div class="bucket-alert bucket-alert-info" style="margin-top:4px;"><strong>Important:</strong> These results are based on available GIS data and may not reflect all conditions on the ground. Additional site-specific review may be required during the permitting process. Contact your local BLM field office for authoritative guidance.</div>';
+            overviewEl.innerHTML = oh;
+        }
+
+        // Summary in header card
+        const summaryEl = document.getElementById("permitResultsSummary");
+        if (summaryEl) {
+            const t2 = lastReportRowsByLayer.reduce((s, x) => s + (x.count || 0), 0);
+            const l2 = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
+            summaryEl.innerHTML = '<div class="small"><strong>' + l2 + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> datasets have findings &mdash; <strong>' + t2 + '</strong> total features intersect your project area.</div>';
+        }
+
+        // Individual bucket panels
+        for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
+            const pid = "bucket" + bk.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+            const pe = document.getElementById(pid);
+            if (!pe) continue;
+            const items = buckets[bk] || [];
+            let h = '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + bd.icon + ' ' + escapeHtml(bd.label) + '</div>';
+            const tc = items.reduce((s, it) => s + (it.count || 0), 0);
+            h += '<div class="bucket-card-count' + (tc === 0 ? ' zero' : '') + '">' + tc + ' feature' + (tc !== 1 ? 's' : '') + '</div></div>';
+            h += '<div class="bucket-card-desc">' + escapeHtml(bd.description) + '</div><ul class="bucket-layer-list">';
+            for (const it of items) {
+                const c = it.count || 0;
+                h += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
+                h += '<span class="bucket-layer-count' + (c > 0 ? ' has-hits' : '') + '">' + c + ' feature' + (c !== 1 ? 's' : '') + '</span></li>';
+            }
+            if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this category</li>';
+            h += '</ul>';
+            if (tc === 0) h += '<div class="hint" style="margin-top:8px;">No intersecting features were found. This does not guarantee the absence of relevant considerations not captured in available GIS data.</div>';
+            h += '</div>';
+            pe.innerHTML = h;
+        }
+
+        // All Data bucket
+        const adEl = document.getElementById("bucketAllData");
+        if (adEl) {
+            const adT = lastReportRowsByLayer.reduce((s, x) => s + (x.count || 0), 0);
+            let ad = '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">📊 All Queried Layers</div>';
+            ad += '<div class="bucket-card-count">' + adT + ' total</div></div><ul class="bucket-layer-list">';
+            const sorted = lastReportRowsByLayer.slice().sort((a, b) => (b.count || 0) - (a.count || 0));
+            for (const it of sorted) {
+                const c = it.count || 0;
+                ad += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
+                ad += '<span class="bucket-layer-count' + (c > 0 ? ' has-hits' : ' zero') + '">' + c + '</span></li>';
+            }
+            ad += '</ul></div>';
+            adEl.innerHTML = ad;
+        }
+    }
+
+    function setActiveBucket(bucketKey) {
+        document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {
+            tab.classList.toggle("active", tab.dataset.bucket === bucketKey);
+        });
+        const pm = { "overview": "bucketOverview", "land-status": "bucketLandStatus", "land-use": "bucketLandUse", "special": "bucketSpecial", "environmental": "bucketEnvironmental", "authorizations": "bucketAuthorizations", "all-data": "bucketAllData" };
+        for (const [key, id] of Object.entries(pm)) {
+            const p = document.getElementById(id);
+            if (p) p.classList.toggle("active", key === bucketKey);
+        }
+    }
+    // ── END PERMITTING MODE FUNCTIONS ──
+
     function setPlssToolActive(which) {
         const set = (btn, on) => {
             if (!btn) return;
@@ -591,6 +901,12 @@ function clearAll() {
     function setGeometryFromSelection(geom) {
         selectionGeom = geom || null;
         runBtn.disabled = !selectionGeom;
+
+        // Permitting mode: advance to Step 2 when AOI is defined
+        if (selectionGeom && currentAppMode === "permit" && currentWizardStep === 1) {
+            populateAoiConfirmation();
+            goToWizardStep(2);
+        }
     }
 
     function setMode(mode) {
@@ -1028,6 +1344,13 @@ async function runAnalysis() {
         
         // ✅ Show success animation
         analysisModal.showSuccess(layersQueried, featuresFound, mapsGenerated);
+
+        // Permitting mode: populate bucket results
+        if (currentAppMode === "permit") {
+            populatePermitBuckets();
+            if (wizFullReport) wizFullReport.disabled = false;
+            if (wizExportAll) wizExportAll.disabled = false;
+        }
 
     } catch (e) {
         console.error(e);
@@ -2081,6 +2404,125 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             Graphic, GraphicsLayer, enableSelectionLayer
         });
 
+        // ========================================
+        // PERMITTING MODE — Wizard button wiring
+        // ========================================
+
+        // Mode toggle
+        if (permitModeBtn) permitModeBtn.addEventListener("click", () => setAppMode("permit"));
+        if (advancedModeBtn) advancedModeBtn.addEventListener("click", () => setAppMode("advanced"));
+
+        // AOI method card clicks
+        document.querySelectorAll("#aoiMethods .aoi-method-card").forEach(card => {
+            card.addEventListener("click", () => {
+                const method = card.dataset.method;
+                if (method) showAoiMethod(method);
+            });
+        });
+
+        // AOI back buttons
+        document.querySelectorAll(".aoi-back-btn").forEach(btn => {
+            btn.addEventListener("click", hideAoiMethodPanels);
+        });
+
+        // Wizard PLSS buttons
+        if (wizTownshipBtn) wizTownshipBtn.addEventListener("click", () => { activatePlss("township", townshipIdx); setWizPlssActive("township"); });
+        if (wizSectionBtn) wizSectionBtn.addEventListener("click", () => { activatePlss("section", sectionIdx); setWizPlssActive("section"); });
+        if (wizParcelBtn) wizParcelBtn.addEventListener("click", () => { activatePlss("intersected", intersectedIdx); setWizPlssActive("intersected"); });
+
+        // Wizard permit type dropdown
+        if (wizPermitType) {
+            wizPermitType.addEventListener("change", () => {
+                const val = wizPermitType.value;
+                if (val === "allotment") activatePermitLayer("allotment", allotmentIdx);
+                else if (val === "pasture") activatePermitLayer("pasture", pastureIdx);
+                else if (val === "oilgas") activatePermitLayer("oilgas", oilGasIdx);
+            });
+        }
+
+        // Wizard draw buttons
+        if (wizDrawBtn) {
+            wizDrawBtn.addEventListener("click", () => {
+                if (modeSelect && modeSelect.value !== "draw") modeSelect.value = "draw";
+                setMode("draw");
+            });
+        }
+        if (wizStopDrawBtn) {
+            wizStopDrawBtn.addEventListener("click", () => {
+                if (sketch) sketch.cancel();
+                setStatus("draw stopped");
+            });
+        }
+
+        // Location search
+        if (wizLocationInput) {
+            wizLocationInput.addEventListener("input", () => {
+                performLocationSearch(wizLocationInput.value.trim());
+            });
+        }
+
+        // Wizard navigation
+        if (wizBackToStep1) {
+            wizBackToStep1.addEventListener("click", () => {
+                goToWizardStep(1);
+                hideAoiMethodPanels();
+            });
+        }
+
+        if (wizScreenBtn) wizScreenBtn.addEventListener("click", runAnalysis);
+
+        if (wizNewScreening) {
+            wizNewScreening.addEventListener("click", () => {
+                clearAll();
+                goToWizardStep(1);
+                hideAoiMethodPanels();
+            });
+        }
+
+        if (wizFullReport) wizFullReport.addEventListener("click", viewFinalReport);
+
+        if (wizExportAll) {
+            wizExportAll.addEventListener("click", async () => {
+                if (!lastReportRowsByLayer.length) return;
+                wizExportAll.disabled = true;
+                try {
+                    setStatus("exporting ALL (FULL)…");
+                    const pageSize = config.report?.pageSize ?? 1000;
+                    const maxExport = config.report?.maxExportFeatures ?? 50000;
+                    const allRows = [];
+                    for (let i = 0; i < lastReportRowsByLayer.length; i++) {
+                        const item = lastReportRowsByLayer[i];
+                        if (!item._layer || !item._exportQuery) continue;
+                        setStatus("exporting ALL (FULL)… (" + (i + 1) + "/" + lastReportRowsByLayer.length + ")");
+                        if (!item.fullRows) {
+                            const fullFeatures = await queryAllFeaturesPaged(item._layer, item._exportQuery, pageSize, maxExport);
+                            item.fullRows = flattenAttributes(fullFeatures);
+                        }
+                        for (const r of (item.fullRows || [])) allRows.push({ __layer: item.title, ...r });
+                    }
+                    const csv = toCsv(allRows, ["__layer"]);
+                    downloadText("intersect_report_ALL_FULL.csv", csv || "");
+                    setStatus("exported ALL (FULL)");
+                } catch (e) {
+                    console.error(e);
+                    setStatus("export ALL failed (see console)");
+                } finally {
+                    wizExportAll.disabled = false;
+                }
+            });
+        }
+
+        // Bucket tabs
+        document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {
+            tab.addEventListener("click", () => {
+                const bk = tab.dataset.bucket;
+                if (bk) setActiveBucket(bk);
+            });
+        });
+
+        // Initialize in permit mode
+        setAppMode("permit");
+        goToWizardStep(1);
 
         setMode("select");
         setActiveTab("layers");

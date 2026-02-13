@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Parcel Explorer</title>
+  <title>BLM Permit Screening Tool</title>
 
   <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
 
@@ -32,7 +32,7 @@
           <circle cx="24" cy="22" r="5" fill="#1a472a" opacity="0.9"/>
         </svg>
       </div>
-      <div class="app-loading-title">Parcel Explorer</div>
+      <div class="app-loading-title">BLM Permit Screening Tool</div>
       <div class="app-loading-status" id="appLoadingStatus">Loading configuration...</div>
       <div class="app-loading-bar-track">
         <div class="app-loading-bar-fill" id="appLoadingBarFill"></div>
@@ -149,11 +149,214 @@
 
   <aside id="panel">
     <div class="panel-header">
-      <div class="title">Parcel Explorer</div>
-      <button id="panelToggleBtn" class="panel-toggle-btn" type="button" title="Minimize panel" aria-label="Minimize panel">
-        <span class="panel-toggle-icon">▼</span>
-      </button>
+      <div class="title">BLM Permit Screening</div>
+      <div class="panel-header-actions">
+        <div class="mode-toggle" id="modeToggle">
+          <button id="permitModeBtn" class="mode-btn active" type="button" title="Guided permitting workflow">Permitting</button>
+          <button id="advancedModeBtn" class="mode-btn" type="button" title="Full GIS intersect tools">Advanced</button>
+        </div>
+        <button id="panelToggleBtn" class="panel-toggle-btn" type="button" title="Minimize panel" aria-label="Minimize panel">
+          <span class="panel-toggle-icon">▼</span>
+        </button>
+      </div>
     </div>
+
+    <!-- ===== PERMITTING MODE ===== -->
+    <div id="permitModePanel">
+
+      <div class="banner banner-disclaimer">
+        <strong>Screening Tool Only</strong> — Results provide preliminary information to assist with permit planning. They do not constitute a permit decision, legal determination, or guarantee of any outcome.
+      </div>
+
+      <!-- Wizard Step Indicator -->
+      <div class="wizard-steps" id="wizardSteps">
+        <div class="wizard-step active" data-step="1">
+          <div class="wizard-step-num">1</div>
+          <div class="wizard-step-label">Define Area</div>
+        </div>
+        <div class="wizard-connector"></div>
+        <div class="wizard-step" data-step="2">
+          <div class="wizard-step-num">2</div>
+          <div class="wizard-step-label">Review</div>
+        </div>
+        <div class="wizard-connector"></div>
+        <div class="wizard-step" data-step="3">
+          <div class="wizard-step-num">3</div>
+          <div class="wizard-step-label">Results</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Define Your Project Area -->
+      <section id="wizardStep1" class="wizard-panel active">
+        <div class="card">
+          <div class="wizard-question">How would you like to define your project area?</div>
+          <div class="wizard-subtext">Choose the method that best fits your situation. You do not need GIS expertise.</div>
+
+          <div class="aoi-methods" id="aoiMethods">
+            <button class="aoi-method-card" data-method="search" type="button">
+              <div class="aoi-method-icon">📍</div>
+              <div class="aoi-method-text">
+                <div class="aoi-method-title">Search by Location</div>
+                <div class="aoi-method-desc">Address, place name, or coordinates</div>
+              </div>
+              <div class="aoi-method-arrow">›</div>
+            </button>
+            <button class="aoi-method-card" data-method="permit" type="button">
+              <div class="aoi-method-icon">📋</div>
+              <div class="aoi-method-text">
+                <div class="aoi-method-title">Find Existing Permit or Lease</div>
+                <div class="aoi-method-desc">Grazing allotment, ROW, or oil &amp; gas lease</div>
+              </div>
+              <div class="aoi-method-arrow">›</div>
+            </button>
+            <button class="aoi-method-card" data-method="select" type="button">
+              <div class="aoi-method-icon">🗺️</div>
+              <div class="aoi-method-text">
+                <div class="aoi-method-title">Select from Map</div>
+                <div class="aoi-method-desc">Click a township, section, or parcel boundary</div>
+              </div>
+              <div class="aoi-method-arrow">›</div>
+            </button>
+            <button class="aoi-method-card" data-method="draw" type="button">
+              <div class="aoi-method-icon">✏️</div>
+              <div class="aoi-method-text">
+                <div class="aoi-method-title">Draw Custom Area</div>
+                <div class="aoi-method-desc">Sketch your own boundary on the map</div>
+              </div>
+              <div class="aoi-method-arrow">›</div>
+            </button>
+          </div>
+
+          <!-- Search by Location sub-panel -->
+          <div id="aoiMethodSearch" class="aoi-method-panel hidden">
+            <div class="aoi-method-panel-head">
+              <button class="aoi-back-btn" data-back="search" type="button">← Back</button>
+              <span>Search by Location</span>
+            </div>
+            <div class="aoi-method-panel-body">
+              <input type="text" id="wizLocationInput" class="input-field" placeholder="Enter address, city, or place name…" autocomplete="off" spellcheck="false">
+              <div id="wizLocationResults" class="wiz-location-results hidden"></div>
+              <div class="hint">Find a location, then select a nearby parcel or switch to Draw to outline your project area.</div>
+            </div>
+          </div>
+
+          <!-- Find Existing Permit sub-panel -->
+          <div id="aoiMethodPermit" class="aoi-method-panel hidden">
+            <div class="aoi-method-panel-head">
+              <button class="aoi-back-btn" data-back="permit" type="button">← Back</button>
+              <span>Find Existing Permit or Lease</span>
+            </div>
+            <div class="aoi-method-panel-body">
+              <select id="wizPermitType">
+                <option value="" disabled selected>Choose permit type…</option>
+                <option value="allotment">Grazing Allotment</option>
+                <option value="pasture">Grazing Pasture</option>
+                <option value="oilgas">Oil &amp; Gas Lease</option>
+              </select>
+              <div class="hint" style="margin-top:10px;">Select a type, then click its boundary on the map to use as your project area.</div>
+            </div>
+          </div>
+
+          <!-- Select from Map sub-panel -->
+          <div id="aoiMethodSelect" class="aoi-method-panel hidden">
+            <div class="aoi-method-panel-head">
+              <button class="aoi-back-btn" data-back="select" type="button">← Back</button>
+              <span>Select from Map</span>
+            </div>
+            <div class="aoi-method-panel-body">
+              <label class="label">Choose boundary type</label>
+              <div class="toolgroup" role="group">
+                <button id="wizTownshipBtn" class="toolbtn" type="button" aria-pressed="false">
+                  <span class="box box-lg"></span><span class="tooltext">Township</span>
+                </button>
+                <button id="wizSectionBtn" class="toolbtn" type="button" aria-pressed="false">
+                  <span class="box box-md"></span><span class="tooltext">Section</span>
+                </button>
+                <button id="wizParcelBtn" class="toolbtn" type="button" aria-pressed="false">
+                  <span class="box box-sm"></span><span class="tooltext">Parcel</span>
+                </button>
+              </div>
+              <div class="hint">Choose a boundary size, then click on the map to select your project area.</div>
+            </div>
+          </div>
+
+          <!-- Draw Custom Area sub-panel -->
+          <div id="aoiMethodDraw" class="aoi-method-panel hidden">
+            <div class="aoi-method-panel-head">
+              <button class="aoi-back-btn" data-back="draw" type="button">← Back</button>
+              <span>Draw Custom Area</span>
+            </div>
+            <div class="aoi-method-panel-body">
+              <div class="row">
+                <button id="wizDrawBtn" class="btn primary" type="button">Start Drawing</button>
+                <button id="wizStopDrawBtn" class="btn subtle" type="button">Cancel</button>
+              </div>
+              <div class="hint">Click on the map to place vertices. Double-click to finish the polygon.</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Step 2: Review & Confirm -->
+      <section id="wizardStep2" class="wizard-panel">
+        <div class="card">
+          <div class="wizard-question">Your Project Area</div>
+          <div class="aoi-confirm-card" id="aoiConfirmCard">
+            <div class="aoi-confirm-row">
+              <span class="aoi-confirm-label">Area</span>
+              <span class="aoi-confirm-value" id="wizAoiAcres">—</span>
+            </div>
+            <div class="aoi-confirm-row">
+              <span class="aoi-confirm-label">Defined by</span>
+              <span class="aoi-confirm-value" id="wizAoiSource">—</span>
+            </div>
+          </div>
+          <div class="row" style="margin-top:14px;">
+            <button id="wizBackToStep1" class="btn subtle" type="button">← Change Area</button>
+            <button id="wizScreenBtn" class="btn primary" type="button">Screen for Considerations</button>
+          </div>
+          <div class="hint">
+            Screening checks your area against federal land records, environmental designations, and existing authorizations. This usually takes 30–60 seconds.
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 3: Screening Results -->
+      <section id="wizardStep3" class="wizard-panel">
+        <div class="card results-header-card">
+          <div class="wizard-question">Screening Results</div>
+          <div class="permit-results-summary" id="permitResultsSummary"></div>
+          <div class="row" style="margin-top:10px; flex-wrap:wrap;">
+            <button id="wizNewScreening" class="btn subtle" type="button">← New Screening</button>
+            <button id="wizExportAll" class="btn subtle" type="button" disabled>📥 Export CSV</button>
+            <button id="wizFullReport" class="btn primary" type="button" disabled>📋 Full Report</button>
+          </div>
+        </div>
+
+        <div class="permit-bucket-tabs" id="permitBucketTabs">
+          <button class="permit-tab active" data-bucket="overview" type="button">Overview</button>
+          <button class="permit-tab" data-bucket="land-status" type="button">Land Status</button>
+          <button class="permit-tab" data-bucket="land-use" type="button">Land Use</button>
+          <button class="permit-tab" data-bucket="special" type="button">Designations</button>
+          <button class="permit-tab" data-bucket="environmental" type="button">Environmental</button>
+          <button class="permit-tab" data-bucket="authorizations" type="button">Authorizations</button>
+          <button class="permit-tab" data-bucket="all-data" type="button">All Data</button>
+        </div>
+
+        <section id="bucketOverview" class="bucket-panel active"></section>
+        <section id="bucketLandStatus" class="bucket-panel"></section>
+        <section id="bucketLandUse" class="bucket-panel"></section>
+        <section id="bucketSpecial" class="bucket-panel"></section>
+        <section id="bucketEnvironmental" class="bucket-panel"></section>
+        <section id="bucketAuthorizations" class="bucket-panel"></section>
+        <section id="bucketAllData" class="bucket-panel"></section>
+      </section>
+
+    </div><!-- /permitModePanel -->
+
+    <!-- ===== ADVANCED MODE (existing intersect tools) ===== -->
+    <div id="advancedModePanel" class="hidden">
 
     <!-- pre-alpha banner -->
     <div class="banner banner-warn">
@@ -348,6 +551,8 @@
         </div>
       </div>
     </section>
+
+    </div><!-- /advancedModePanel -->
 
   </aside>
 
