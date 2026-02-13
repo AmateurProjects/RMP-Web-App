@@ -536,8 +536,9 @@ define([
 
         // Build interactive table HTML
         const tId = tableId != null ? tableId : Math.floor(Math.random() * 100000);
-        const colLabels = [...attrKeys, ...extraCols];
+        const colLabels = [...extraCols, ...attrKeys];
         const totalCols = colLabels.length;
+        const extraOffset = extraCols.length;
         const tableTitle = feats.length === 1 ? 'Feature Attributes' : 'Per-Feature Breakdown';
 
         const thCells = colLabels.map((label, ci) =>
@@ -547,32 +548,32 @@ define([
 
         let hasSliverWarning = false;
         const bodyHtml = tableRows.map(row => {
-            const tdCells = attrKeys.map((k, ci) => {
+            // Build extra metric cells first (leftmost columns)
+            const extraCells = [];
+            let isSliverWarning = false;
+            if (isPolygonLayer) {
+                isSliverWarning = row.pctAoi < 3;
+                if (isSliverWarning) hasSliverWarning = true;
+                extraCells.push(`<td data-col="0" data-sort-val="${row.acresCovered.toFixed(6)}" style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td>`);
+                const warningIcon = isSliverWarning ? '<span style="color:#856404;">\u26A0\uFE0F</span> ' : '';
+                extraCells.push(`<td data-col="1" data-sort-val="${row.pctAoi.toFixed(6)}" style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td>`);
+            } else if (isPolylineLayer) {
+                extraCells.push(`<td data-col="0" data-sort-val="${row.lengthFeet.toFixed(2)}" style="text-align:right;">${formatNumber(row.lengthFeet, 1)}</td>`);
+                extraCells.push(`<td data-col="1" data-sort-val="${row.lengthMiles.toFixed(6)}" style="text-align:right;">${formatNumber(row.lengthMiles, 3)}</td>`);
+            }
+
+            // Build attribute cells (shifted by extraOffset)
+            const attrCells = attrKeys.map((k, ci) => {
                 const raw = (row.attrs[k] == null) ? "" : String(row.attrs[k]);
                 const display = raw.length > 100 ? raw.slice(0, 99) + "\u2026" : raw;
-                return `<td data-col="${ci}" data-sort-val="${escapeHtml(raw)}" title="${escapeHtml(raw)}">${escapeHtml(display)}</td>`;
+                return `<td data-col="${ci + extraOffset}" data-sort-val="${escapeHtml(raw)}" title="${escapeHtml(raw)}">${escapeHtml(display)}</td>`;
             });
 
-            if (isPolygonLayer) {
-                const isSliverWarning = row.pctAoi < 3;
-                if (isSliverWarning) hasSliverWarning = true;
-                const acresIdx = attrKeys.length;
-                const pctIdx   = attrKeys.length + 1;
-                tdCells.push(`<td data-col="${acresIdx}" data-sort-val="${row.acresCovered.toFixed(6)}" style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td>`);
-                const warningIcon = isSliverWarning ? '<span style="color:#856404;">\u26A0\uFE0F</span> ' : '';
-                tdCells.push(`<td data-col="${pctIdx}" data-sort-val="${row.pctAoi.toFixed(6)}" style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td>`);
-                const rowStyle = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
-                return `<tr${rowStyle}>${tdCells.join("")}</tr>`;
-            } else if (isPolylineLayer) {
-                const ftIdx = attrKeys.length;
-                const miIdx = attrKeys.length + 1;
-                tdCells.push(`<td data-col="${ftIdx}" data-sort-val="${row.lengthFeet.toFixed(2)}" style="text-align:right;">${formatNumber(row.lengthFeet, 1)}</td>`);
-                tdCells.push(`<td data-col="${miIdx}" data-sort-val="${row.lengthMiles.toFixed(6)}" style="text-align:right;">${formatNumber(row.lengthMiles, 3)}</td>`);
-                return `<tr>${tdCells.join("")}</tr>`;
-            } else {
-                // Point layers — attrs only
-                return `<tr>${tdCells.join("")}</tr>`;
+            const allCells = [...extraCells, ...attrCells].join("");
+            if (isPolygonLayer && isSliverWarning) {
+                return `<tr style="background-color:#fff3cd;">${allCells}</tr>`;
             }
+            return `<tr>${allCells}</tr>`;
         }).join("");
 
         const sliverNote = hasSliverWarning

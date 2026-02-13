@@ -152,9 +152,9 @@ define([], function () {
         const out = [];
 
         const add = (kind, title, url) => {
-            const key = `${kind}||${url}`;
-            if (seen.has(key)) return;
-            seen.add(key);
+            const normUrl = String(url).replace(/\/+$/, "");
+            if (seen.has(normUrl)) return;
+            seen.add(normUrl);
             out.push({ kind, title, url });
         };
 

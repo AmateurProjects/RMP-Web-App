@@ -1130,6 +1130,32 @@ define([
                     width: 200px;
                     background: rgba(26,71,42,0.05);
                 }
+                table.summary-stats-tbl{
+                    width: auto;
+                    display: inline-table;
+                    margin-top: 16px;
+                    border-collapse: collapse;
+                    font-size: 13px;
+                    background: var(--blm-tan);
+                    border-radius: 6px;
+                    overflow: hidden;
+                }
+                table.summary-stats-tbl th{
+                    padding: 8px 20px;
+                    color: var(--blm-green);
+                    font-weight: 600;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                    border-bottom: 2px solid var(--border);
+                    text-align: center;
+                    background: rgba(26,71,42,0.05);
+                }
+                table.summary-stats-tbl td{
+                    padding: 10px 20px;
+                    text-align: center;
+                    font-size: 14px;
+                }
                 table.data-sources-table{ 
                     width:100%; 
                     border-collapse: collapse; 
@@ -1156,9 +1182,6 @@ define([
                     border-bottom: 1px solid var(--border); 
                     vertical-align: top; 
                     word-wrap: break-word; 
-                }
-                table.data-sources-table tr:nth-child(4n+3):not(.desc-row){
-                    background: var(--blm-tan);
                 }
                 table.data-sources-table tr:last-child td{
                     border-bottom: none;
@@ -2143,8 +2166,10 @@ define([
 
                         // Coverage rows only for polygon layers
                         const coverageRowsHtml = isPolygonLayer
-                            ? `<tr><td>Layer Coverage</td><td><b>${formatNumber(acresCovered, 2)}</b> acres</td></tr>
-                                <tr><td>Percent of AOI Covered</td><td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver or boundary artifact">\u26A0\uFE0F</span>' : ''}</td></tr>`
+                            ? `<th>Percent of AOI</th>`
+                            : "";
+                        const coverageValHtml = isPolygonLayer
+                            ? `<td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver or boundary artifact">\u26A0\uFE0F</span>' : ''}</td>`
                             : "";
 
                         sectionsHtml += `
@@ -2158,12 +2183,19 @@ define([
                                 </div>
                                 <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
                             </div>
-                            <table class="metaTbl">
-                                <tr><td>AOI Area</td><td><b>${formatNumber(aoiAcres, 2)}</b> acres</td></tr>
-                                <tr><td>Intersecting Features</td><td><b>${escapeHtml(String(item.count || 0))}</b></td></tr>
-                                ${coverageRowsHtml}
-                                ${layerAttrSummary}
+                            <table class="summary-stats-tbl">
+                                <thead><tr>
+                                    <th>AOI Area</th>
+                                    <th>Intersecting Features</th>
+                                    ${coverageRowsHtml}
+                                </tr></thead>
+                                <tbody><tr>
+                                    <td><b>${formatNumber(aoiAcres, 2)}</b> acres</td>
+                                    <td><b>${escapeHtml(String(item.count || 0))}</b></td>
+                                    ${coverageValHtml}
+                                </tr></tbody>
                             </table>
+                            ${layerAttrSummary ? `<table class="metaTbl">${layerAttrSummary}</table>` : ''}
                             ${lowCoverageWarningHtml}
                             ${perFeatureTableHtml}
                         </div>
