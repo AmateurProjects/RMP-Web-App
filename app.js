@@ -36,31 +36,32 @@ require([
 
 
     // ---------- DOM ----------
-    const modeSelect = document.getElementById("modeSelect");
+    // PERF-TEST: Advanced-mode DOM elements — HTML is commented out, these will be null
+    const modeSelect = document.getElementById("modeSelect");             // null (Advanced panel commented out)
     // Panel minimize toggle
     const panelEl = document.getElementById("panel");
     const panelToggleBtn = document.getElementById("panelToggleBtn");
-    // PLSS selection tools (Township / Section / Intersected)
-    const plssTownshipBtn = document.getElementById("plssTownshipBtn");
-    const plssSectionBtn = document.getElementById("plssSectionBtn");
-    const plssIntersectedBtn = document.getElementById("plssIntersectedBtn");
-    // Selection layer group selector
-    const selectionGroupSelect = document.getElementById("selectionGroupSelect");
-    const plssSelectGroup = document.getElementById("plssSelectGroup");
-    const permitSelectGroup = document.getElementById("permitSelectGroup");
-    // Permit layer selection buttons
-    const grazingAllotmentBtn = document.getElementById("grazingAllotmentBtn");
-    const grazingPastureBtn = document.getElementById("grazingPastureBtn");
-    const oilGasLeaseBtn = document.getElementById("oilGasLeaseBtn");
+    // PLSS selection tools (Advanced panel — now null)
+    const plssTownshipBtn = document.getElementById("plssTownshipBtn");   // null
+    const plssSectionBtn = document.getElementById("plssSectionBtn");     // null
+    const plssIntersectedBtn = document.getElementById("plssIntersectedBtn"); // null
+    // Selection layer group selector (Advanced panel — now null)
+    const selectionGroupSelect = document.getElementById("selectionGroupSelect"); // null
+    const plssSelectGroup = document.getElementById("plssSelectGroup");   // null
+    const permitSelectGroup = document.getElementById("permitSelectGroup"); // null
+    // Permit layer selection buttons (Advanced panel — now null)
+    const grazingAllotmentBtn = document.getElementById("grazingAllotmentBtn"); // null
+    const grazingPastureBtn = document.getElementById("grazingPastureBtn");     // null
+    const oilGasLeaseBtn = document.getElementById("oilGasLeaseBtn");           // null
 
-    const selectModeControls = document.getElementById("selectModeControls");
-    const drawModeControls = document.getElementById("drawModeControls");
+    const selectModeControls = document.getElementById("selectModeControls"); // null
+    const drawModeControls = document.getElementById("drawModeControls");     // null
 
-    const drawBtn = document.getElementById("drawBtn");
-    const stopDrawBtn = document.getElementById("stopDrawBtn");
-    const runBtn = document.getElementById("runBtn");
-    const clearBtn = document.getElementById("clearBtn");
-    const exportAllBtn = document.getElementById("exportAllBtn");
+    const drawBtn = document.getElementById("drawBtn");       // null
+    const stopDrawBtn = document.getElementById("stopDrawBtn"); // null
+    const runBtn = document.getElementById("runBtn");           // null
+    const clearBtn = document.getElementById("clearBtn");       // null
+    const exportAllBtn = document.getElementById("exportAllBtn"); // null
 
     const viewBlockerEl = document.getElementById("viewBlocker");
 
@@ -96,9 +97,9 @@ require([
 
     // ── Permitting Mode DOM ──
     const permitModePanel = document.getElementById("permitModePanel");
-    const advancedModePanel = document.getElementById("advancedModePanel");
+    const advancedModePanel = document.getElementById("advancedModePanel"); // null (commented out)
     const permitModeBtn = document.getElementById("permitModeBtn");
-    const advancedModeBtn = document.getElementById("advancedModeBtn");
+    const advancedModeBtn = null; // document.getElementById("advancedModeBtn"); // PERF-TEST: commented out
     const wizardStep1 = document.getElementById("wizardStep1");
     const wizardStep2 = document.getElementById("wizardStep2");
     const wizardStep3 = document.getElementById("wizardStep3");
@@ -288,6 +289,7 @@ function setBusy(isBusy) {
     let currentAppMode = "permit"; // "permit" | "advanced"
     let currentWizardStep = 1;
     let currentAoiMethod = null; // "search" | "permit" | "select" | "draw"
+    let currentInteractionMode = "select"; // PERF-TEST: tracks draw/select without modeSelect DOM
 
     // ── Shared state object for modules (properties updated by app.js) ──
     const state = {
@@ -541,12 +543,14 @@ function setActiveTab(tabName) {
         return buckets;
     }
 
+    // PERF-TEST: setAppMode simplified — always "permit", Advanced mode commented out
     function setAppMode(mode) {
-        currentAppMode = mode;
-        if (permitModePanel) permitModePanel.classList.toggle("hidden", mode !== "permit");
-        if (advancedModePanel) advancedModePanel.classList.toggle("hidden", mode !== "advanced");
-        if (permitModeBtn) permitModeBtn.classList.toggle("active", mode === "permit");
-        if (advancedModeBtn) advancedModeBtn.classList.toggle("active", mode === "advanced");
+        currentAppMode = "permit"; // force permit mode
+        if (permitModePanel) permitModePanel.classList.remove("hidden");
+        // Advanced panel is commented out in HTML, no-op:
+        // if (advancedModePanel) advancedModePanel.classList.toggle("hidden", mode !== "advanced");
+        if (permitModeBtn) permitModeBtn.classList.add("active");
+        // if (advancedModeBtn) advancedModeBtn.classList.toggle("active", mode === "advanced");
         if (view) requestAnimationFrame(() => { try { view.resize(); } catch (e) {} });
     }
 
@@ -881,8 +885,8 @@ function clearAll() {
     aoiSourcePlssTool = null;
     
     // Clear results
-    resultsEl.innerHTML = "";
-    exportAllBtn.disabled = true;
+    if (resultsEl) resultsEl.innerHTML = "";
+    if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
     
     // Clear map outputs
@@ -895,7 +899,7 @@ function clearAll() {
     if (aoiLayer) aoiLayer.removeAll();
     aoiGraphic = null;
 
-    runBtn.disabled = true;
+    if (runBtn) runBtn.disabled = true;
     setStatus("cleared");
     resetCoverageCacheForAoi(null);
     setBusy(false);
@@ -921,7 +925,7 @@ function clearAll() {
 
     function setGeometryFromSelection(geom) {
         selectionGeom = geom || null;
-        runBtn.disabled = !selectionGeom;
+        if (runBtn) runBtn.disabled = !selectionGeom;
 
         // Permitting mode: advance to Step 2 when AOI is defined
         if (selectionGeom && currentAppMode === "permit" && currentWizardStep === 1) {
@@ -931,6 +935,7 @@ function clearAll() {
     }
 
     function setMode(mode) {
+        currentInteractionMode = mode; // PERF-TEST: track mode locally
         function startDrawingNow() {
             if (!sketch) return;
             // Cancel any prior sketch session and start a new polygon immediately
@@ -940,14 +945,14 @@ function clearAll() {
         }
 
         if (mode === "select") {
-            selectModeControls.classList.remove("hidden");
-            drawModeControls.classList.add("hidden");
+            if (selectModeControls) selectModeControls.classList.remove("hidden");
+            if (drawModeControls) drawModeControls.classList.add("hidden");
             // stop sketch if running
             if (sketch) sketch.cancel();
             setStatus("select mode: click a polygon");
         } else {
-            selectModeControls.classList.add("hidden");
-            drawModeControls.classList.remove("hidden");
+            if (selectModeControls) selectModeControls.classList.add("hidden");
+            if (drawModeControls) drawModeControls.classList.remove("hidden");
             startDrawingNow(); // <-- auto start drawing immediately
         }
         // keep current selectionGeom if user switches modes intentionally
@@ -1262,7 +1267,7 @@ async function checkServiceStatusBackground() {
 
     // ---------- Report rendering ----------
     function renderResults(cardsHtml) {
-        resultsEl.innerHTML = cardsHtml || `<div class="small">No results yet.</div>`;
+        if (resultsEl) resultsEl.innerHTML = cardsHtml || `<div class="small">No results yet.</div>`;
     }
 
 
@@ -1389,8 +1394,8 @@ async function runAnalysis() {
 
 // Extracted query logic (was: runReport)
 async function queryAllLayers(reportGeom, myOp, modal = null) {
-    resultsEl.innerHTML = "";
-    exportAllBtn.disabled = true;
+    if (resultsEl) resultsEl.innerHTML = "";
+    if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
 
     const combinedCfgs = [
@@ -1737,7 +1742,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
     renderResults(cards.join(""));
     wireExportButtons();
-    exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
+    if (exportAllBtn) exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
     renderVisualSummary();
 }
 
@@ -1779,6 +1784,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     }
 
     function wireExportButtons() {
+        if (!resultsEl) return;
         resultsEl.querySelectorAll("button[data-export]").forEach(btn => {
             btn.addEventListener("click", async () => {
                 const title = btn.getAttribute("data-export");
@@ -1909,7 +1915,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         view.on("click", async (event) => {
 
             // If drawing AOI, let Sketch own the click experience
-            if (modeSelect.value === "draw") {
+            if (currentInteractionMode === "draw") {
                 return;
             }
 

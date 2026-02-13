@@ -499,14 +499,9 @@ define([
         const tableTitle = feats.length === 1 ? 'Feature Attributes' : 'Per-Feature Breakdown';
 
         const thCells = colLabels.map((label, ci) =>
-            `<th data-col="${ci}" data-sort-dir="none" onclick="sortInteractiveTable(this)" title="Click to sort">${escapeHtml(label)} <span class="sort-arrow">\u21C5</span></th>`
+            `<th data-col="${ci}" data-label="${escapeHtml(label)}" data-sort-dir="none" onclick="sortInteractiveTable(this)" title="Click to sort">${escapeHtml(label)} <span class="sort-arrow">\u21C5</span> <button class="col-hide-btn" onclick="event.stopPropagation(); hideColumn('tbl-${tId}',${ci});" title="Hide this column">\u2716</button></th>`
         ).join("");
         const headerHtml = `<tr>${thCells}</tr>`;
-
-        // Column toggle checkboxes
-        const colCheckboxes = colLabels.map((label, ci) =>
-            `<label class="col-toggle-label"><input type="checkbox" checked onchange="toggleTableCol('tbl-${tId}',${ci},this.checked)"> ${escapeHtml(label)}</label>`
-        ).join("");
 
         let hasSliverWarning = false;
         const bodyHtml = tableRows.map(row => {
@@ -536,14 +531,9 @@ define([
             <div class="interactive-table-wrapper" id="tbl-${tId}" style="margin-top:16px;">
                 <div class="table-toolbar">
                     <b>${escapeHtml(tableTitle)}</b>
-                    <span style="font-size:12px;color:#5a5a5a;margin-left:8px;">(${feats.length} feature${feats.length !== 1 ? 's' : ''}, ${totalCols} columns \u2014 scroll \u2192 for more)</span>
-                    <div style="position:relative;margin-left:auto;">
-                        <button class="col-toggle-btn" onclick="toggleColMenu(this)">Columns \u25BE</button>
-                        <div class="col-menu" style="display:none;">
-                            ${colCheckboxes}
-                        </div>
-                    </div>
+                    <span style="font-size:12px;color:#5a5a5a;margin-left:8px;">(${feats.length} feature${feats.length !== 1 ? 's' : ''}, ${totalCols} columns \u2014 click \u2716 on a header to hide)</span>
                 </div>
+                <div class="hidden-cols-bar" style="display:none;"></div>
                 <div class="table-scroll">
                     <table class="interactive-table">
                         <thead>${headerHtml}</thead>

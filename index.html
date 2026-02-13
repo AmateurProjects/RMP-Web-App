@@ -151,9 +151,10 @@
     <div class="panel-header">
       <div class="title">BLM Permit Screening</div>
       <div class="panel-header-actions">
-        <div class="mode-toggle" id="modeToggle">
+        <!-- PERF-TEST: mode toggle hidden — Advanced mode commented out -->
+        <div class="mode-toggle" id="modeToggle" style="display:none;">
           <button id="permitModeBtn" class="mode-btn active" type="button" title="Guided permitting workflow">Permitting</button>
-          <button id="advancedModeBtn" class="mode-btn" type="button" title="Full GIS intersect tools">Advanced</button>
+          <!-- <button id="advancedModeBtn" class="mode-btn" type="button" title="Full GIS intersect tools">Advanced</button> -->
         </div>
         <button id="panelToggleBtn" class="panel-toggle-btn" type="button" title="Minimize panel" aria-label="Minimize panel">
           <span class="panel-toggle-icon">▼</span>
@@ -355,17 +356,15 @@
 
     </div><!-- /permitModePanel -->
 
-    <!-- ===== ADVANCED MODE (existing intersect tools) ===== -->
+    <!-- ===== ADVANCED MODE — COMMENTED OUT FOR PERFORMANCE TESTING ===== -->
+    <!--
     <div id="advancedModePanel" class="hidden">
 
-    <!-- pre-alpha banner -->
     <div class="banner banner-warn">
       ⚠️ Pre-alpha: active development — outputs may change and results may be incomplete.
     </div>
 
-    <!-- AOI / Intersect controls -->
     <div class="card">
-      <!-- Subtitle -->
       <div class="subtitle">Select a polygon or draw one, then run analysis against configured layers.</div>
 
       <div class="row" style="margin-top:10px;">
@@ -377,7 +376,6 @@
       </div>
 
       <div id="selectModeControls">
-        <!-- Selection Layer Group Selector -->
         <div class="row">
           <label class="label" for="selectionGroupSelect">Select from</label>
           <select id="selectionGroupSelect" class="select">
@@ -386,7 +384,6 @@
           </select>
         </div>
 
-        <!-- PLSS Selection Tools -->
         <div id="plssSelectGroup" class="selection-group">
           <div class="row">
             <div id="plssSelectTools" class="toolgroup" role="group" aria-label="PLSS selection layer">
@@ -394,12 +391,10 @@
                 <span class="box box-lg" aria-hidden="true"></span>
                 <span class="tooltext">Township</span>
               </button>
-
               <button id="plssSectionBtn" class="toolbtn" type="button" aria-pressed="false" title="Section (medium)">
                 <span class="box box-md" aria-hidden="true"></span>
                 <span class="tooltext">Section</span>
               </button>
-
               <button id="plssIntersectedBtn" class="toolbtn" type="button" aria-pressed="false" title="PLSS Parcel (small)">
                 <span class="box box-sm" aria-hidden="true"></span>
                 <span class="tooltext">Parcel</span>
@@ -408,7 +403,6 @@
           </div>
         </div>
 
-        <!-- Permit Layer Selection Tools -->
         <div id="permitSelectGroup" class="selection-group hidden">
           <div class="row">
             <div id="permitSelectTools" class="toolgroup toolgroup-vertical" role="group" aria-label="Permit layer selection">
@@ -416,12 +410,10 @@
                 <span class="toolicon">🐄</span>
                 <span class="tooltext">Grazing Allotments</span>
               </button>
-
               <button id="grazingPastureBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Grazing Pastures">
                 <span class="toolicon">🌾</span>
                 <span class="tooltext">Grazing Pastures</span>
               </button>
-
               <button id="oilGasLeaseBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Oil and Gas Leases">
                 <span class="toolicon">🛢️</span>
                 <span class="tooltext">Oil & Gas Leases</span>
@@ -452,7 +444,6 @@
       <span id="busyIndicator" class="spinner hidden" aria-label="busy"></span>
     </div>
 
-    <!-- Tabs (NEW ORDER: Layers | Data Check | Tables | Map | Report) -->
     <div class="tabs tabs-mid">
       <button id="tabLayersBtn" class="tab-btn active" type="button">Layers</button>
       <button id="tabServicesBtn" class="tab-btn" type="button">Data Check</button>
@@ -461,9 +452,6 @@
       <button id="tabFinalReportBtn" class="tab-btn" type="button">Report</button>
     </div>
 
-    <!-- Tab Panels -->
-    
-    <!-- NEW: Layers Tab (first tab, active by default) -->
     <section id="tabLayersPanel" class="tab-panel active">
       <div class="layers-section">
         <div class="layers-section-header">
@@ -472,7 +460,6 @@
         </div>
         <div id="selectionLayerToggles" class="layers-list"></div>
       </div>
-      
       <div class="layers-section">
         <div class="layers-section-header">
           <span class="layers-section-title">Report Layers</span>
@@ -482,23 +469,17 @@
       </div>
     </section>
 
-    <!-- Data Check Tab (second tab) -->
     <section id="tabServicesPanel" class="tab-panel">
       <div class="card">
         <div class="row space-between">
           <div class="label">Feature Services</div>
           <button id="refreshServicesBtn" class="btn subtle" type="button">↻ Refresh</button>
         </div>
-
-        <div class="hint">
-          Shows configured selection/report services, basic service info, and a simple UP/DOWN check.
-        </div>
-
+        <div class="hint">Shows configured selection/report services, basic service info, and a simple UP/DOWN check.</div>
         <div id="servicesList" style="margin-top:10px;"></div>
       </div>
     </section>
 
-    <!-- Tables Tab (third tab) -->
     <section id="tabReportPanel" class="tab-panel">
       <div class="card">
         <div class="row space-between">
@@ -508,24 +489,17 @@
         <div id="results"></div>
       </div>
     </section>
-  
-    <!-- Map Tab (fourth tab) -->
+
     <section id="tabVisualPanel" class="tab-panel">
       <div class="card">
         <div class="row space-between">
           <div class="label">Visual Report</div>
         </div>
-
-        <div class="hint">
-          🗺️ Map screenshots with coverage statistics for each intersecting layer.
-        </div>
-
+        <div class="hint">🗺️ Map screenshots with coverage statistics for each intersecting layer.</div>
         <div id="visualReportStatus" class="small" style="margin-top:12px;"></div>
-
         <div id="visualReportMapWrap" class="visual-map-wrap hidden">
           <div id="visualReportOutputs"></div>
         </div>
-
         <div class="summary-card" style="margin-top:14px;">
           <div class="summary-card-header">Summary</div>
           <div id="visualReportSummary"></div>
@@ -533,26 +507,21 @@
       </div>
     </section>
 
-    <!-- Report Tab (fifth tab) -->
     <section id="tabReportFinalPanel" class="tab-panel">
       <div class="card">
         <div class="row space-between">
           <div class="label">Final Report</div>
         </div>
-        
-        <div class="hint">
-          📄 Printable HTML report with all maps and statistics. Opens in new tab.
-        </div>
-
+        <div class="hint">📄 Printable HTML report with all maps and statistics. Opens in new tab.</div>
         <div id="finalReportStatus" class="small" style="margin-top:12px;"></div>
-
         <div class="row" style="margin-top:14px;">
           <button id="viewReportBtn" class="btn primary" type="button" disabled>📋 View Report</button>
         </div>
       </div>
     </section>
 
-    </div><!-- /advancedModePanel -->
+    </div>
+    --><!-- /advancedModePanel — COMMENTED OUT FOR PERFORMANCE TESTING -->
 
   </aside>
 

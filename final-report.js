@@ -815,16 +815,27 @@ define([
         var acresStr = formatNumber(aoiAcres, 0);
         paragraphs.push("<p>This screening analysis examined <strong>" + totalLayers + " geospatial datasets</strong> to identify land management considerations that may be relevant to permit applications, renewals, or challenges within the approximately <strong>" + escapeHtml(acresStr) + "-acre</strong> project area. Of the datasets reviewed, <strong>" + layersWithHits.length + "</strong> contained features intersecting the area of interest, identifying a total of <strong>" + totalHits + " overlapping features</strong>.</p>");
 
+        // Regulatory framework overview
+        paragraphs.push('<p>The Bureau of Land Management administers public lands under the <strong>Federal Land Policy and Management Act of 1976 (FLPMA)</strong> (43 U.S.C. &sect;1701 et seq.), which establishes a multiple-use and sustained yield mandate for the management of public lands and their resources. All authorized uses must conform to the governing <strong>Resource Management Plan (RMP)</strong> prepared pursuant to 43 CFR Part 1600, and discretionary actions are subject to environmental review under the <strong>National Environmental Policy Act (NEPA)</strong> (42 U.S.C. &sect;4321 et seq.). The findings below identify regulatory and resource considerations applicable to the project area based on available geospatial data.</p>');
+
         // Land status
         if (landStatus.length > 0) {
             var lsNames = landStatus.map(function (f) { return f.name; }).join(", ");
-            paragraphs.push("<p>The project area has been identified within federal land boundaries based on the following datasets: " + escapeHtml(lsNames) + ". These layers confirm the jurisdictional context and administrative responsibility for the area. Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications.</p>");
+            paragraphs.push("<p><strong>Jurisdictional Context.</strong> The project area has been identified within federal land boundaries based on the following datasets: " + escapeHtml(lsNames) + ". Under FLPMA Section 302 (43 U.S.C. &sect;1732), the BLM has authority to manage these public lands through leases, permits, and easements. Applications for use of these lands must be filed with the BLM field office having jurisdiction (43 CFR &sect;2804.11 for rights-of-way; 43 CFR &sect;2920.5-1 for leases and permits). Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications, including pre-application meetings recommended under 43 CFR &sect;2804.10.</p>");
         }
 
         // Special designations (high priority for permitting)
         if (specialDesignations.length > 0) {
             var sdNames = specialDesignations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
-            paragraphs.push("<p><strong>Special designations</strong> were identified overlapping the project area, including: " + sdNames + ". Special designations such as Areas of Critical Environmental Concern (ACECs), Wilderness Study Areas (WSAs), National Conservation Lands, and Visual Resource Management areas may impose additional management prescriptions, activity restrictions, or conditions of approval that could affect project feasibility, design, or timing. Applicants should closely review these designations and consult with the local BLM field office to understand applicable management direction before submitting an application.</p>");
+            var sdText = "<p><strong>Special Designations.</strong> The following special designations overlap the project area: " + sdNames + ". ";
+            sdText += "Under FLPMA and BLM planning regulations (43 CFR Part 1600), special designations are established through the land use planning process and impose specific management prescriptions. ";
+            sdText += "<strong>Areas of Critical Environmental Concern (ACECs)</strong> are designated to protect important historical, cultural, scenic, fish and wildlife, or other natural resource values, or to address natural hazards &mdash; they can only be designated or modified through the RMP process. ";
+            sdText += "<strong>Wilderness Study Areas (WSAs)</strong> are managed under FLPMA Section 603 to preserve their suitability for possible Congressional designation as Wilderness; activities that would impair wilderness character are generally prohibited. ";
+            sdText += "<strong>National Conservation Lands</strong> are protected under the Omnibus Public Land Management Act of 2009 (16 U.S.C. &sect;7202). ";
+            sdText += "<strong>Visual Resource Management (VRM)</strong> classifications may restrict the type and scale of surface-disturbing activities. ";
+            sdText += "Lands that are specifically segregated or withdrawn from right-of-way uses are not available for grants under 43 CFR &sect;2802.10. ";
+            sdText += "Applicants should closely review these designations and consult with the local BLM field office to understand applicable management direction before submitting an application.</p>";
+            paragraphs.push(sdText);
         }
 
         // Environmental concerns
@@ -835,42 +846,63 @@ define([
             var hasWildHorse = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("wild horse") || f.name.toLowerCase().includes("burro"); });
             var hasFire = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("fire"); });
 
-            var ecText = "<p><strong>Environmental and ecological considerations</strong> were identified, including: " + ecNames + ". ";
+            var ecText = "<p><strong>Environmental and Ecological Considerations.</strong> The following environmental factors were identified: " + ecNames + ". ";
             if (hasCriticalHabitat) {
-                ecText += "The presence of federally designated Critical Habitat may trigger Section 7 consultation under the Endangered Species Act (ESA), which could increase review timelines and require biological assessments. ";
+                ecText += "The presence of federally designated Critical Habitat triggers mandatory <strong>Section 7 consultation</strong> under the Endangered Species Act (ESA, 16 U.S.C. &sect;1536). The BLM, as the action agency, must consult with the U.S. Fish and Wildlife Service (USFWS) to ensure that the proposed action is not likely to jeopardize the continued existence of listed species or destroy/adversely modify designated critical habitat. This consultation results in a Biological Opinion that may include incidental take statements, reasonable and prudent measures, and conservation recommendations, and can significantly extend review timelines. ";
             }
             if (hasMigration) {
-                ecText += "Wildlife migration corridors intersecting the project area may require seasonal timing restrictions or project design modifications to minimize disruption to migratory species. ";
+                ecText += "Wildlife migration corridors intersecting the project area may require seasonal timing restrictions or project design modifications. Under 43 CFR &sect;2805.12(a)(8), grant holders must comply with terms and conditions designed to protect fish and wildlife habitat, including stipulations for seasonal restrictions to minimize disruption to migratory species. ";
             }
             if (hasWildHorse) {
-                ecText += "The presence of Wild Horse and Burro Herd Areas or Herd Management Areas may necessitate coordination with BLM wild horse and burro program staff during the application review. ";
+                ecText += "Wild Horse and Burro Herd Areas or Herd Management Areas are managed under the Wild Free-Roaming Horses and Burros Act of 1971 (16 U.S.C. &sect;1331 et seq.). The presence of these areas may necessitate coordination with BLM wild horse and burro program staff and could result in additional stipulations on authorized activities. ";
             }
             if (hasFire) {
-                ecText += "Historical fire perimeters within or near the area may indicate elevated fire risk, post-fire rehabilitation requirements, or altered vegetation conditions that should be considered in project planning. ";
+                ecText += "Historical fire perimeters indicate areas that may be subject to post-fire Emergency Stabilization and Rehabilitation (ES&amp;R) activities or Burned Area Rehabilitation (BAR) plans. Altered vegetation and soil conditions may affect project siting and design, and fire prevention obligations apply to all grant holders under 43 CFR &sect;2805.12(a)(4). ";
             }
-            ecText += "These environmental factors may require additional NEPA analysis or mitigation measures as part of the permitting process.</p>";
+            ecText += "These environmental factors may require additional NEPA analysis (42 U.S.C. &sect;4321 et seq.), including preparation of an Environmental Assessment (EA) or Environmental Impact Statement (EIS), as well as compliance with the National Historic Preservation Act (NHPA) Section 106 (54 U.S.C. &sect;306108) for cultural resource review.</p>";
             paragraphs.push(ecText);
         }
 
         // Land use plans
         if (landUsePlans.length > 0) {
             var lupNames = landUsePlans.map(function (f) { return escapeHtml(f.name); }).join(", ");
-            paragraphs.push("<p>The area falls within the scope of applicable <strong>BLM Land Use Plans and resource allocations</strong> (" + lupNames + "). All permitted activities must be consistent with the governing Resource Management Plan (RMP), including specific land use allocations for minerals, timber, and other resources. Applicants should review the applicable plan documents for relevant management prescriptions, allowable uses, and any resource-specific stipulations that may apply.</p>");
+            paragraphs.push("<p><strong>Land Use Plans and Resource Allocations.</strong> The project area falls within the scope of the following BLM land use plan datasets: " + lupNames + ". Under FLPMA Section 302 and the BLM planning regulations at 43 CFR Part 1600, <strong>all proposed uses must conform to the governing Resource Management Plan (RMP)</strong>. RMPs allocate public land resources for specific uses &mdash; including minerals, timber, grazing, recreation, and conservation &mdash; and establish management prescriptions, allowable uses, and resource-specific stipulations. A proposed use that is inconsistent with the approved RMP may be denied under 43 CFR &sect;2804.26(a)(1) for rights-of-way or 43 CFR &sect;2920.2-5(b)(4) for leases and permits. An RMP amendment (43 CFR &sect;1610.5-5) may be required to accommodate non-conforming uses, which involves additional public participation and NEPA review. Applicants should review the applicable plan documents, available through the BLM <a href='https://eplanning.blm.gov/' target='_blank' rel='noopener'>ePlanning portal</a>, for relevant management direction.</p>");
         }
 
         // Existing authorizations
         if (existingAuthorizations.length > 0) {
             var eaNames = existingAuthorizations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
-            paragraphs.push("<p>The project area overlaps with <strong>existing authorizations</strong>, including: " + eaNames + ". Existing permits, leases, and rights-of-way represent current land uses that BLM must consider when evaluating new applications. Potential conflicts between proposed and existing uses may need to be addressed during the application review. Coordination with existing authorization holders is recommended, and applicants should be prepared to demonstrate how their proposed use will be compatible with existing authorized activities.</p>");
+            var eaText = "<p><strong>Existing Authorizations and Land Uses.</strong> The project area overlaps with the following existing authorizations: " + eaNames + ". ";
+            eaText += "Under FLPMA, the BLM must consider existing valid rights when evaluating new applications. ";
+
+            var hasGrazingAuth = existingAuthorizations.some(function (f) { return f.name.toLowerCase().includes('grazing'); });
+            var hasOilGasAuth = existingAuthorizations.some(function (f) { return f.name.toLowerCase().includes('oil') || f.name.toLowerCase().includes('gas'); });
+            var hasRowAuth = existingAuthorizations.some(function (f) { return f.name.toLowerCase().includes('row') || f.name.toLowerCase().includes('right'); });
+
+            if (hasGrazingAuth) {
+                eaText += "<strong>Grazing permits and leases</strong> are administered under 43 CFR Part 4100. The Taylor Grazing Act of 1934 and FLPMA govern grazing on public lands; permits are generally issued for 10-year terms and are renewable (43 CFR &sect;4130.2). Per 43 CFR &sect;4110.4-2(b), applicants for solar, wind, or other energy development projects must initiate early discussions with affected grazing permittees. ";
+            }
+            if (hasOilGasAuth) {
+                eaText += "<strong>Oil and gas leases and operations</strong> are administered under the Mineral Leasing Act of 1920 (30 U.S.C. &sect;181 et seq.) and 43 CFR Parts 3100&ndash;3190. Federal leaseholders needing right-of-way access may include ROW requirements with their Application for Permit to Drill (APD) under 43 CFR &sect;2804.12(g). Proposed activities near existing wells or leases should evaluate potential conflicts with mineral rights. ";
+            }
+            if (hasRowAuth) {
+                eaText += "<strong>Existing rights-of-way</strong> are administered under FLPMA Title V and 43 CFR Part 2800. The BLM may require common use of existing corridors (43 CFR &sect;2802.10(b)) and encourages location of new ROWs within designated rights-of-way corridors where practical. ";
+            }
+
+            eaText += "Potential conflicts between proposed and existing uses must be addressed during the application review. Coordination with existing authorization holders is recommended, and applicants should demonstrate how their proposed use will be compatible with existing authorized activities.</p>";
+            paragraphs.push(eaText);
         }
 
         // No findings case
         if (layersWithHits.length === 0) {
-            paragraphs.push("<p>No intersecting features were identified across any of the screened datasets. While this preliminary screening suggests the project area may have fewer regulatory constraints, this does not replace site-specific environmental review or a formal BLM determination. Field conditions, unlisted species, cultural resources, and other factors not captured in geospatial datasets may still require evaluation.</p>");
+            paragraphs.push("<p>No intersecting features were identified across any of the screened datasets. While this preliminary screening suggests the project area may have fewer regulatory constraints, this does not replace site-specific environmental review or a formal BLM determination under NEPA (42 U.S.C. &sect;4321 et seq.). Field conditions, unlisted species, cultural resources subject to NHPA Section 106 (54 U.S.C. &sect;306108), and other factors not captured in geospatial datasets may still require evaluation.</p>");
         }
 
+        // Application guidance
+        paragraphs.push('<p><strong>Application Guidance.</strong> Right-of-way applications are filed on Standard Form 299 (SF-299) per 43 CFR &sect;2804.12 and must include a project description, construction schedule, capability statement, and maps with GIS data. Other land use authorizations (leases, permits, easements) are governed by 43 CFR Part 2920. All applicants are subject to cost recovery fees (43 CFR &sect;2804.14) categorized by estimated federal processing hours, and must post performance and reclamation bonds before ground-disturbing activities may commence (43 CFR &sect;2805.20). A pre-application meeting with BLM staff (43 CFR &sect;2804.10) is strongly recommended to identify potential routing constraints, environmental issues, and financial obligations before formal filing.</p>');
+
         // Closing disclaimer
-        paragraphs.push("<p><em>This summary is generated automatically from available GIS data and is provided for informational purposes only. It does not constitute a formal determination, legal opinion, or guarantee of any permit outcome. Site-specific conditions not captured in geospatial datasets may exist. All findings should be verified through site visits and consultation with appropriate resource specialists. Applicants are strongly encouraged to contact their local BLM field office for authoritative guidance before submitting permit applications, renewals, or challenges.</em></p>");
+        paragraphs.push('<p><em><strong>Disclaimer.</strong> This screening report is generated automatically from publicly available geospatial datasets and is provided for informational and preliminary planning purposes only. It does not constitute a formal determination by the Bureau of Land Management, a legal opinion, or a guarantee of any permit outcome. The analysis is limited to datasets available through BLM and partner agency web services and does not account for site-specific conditions including, but not limited to: on-the-ground cultural or archaeological resources protected under the National Historic Preservation Act (54 U.S.C. &sect;300101 et seq.) and the Archaeological Resources Protection Act (16 U.S.C. &sect;470aa et seq.); unlisted candidate or sensitive species; Tribal treaty rights and trust responsibilities; state and local permitting requirements; or recent changes to Resource Management Plans. All findings should be verified through field investigation and coordination with appropriate BLM resource specialists. This report does not establish any rights or obligations under FLPMA (43 U.S.C. &sect;1701 et seq.), NEPA (42 U.S.C. &sect;4321 et seq.), or any other federal, state, or local law. Applicants are strongly encouraged to contact their local BLM field office for authoritative guidance prior to submitting permit applications, renewals, or protests.</em></p>');
 
         return paragraphs.join("\n");
     }
@@ -1193,48 +1225,54 @@ define([
                     margin-bottom: 8px;
                     flex-wrap: wrap;
                 }
-                .col-toggle-btn {
-                    background: var(--blm-green);
-                    color: var(--white);
-                    border: none;
-                    border-radius: 4px;
-                    padding: 5px 12px;
-                    font-size: 12px;
+                .col-hide-btn {
+                    display: inline-block;
+                    margin-left: 6px;
+                    padding: 0 4px;
+                    font-size: 10px;
+                    line-height: 16px;
+                    color: rgba(255,255,255,0.55);
+                    background: transparent;
+                    border: 1px solid rgba(255,255,255,0.25);
+                    border-radius: 3px;
+                    cursor: pointer;
+                    vertical-align: middle;
+                    transition: color 0.15s, border-color 0.15s;
+                }
+                .col-hide-btn:hover {
+                    color: #fff;
+                    border-color: rgba(255,255,255,0.7);
+                    background: rgba(255,255,255,0.15);
+                }
+                .hidden-cols-bar {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    margin-bottom: 8px;
+                    min-height: 0;
+                }
+                .hidden-col-pill {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 3px 10px;
+                    font-size: 11px;
                     font-weight: 600;
-                    cursor: pointer;
-                    transition: background 0.15s ease;
-                }
-                .col-toggle-btn:hover {
-                    background: var(--blm-green-light);
-                }
-                .col-menu {
-                    position: absolute;
-                    right: 0;
-                    top: 100%;
-                    background: var(--white);
-                    border: 1px solid var(--border);
-                    border-radius: 6px;
-                    padding: 10px 12px;
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-                    z-index: 100;
-                    max-height: 340px;
-                    overflow-y: auto;
-                    min-width: 200px;
-                }
-                .col-toggle-label {
-                    display: block;
-                    font-size: 12px;
-                    padding: 3px 0;
-                    cursor: pointer;
-                    white-space: nowrap;
-                    color: var(--fg);
-                }
-                .col-toggle-label:hover {
                     color: var(--blm-green);
+                    background: #e8f5e9;
+                    border: 1px solid var(--blm-green);
+                    border-radius: 12px;
+                    cursor: pointer;
+                    transition: background 0.15s;
+                    white-space: nowrap;
                 }
-                .col-toggle-label input {
-                    margin-right: 6px;
-                    accent-color: var(--blm-green);
+                .hidden-col-pill:hover {
+                    background: #c8e6c9;
+                }
+                .hidden-col-pill .pill-x {
+                    font-size: 13px;
+                    font-weight: 700;
+                    line-height: 1;
                 }
                 .table-scroll {
                     overflow-x: auto;
@@ -1315,6 +1353,8 @@ define([
                 }
                 @media print {
                     .interactive-table-wrapper .table-toolbar { display: none !important; }
+                    .hidden-cols-bar { display: none !important; }
+                    .col-hide-btn { display: none !important; }
                     .table-scroll { max-height: none; overflow: visible; }
                     .interactive-table { font-size: 9px; }
                     .interactive-table th {
@@ -1342,7 +1382,7 @@ define([
                 ${totalsHtml || ""}
                 </div>
 
-                ${findingsSummaryHtml ? '<div class="findings-summary"><h3>Analysis Findings Summary</h3>' + findingsSummaryHtml + '</div>' : ''}
+                ${findingsSummaryHtml ? '<div class="findings-summary"><h3>Regulatory Screening &amp; Findings Summary</h3>' + findingsSummaryHtml + '</div>' : ''}
 
                 ${aoiSectionHtml || ""}
 
@@ -1355,6 +1395,7 @@ define([
                     <div class="dept-name">Bureau of Land Management</div>
                     <div>U.S. Department of the Interior</div>
                     <div style="margin-top:8px;">This report was generated using geospatial data from BLM and partner agency web services.</div>
+                    <div style="margin-top:6px; font-size:11px; color: var(--muted);">Applicable authorities: Federal Land Policy and Management Act (43 U.S.C. &sect;1701 et seq.) &bull; National Environmental Policy Act (42 U.S.C. &sect;4321 et seq.) &bull; Endangered Species Act (16 U.S.C. &sect;1531 et seq.) &bull; National Historic Preservation Act (54 U.S.C. &sect;300101 et seq.) &bull; 43 CFR Parts 1600, 2800, 2920, 3100, 4100</div>
                 </div>
             </div>
             <script>
@@ -1397,33 +1438,47 @@ define([
                     tbody.appendChild(rows[ri]);
                 }
             }
-            // Interactive table: column visibility toggle menu
-            function toggleColMenu(btn) {
-                var menu = btn.nextElementSibling;
-                if (!menu) return;
-                var isOpen = menu.style.display !== 'none';
-                // Close all menus first
-                var allMenus = document.querySelectorAll('.col-menu');
-                for (var mi = 0; mi < allMenus.length; mi++) allMenus[mi].style.display = 'none';
-                if (!isOpen) menu.style.display = 'block';
+            // Interactive table: hide a column from its header button
+            function hideColumn(wrapperId, colIdx) {
+                var wrapper = document.getElementById(wrapperId);
+                if (!wrapper) return;
+                // Hide every cell/header with this data-col index
+                var elements = wrapper.querySelectorAll('[data-col="' + colIdx + '"]');
+                for (var ei = 0; ei < elements.length; ei++) {
+                    elements[ei].style.display = 'none';
+                }
+                // Find column label from the header
+                var th = wrapper.querySelector('thead th[data-col="' + colIdx + '"]');
+                var label = th ? (th.getAttribute('data-label') || 'Column ' + colIdx) : 'Column ' + colIdx;
+                // Add pill to the hidden-cols-bar
+                var bar = wrapper.querySelector('.hidden-cols-bar');
+                if (!bar) return;
+                var pill = document.createElement('span');
+                pill.className = 'hidden-col-pill';
+                pill.setAttribute('data-col', colIdx);
+                pill.innerHTML = label + ' <span class="pill-x">&#215;</span>';
+                pill.title = 'Click to show "' + label + '" column';
+                pill.onclick = function() { showColumn(wrapperId, colIdx); };
+                bar.appendChild(pill);
+                bar.style.display = 'flex';
             }
-            // Interactive table: toggle column visibility
-            function toggleTableCol(wrapperId, colIdx, visible) {
+            // Interactive table: restore a hidden column via pill click
+            function showColumn(wrapperId, colIdx) {
                 var wrapper = document.getElementById(wrapperId);
                 if (!wrapper) return;
                 var elements = wrapper.querySelectorAll('[data-col="' + colIdx + '"]');
-                var display = visible ? '' : 'none';
                 for (var ei = 0; ei < elements.length; ei++) {
-                    elements[ei].style.display = display;
+                    elements[ei].style.display = '';
+                }
+                // Remove the pill
+                var bar = wrapper.querySelector('.hidden-cols-bar');
+                if (bar) {
+                    var pills = bar.querySelectorAll('.hidden-col-pill[data-col="' + colIdx + '"]');
+                    for (var pi = 0; pi < pills.length; pi++) pills[pi].remove();
+                    // Hide bar if empty
+                    if (!bar.querySelector('.hidden-col-pill')) bar.style.display = 'none';
                 }
             }
-            // Close column menus when clicking outside
-            document.addEventListener('click', function(e) {
-                if (e.target.classList && !e.target.classList.contains('col-toggle-btn')) {
-                    var allMenus = document.querySelectorAll('.col-menu');
-                    for (var mi = 0; mi < allMenus.length; mi++) allMenus[mi].style.display = 'none';
-                }
-            });
             </script>
             </body>
             </html>`;
@@ -1757,7 +1812,7 @@ define([
             // STEP 3: Generate per-layer map sections
             _setStatus("building final report\u2026 (generating layer maps)");
 
-            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+            const paddingFactor = config?.visualReport?.paddingFactor ?? 1.12;
             const width = config?.visualReport?.screenshotWidth ?? 1400;
 
             let fixedExtent = null;
@@ -1842,7 +1897,7 @@ define([
                             setVisibilityForScreenshot(temp);
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                             if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                            else await view.goTo(selectionGeom.extent.expand(1.35), { animate: false });
+                            else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
                             await waitForViewStationary(2500);
 
                             const dataUrl = await captureScreenshotWithWait({ width });
@@ -1909,7 +1964,7 @@ define([
                         setVisibilityForScreenshot(temp);
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 8000 });
                         if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                        else await view.goTo(selectionGeom.extent.expand(1.35), { animate: false });
+                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
                         await waitForViewStationary(2000);
 
                         const dataUrl = await captureScreenshotWithWait({ width });
