@@ -188,28 +188,34 @@ define([], function () {
         const info = await fetchJson(pjsonUrl);
         const layers = Array.isArray(info?.layers) ? info.layers : [];
 
-        const out = [];
+        if (!polygonOnly) {
+            return layers.map(l => {
+                let title = String(l.name || "");
+                title = title.replace(/intersected/ig, "Parcel");
+                return { title, url: serviceUrl.replace(/\/$/, "") + "/" + l.id };
+            });
+        }
 
-        for (const l of layers) {
-            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
-
-            if (polygonOnly) {
+        // Parallel geometry type checks for polygon filtering
+        const checks = await Promise.allSettled(
+            layers.map(async l => {
+                const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
                 try {
                     const lpjson = await fetchJson(layerUrl + "?f=pjson");
                     const g = String(lpjson?.geometryType || "");
-                    if (!g.toLowerCase().includes("polygon")) continue;
+                    if (!g.toLowerCase().includes("polygon")) return null;
+                    let title = String(l.name || "");
+                    title = title.replace(/intersected/ig, "Parcel");
+                    return { title, url: layerUrl };
                 } catch (e) {
-                    continue;
+                    return null;
                 }
-            }
+            })
+        );
 
-            let title = String(l.name || "");
-            title = title.replace(/intersected/ig, "Parcel");
-
-            out.push({ title, url: layerUrl });
-        }
-
-        return out;
+        return checks
+            .filter(r => r.status === "fulfilled" && r.value != null)
+            .map(r => r.value);
     }
 
     async function expandServiceToSublayers(serviceUrl) {
@@ -227,25 +233,26 @@ define([], function () {
         const info = await fetchJson(pjsonUrl);
         const layers = Array.isArray(info?.layers) ? info.layers : [];
 
-        const out = [];
-        for (const l of layers) {
-            const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
+        // Parallel geometry type checks
+        const checks = await Promise.allSettled(
+            layers.map(async l => {
+                const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
+                try {
+                    const lpjson = await fetchJson(layerUrl + "?f=pjson");
+                    const g = String(lpjson?.geometryType || "").toLowerCase();
+                    if (!g.includes("polygon")) return null;
+                    let title = l?.name ? String(l.name) : `Layer ${l.id}`;
+                    title = title.replace(/intersected/ig, "Parcel");
+                    return { title, url: layerUrl };
+                } catch (e) {
+                    return null;
+                }
+            })
+        );
 
-            try {
-                const lpjson = await fetchJson(layerUrl + "?f=pjson");
-                const g = String(lpjson?.geometryType || "").toLowerCase();
-                if (!g.includes("polygon")) continue;
-            } catch (e) {
-                continue;
-            }
-
-            let title = l?.name ? String(l.name) : `Layer ${l.id}`;
-            title = title.replace(/intersected/ig, "Parcel");
-
-            out.push({ title, url: layerUrl });
-        }
-
-        return out;
+        return checks
+            .filter(r => r.status === "fulfilled" && r.value != null)
+            .map(r => r.value);
     }
 
     async function expandFeatureServerToAllSublayers(serviceUrl) {

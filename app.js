@@ -868,6 +868,9 @@ function setActiveTab(tabName) {
     }
 
 function clearAll() {
+    // Cancel any active sketch drawing session
+    if (sketch) sketch.cancel();
+
     selectionGeom = null;
     aoiSourceObjectId = null;
     aoiSourceObjectIdField = null;
@@ -875,6 +878,7 @@ function clearAll() {
     aoiSourceLayerTitle = null;
     aoiSourceLayerUrl = null;
     aoiSourceFeature = null;
+    aoiSourcePlssTool = null;
     
     // Clear results
     resultsEl.innerHTML = "";
@@ -893,9 +897,26 @@ function clearAll() {
 
     runBtn.disabled = true;
     setStatus("cleared");
-    coverageCache.clear();
-    coverageAoiKey = "";
+    resetCoverageCacheForAoi(null);
     setBusy(false);
+
+    // Reset wizard-specific UI state
+    if (wizFullReport) wizFullReport.disabled = true;
+    if (wizExportAll) wizExportAll.disabled = true;
+    setWizPlssActive(null);
+
+    // Clear wizard location search
+    clearTimeout(wizLocationDebounce);
+    wizLocationDebounce = null;
+    if (wizLocationInput) wizLocationInput.value = "";
+    if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
+
+    // Clear permit bucket DOM (step 3 results)
+    const bucketPanelIds = ["bucketOverview", "bucketLandStatus", "bucketLandUse", "bucketSpecial", "bucketEnvironmental", "bucketAuthorizations", "bucketAllData"];
+    bucketPanelIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ""; });
+    const summaryEl = document.getElementById("permitResultsSummary");
+    if (summaryEl) summaryEl.innerHTML = "";
+    document.querySelectorAll("#permitBucketTabs .permit-tab .bucket-badge").forEach(b => b.remove());
 }
 
     function setGeometryFromSelection(geom) {
@@ -1421,6 +1442,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         });
     }
 
+    // Separate configs into categories for parallel expansion
+    const directTargets = [];
+    const featureServerRoots = [];
+    const mapServerRoots = [];
+
     for (const cfg of reportCfgs) {
         const url = String(cfg.url || "");
 
@@ -1428,9 +1454,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             continue;
         }
 
-        // Handle ImageServer layers specially
         if (cfg.imageService === true) {
-            expandedTargets.push({ 
+            directTargets.push({ 
                 title: cfg.title, 
                 url,
                 __isImageService: true,
@@ -1440,40 +1465,51 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         }
 
         if (isFeatureServerRoot(url)) {
-            try {
-                const sublayers = await expandServiceToSublayers(url);
-                sublayers.forEach(sl => expandedTargets.push({
-                    title: `${cfg.title}: ${sl.title}`,
-                    url: sl.url
-                }));
-            } catch (e) {
-                expandedTargets.push({
-                    title: `${cfg.title} (FAILED to expand)`,
-                    url,
-                    error: e
-                });
-            }
+            featureServerRoots.push(cfg);
             continue;
         }
 
         if (isMapServerRoot(url)) {
+            mapServerRoots.push(cfg);
+            continue;
+        }
+
+        directTargets.push({ title: cfg.title, url });
+    }
+
+    // Expand all service roots in parallel
+    const [fsResults, msResults] = await Promise.all([
+        Promise.allSettled(featureServerRoots.map(async cfg => {
             try {
-                const subs = await expandMapServerToSublayers(url, { polygonOnly: false });
-                subs.forEach(sl => expandedTargets.push({
+                const sublayers = await expandServiceToSublayers(cfg.url);
+                return sublayers.map(sl => ({
                     title: `${cfg.title}: ${sl.title}`,
                     url: sl.url
                 }));
             } catch (e) {
-                expandedTargets.push({
-                    title: `${cfg.title} (FAILED to expand)`,
-                    url,
-                    error: e
-                });
+                return [{ title: `${cfg.title} (FAILED to expand)`, url: cfg.url, error: e }];
             }
-            continue;
-        }
+        })),
+        Promise.allSettled(mapServerRoots.map(async cfg => {
+            try {
+                const subs = await expandMapServerToSublayers(cfg.url, { polygonOnly: false });
+                return subs.map(sl => ({
+                    title: `${cfg.title}: ${sl.title}`,
+                    url: sl.url
+                }));
+            } catch (e) {
+                return [{ title: `${cfg.title} (FAILED to expand)`, url: cfg.url, error: e }];
+            }
+        }))
+    ]);
 
-        expandedTargets.push({ title: cfg.title, url });
+    // Collect all expanded targets
+    expandedTargets.push(...directTargets);
+    for (const r of fsResults) {
+        if (r.status === "fulfilled") expandedTargets.push(...r.value);
+    }
+    for (const r of msResults) {
+        if (r.status === "fulfilled") expandedTargets.push(...r.value);
     }
 
     // ── Helper: process a single expanded target (returns { card, reportEntry }) ──
@@ -1646,8 +1682,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     }
     // ── End of processOneTarget ──
 
-    // ── Batched parallel queries (batches of 5) ──
-    const BATCH_SIZE = 5;
+    // ── Batched parallel queries (batches of 8) ──
+    const BATCH_SIZE = 8;
     const cards = [];
 
     for (let bStart = 0; bStart < expandedTargets.length; bStart += BATCH_SIZE) {
@@ -1707,6 +1743,40 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
 
 
+
+    // ── Shared export-all helper (used by both exportAllBtn and wizExportAll) ──
+    async function doExportAll(callerBtn) {
+        if (!lastReportRowsByLayer.length) return;
+        if (callerBtn) callerBtn.disabled = true;
+        try {
+            setStatus("exporting ALL (FULL)…");
+            const pageSize = config.report?.pageSize ?? 1000;
+            const maxExport = config.report?.maxExportFeatures ?? 50000;
+            const allRows = [];
+            for (let i = 0; i < lastReportRowsByLayer.length; i++) {
+                const item = lastReportRowsByLayer[i];
+                if (!item._layer || !item._exportQuery) continue;
+                setStatus(`exporting ALL (FULL)… (${i + 1}/${lastReportRowsByLayer.length})`);
+                if (!item.fullRows) {
+                    const fullFeatures = await queryAllFeaturesPaged(
+                        item._layer, item._exportQuery, pageSize, maxExport
+                    );
+                    item.fullRows = flattenAttributes(fullFeatures);
+                }
+                for (const r of (item.fullRows || [])) {
+                    allRows.push({ __layer: item.title, ...r });
+                }
+            }
+            const csv = toCsv(allRows, ["__layer"]);
+            downloadText("intersect_report_ALL_FULL.csv", csv || "");
+            setStatus("exported ALL (FULL)");
+        } catch (e) {
+            console.error(e);
+            setStatus("export ALL failed (see console)");
+        } finally {
+            if (callerBtn) callerBtn.disabled = false;
+        }
+    }
 
     function wireExportButtons() {
         resultsEl.querySelectorAll("button[data-export]").forEach(btn => {
@@ -2348,53 +2418,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         if (clearBtn) clearBtn.addEventListener("click", clearAll);
 
 
-        if (exportAllBtn) exportAllBtn.addEventListener("click", async () => {
-            if (!lastReportRowsByLayer.length) return;
-
-            exportAllBtn.disabled = true;
-
-            try {
-                setStatus("exporting ALL (FULL)…");
-
-                const pageSize = config.report?.pageSize ?? 1000;
-                const maxExport = config.report?.maxExportFeatures ?? 50000;
-
-                const allRows = [];
-
-                for (let i = 0; i < lastReportRowsByLayer.length; i++) {
-                    const item = lastReportRowsByLayer[i];
-
-                    // Skip if we somehow don't have the query objects
-                    if (!item._layer || !item._exportQuery) continue;
-
-                    setStatus(`exporting ALL (FULL)… (${i + 1}/${lastReportRowsByLayer.length})`);
-
-                    // Use cached full results if available
-                    if (!item.fullRows) {
-                        const fullFeatures = await queryAllFeaturesPaged(
-                            item._layer,
-                            item._exportQuery,
-                            pageSize,
-                            maxExport
-                        );
-                        item.fullRows = flattenAttributes(fullFeatures);
-                    }
-
-                    for (const r of (item.fullRows || [])) {
-                        allRows.push({ __layer: item.title, ...r });
-                    }
-                }
-
-                const csv = toCsv(allRows, ["__layer"]);
-                downloadText("intersect_report_ALL_FULL.csv", csv || "");
-                setStatus("exported ALL (FULL)");
-            } catch (e) {
-                console.error(e);
-                setStatus("export ALL failed (see console)");
-            } finally {
-                exportAllBtn.disabled = false;
-            }
-        });
+        if (exportAllBtn) exportAllBtn.addEventListener("click", () => doExportAll(exportAllBtn));
 
 
         // ========================================
@@ -2464,6 +2488,15 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         // Wizard navigation
         if (wizBackToStep1) {
             wizBackToStep1.addEventListener("click", () => {
+                // Cancel any active sketch drawing
+                if (sketch) sketch.cancel();
+                // Clear location search state
+                clearTimeout(wizLocationDebounce);
+                wizLocationDebounce = null;
+                if (wizLocationInput) wizLocationInput.value = "";
+                if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
+                // Reset PLSS button states
+                setWizPlssActive(null);
                 goToWizardStep(1);
                 hideAoiMethodPanels();
             });
@@ -2482,34 +2515,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         if (wizFullReport) wizFullReport.addEventListener("click", viewFinalReport);
 
         if (wizExportAll) {
-            wizExportAll.addEventListener("click", async () => {
-                if (!lastReportRowsByLayer.length) return;
-                wizExportAll.disabled = true;
-                try {
-                    setStatus("exporting ALL (FULL)…");
-                    const pageSize = config.report?.pageSize ?? 1000;
-                    const maxExport = config.report?.maxExportFeatures ?? 50000;
-                    const allRows = [];
-                    for (let i = 0; i < lastReportRowsByLayer.length; i++) {
-                        const item = lastReportRowsByLayer[i];
-                        if (!item._layer || !item._exportQuery) continue;
-                        setStatus("exporting ALL (FULL)… (" + (i + 1) + "/" + lastReportRowsByLayer.length + ")");
-                        if (!item.fullRows) {
-                            const fullFeatures = await queryAllFeaturesPaged(item._layer, item._exportQuery, pageSize, maxExport);
-                            item.fullRows = flattenAttributes(fullFeatures);
-                        }
-                        for (const r of (item.fullRows || [])) allRows.push({ __layer: item.title, ...r });
-                    }
-                    const csv = toCsv(allRows, ["__layer"]);
-                    downloadText("intersect_report_ALL_FULL.csv", csv || "");
-                    setStatus("exported ALL (FULL)");
-                } catch (e) {
-                    console.error(e);
-                    setStatus("export ALL failed (see console)");
-                } finally {
-                    wizExportAll.disabled = false;
-                }
-            });
+            wizExportAll.addEventListener("click", () => doExportAll(wizExportAll));
         }
 
         // Bucket tabs
@@ -2536,12 +2542,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         // Initialize analysis modal
         analysisModal.init();
 
-        // Preload service status once (optional). Keeps Services tab fast.
-        if (servicesListEl) {
-            refreshServicesTab().catch(() => { });
-        }
-
-        // Background service check on startup
+        // Background service check on startup (also populates service status for the Services tab)
         checkServiceStatusBackground().catch(() => {});
     }
 

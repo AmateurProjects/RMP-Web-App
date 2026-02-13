@@ -303,8 +303,9 @@ define([
 
         await waitForViewStationary(3000);
 
-        for (let i = 0; i < 4; i++) {
-            await new Promise(r => setTimeout(r, 300));
+        // Brief settle delay (reduced from 4×300ms to 2×200ms)
+        for (let i = 0; i < 2; i++) {
+            await new Promise(r => setTimeout(r, 200));
         }
 
         await waitForViewStationary(2000);
@@ -405,9 +406,15 @@ define([
                         ? await helpers.expandFeatureServerToAllSublayers(key)
                         : await helpers.expandFeatureServerToPolygonSublayers(key);
 
+                    // Parallel geometry type lookups
+                    const geomTypes = await Promise.all(
+                        subs.map(sl => getLayerGeometryType(sl.url))
+                    );
+
                     const layers = [];
-                    for (const sl of subs) {
-                        const geomType = await getLayerGeometryType(sl.url);
+                    for (let si = 0; si < subs.length; si++) {
+                        const sl = subs[si];
+                        const geomType = geomTypes[si];
                         const layerOpts = {
                             url: sl.url,
                             title: `${cfg.title}: ${sl.title}`,
@@ -434,9 +441,15 @@ define([
                 if (helpers.isMapServerRoot(key)) {
                     const subs = await helpers.expandMapServerToSublayers(key, { polygonOnly: !useServiceRenderer });
 
+                    // Parallel geometry type lookups
+                    const geomTypes = await Promise.all(
+                        subs.map(sl => getLayerGeometryType(sl.url))
+                    );
+
                     const layers = [];
-                    for (const sl of subs) {
-                        const geomType = await getLayerGeometryType(sl.url);
+                    for (let si = 0; si < subs.length; si++) {
+                        const sl = subs[si];
+                        const geomType = geomTypes[si];
                         const layerOpts = {
                             url: sl.url,
                             title: `${cfg.title}: ${sl.title}`,

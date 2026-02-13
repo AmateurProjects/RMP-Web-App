@@ -347,14 +347,16 @@ define(["app/config-helpers"], function (configHelpers) {
             goToPromise = view.goTo(graphic.geometry, goToOptions);
         }
 
-        return goToPromise.then(function () {
-            var highlightLayer = new GraphicsLayerCtor({ title: "Search Highlight" });
-            map.add(highlightLayer);
-            highlightLayer.add(graphic);
-            setTimeout(function () {
-                try { map.remove(highlightLayer); } catch (e) {}
-            }, 4000);
-        }).catch(function (e) {
+        var highlightLayer = new GraphicsLayerCtor({ title: "Search Highlight" });
+        map.add(highlightLayer);
+        highlightLayer.add(graphic);
+
+        // Always clean up the highlight layer after 4s regardless of zoom outcome
+        setTimeout(function () {
+            try { map.remove(highlightLayer); } catch (e) {}
+        }, 4000);
+
+        return goToPromise.catch(function (e) {
             console.error("Zoom to feature failed:", e, feature);
         });
     }
