@@ -409,12 +409,13 @@ define([
     // ── Per-feature breakdown ───────────────────────────────────
 
     /**
-     * Build a per-feature breakdown table for layers with ≥ 2 intersecting features.
-     * Each row = one feature with relevant attrs + Acres + % AOI.
+     * Build an interactive per-feature data table for the final report.
+     * Each row = one feature with ALL attrs + Acres + % AOI.
+     * Supports sorting, column hide/show, and horizontal scrolling.
      */
-    async function buildPerFeatureTable(item, aoiGeom) {
+    async function buildPerFeatureTable(item, aoiGeom, tableId) {
         if (!item || !item._layer || !item._exportQuery || !aoiGeom) return "";
-        if ((item.count || 0) < 2) return "";
+        if ((item.count || 0) < 1) return "";
 
         let aoiAreaSqm = 0;
         try { aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters")); }
@@ -451,7 +452,7 @@ define([
             return "";
         }
 
-        if (feats.length < 2) return "";
+        if (feats.length < 1) return "";
 
         // Determine relevant attribute columns
         const skipPatterns = /^(objectid|oid|fid|shape|shape_area|shape_length|shape\.area|shape\.len|globalid|st_area|st_length|st_perimeter)$/i;
@@ -463,8 +464,7 @@ define([
             }
         }
 
-        const maxAttrCols = 6;
-        const attrKeys    = Array.from(allKeys).slice(0, maxAttrCols);
+        const attrKeys = Array.from(allKeys);
 
         // Build rows: compute per-feature intersection area
         const tableRows = [];
@@ -492,22 +492,38 @@ define([
         // Sort by acres descending
         tableRows.sort((a, b) => b.acresCovered - a.acresCovered);
 
-        // Build HTML
-        const thCells   = attrKeys.map(k => `<th>${escapeHtml(k)}</th>`).join("");
-        const headerHtml = `<tr>${thCells}<th>Acres</th><th>% of AOI</th></tr>`;
+        // Build interactive table HTML
+        const tId = tableId != null ? tableId : Math.floor(Math.random() * 100000);
+        const colLabels = [...attrKeys, 'Acres', '% of AOI'];
+        const totalCols = colLabels.length;
+        const tableTitle = feats.length === 1 ? 'Feature Attributes' : 'Per-Feature Breakdown';
+
+        const thCells = colLabels.map((label, ci) =>
+            `<th data-col="${ci}" data-sort-dir="none" onclick="sortInteractiveTable(this)" title="Click to sort">${escapeHtml(label)} <span class="sort-arrow">\u21C5</span></th>`
+        ).join("");
+        const headerHtml = `<tr>${thCells}</tr>`;
+
+        // Column toggle checkboxes
+        const colCheckboxes = colLabels.map((label, ci) =>
+            `<label class="col-toggle-label"><input type="checkbox" checked onchange="toggleTableCol('tbl-${tId}',${ci},this.checked)"> ${escapeHtml(label)}</label>`
+        ).join("");
 
         let hasSliverWarning = false;
         const bodyHtml = tableRows.map(row => {
-            const tdCells = attrKeys.map(k => {
-                const raw       = (row.attrs[k] == null) ? "" : String(row.attrs[k]);
-                const truncated = raw.length > 40 ? raw.slice(0, 39) + "\u2026" : raw;
-                return `<td title="${escapeHtml(raw)}">${escapeHtml(truncated)}</td>`;
-            }).join("");
+            const tdCells = attrKeys.map((k, ci) => {
+                const raw = (row.attrs[k] == null) ? "" : String(row.attrs[k]);
+                const display = raw.length > 100 ? raw.slice(0, 99) + "\u2026" : raw;
+                return `<td data-col="${ci}" data-sort-val="${escapeHtml(raw)}" title="${escapeHtml(raw)}">${escapeHtml(display)}</td>`;
+            });
             const isSliverWarning = row.pctAoi < 3;
             if (isSliverWarning) hasSliverWarning = true;
-            const rowStyle    = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
+            const acresIdx = attrKeys.length;
+            const pctIdx = attrKeys.length + 1;
+            tdCells.push(`<td data-col="${acresIdx}" data-sort-val="${row.acresCovered.toFixed(6)}" style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td>`);
             const warningIcon = isSliverWarning ? '<span style="color:#856404;">\u26A0\uFE0F</span> ' : '';
-            return `<tr${rowStyle}>${tdCells}<td style="text-align:right;">${formatNumber(row.acresCovered, 2)}</td><td style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td></tr>`;
+            tdCells.push(`<td data-col="${pctIdx}" data-sort-val="${row.pctAoi.toFixed(6)}" style="text-align:right;">${warningIcon}${formatNumber(row.pctAoi, 2)}%</td>`);
+            const rowStyle = isSliverWarning ? ' style="background-color:#fff3cd;"' : '';
+            return `<tr${rowStyle}>${tdCells.join("")}</tr>`;
         }).join("");
 
         const sliverNote = hasSliverWarning
@@ -517,12 +533,23 @@ define([
             : '';
 
         return `
-            <div style="margin-top:16px;">
-                <b>Per-Feature Breakdown</b>
-                <table class="metaTbl" style="margin-top:8px; width:100%; font-size:11px;">
-                    <thead>${headerHtml}</thead>
-                    <tbody>${bodyHtml}</tbody>
-                </table>
+            <div class="interactive-table-wrapper" id="tbl-${tId}" style="margin-top:16px;">
+                <div class="table-toolbar">
+                    <b>${escapeHtml(tableTitle)}</b>
+                    <span style="font-size:12px;color:#5a5a5a;margin-left:8px;">(${feats.length} feature${feats.length !== 1 ? 's' : ''}, ${totalCols} columns \u2014 scroll \u2192 for more)</span>
+                    <div style="position:relative;margin-left:auto;">
+                        <button class="col-toggle-btn" onclick="toggleColMenu(this)">Columns \u25BE</button>
+                        <div class="col-menu" style="display:none;">
+                            ${colCheckboxes}
+                        </div>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table class="interactive-table">
+                        <thead>${headerHtml}</thead>
+                        <tbody>${bodyHtml}</tbody>
+                    </table>
+                </div>
                 ${sliverNote}
             </div>
         `;

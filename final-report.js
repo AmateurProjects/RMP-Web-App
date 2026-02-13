@@ -752,9 +752,133 @@ define([
     }
 
     // ────────────────────────────────────────────
+    // generateFindingsSummary – human-readable paragraph
+    // ────────────────────────────────────────────
+    function generateFindingsSummary(reportItems, aoiAcres) {
+        if (!reportItems || !reportItems.length) return "";
+
+        const totalLayers = reportItems.length;
+        const layersWithHits = reportItems.filter(function (x) { return (x.count || 0) > 0; });
+        const totalHits = reportItems.reduce(function (s, x) { return s + (x.count || 0); }, 0);
+
+        // Categorize findings
+        var specialDesignations = [];
+        var environmentalConcerns = [];
+        var existingAuthorizations = [];
+        var landUsePlans = [];
+        var landStatus = [];
+
+        for (var idx = 0; idx < layersWithHits.length; idx++) {
+            var item = layersWithHits[idx];
+            var title = (item.title || "").toLowerCase();
+            var count = item.count || 0;
+            var entry = { name: item.title, count: count };
+
+            if (title.includes("acec") || title.includes("critical environmental concern")) {
+                specialDesignations.push(entry);
+            } else if (title.includes("wilderness")) {
+                specialDesignations.push(entry);
+            } else if (title.includes("nlcs") || title.includes("conservation area") || title.includes("national monument")) {
+                specialDesignations.push(entry);
+            } else if (title.includes("visual resource")) {
+                specialDesignations.push(entry);
+            } else if (title.includes("recreation site") || title.includes("lwcf") || title.includes("conservation fund")) {
+                specialDesignations.push(entry);
+            } else if (title.includes("critical habitat")) {
+                environmentalConcerns.push(entry);
+            } else if (title.includes("migration") || title.includes("ungulate")) {
+                environmentalConcerns.push(entry);
+            } else if (title.includes("wild horse") || title.includes("burro")) {
+                environmentalConcerns.push(entry);
+            } else if (title.includes("fire perimeter") || title.includes("fire")) {
+                environmentalConcerns.push(entry);
+            } else if (title.includes("elevation") || title.includes("3dep")) {
+                environmentalConcerns.push(entry);
+            } else if (title.includes("grazing")) {
+                existingAuthorizations.push(entry);
+            } else if (title.includes("oil") && title.includes("gas")) {
+                existingAuthorizations.push(entry);
+            } else if (title.includes("row") || title.includes("right")) {
+                existingAuthorizations.push(entry);
+            } else if (title.includes("eplanning")) {
+                existingAuthorizations.push(entry);
+            } else if (title.includes("land use plan") || title.includes("revision") || title.includes("timber") || title.includes("locatable") || title.includes("mineral")) {
+                landUsePlans.push(entry);
+            } else if (title.includes("federal land") || title.includes("admin") || title.includes("state boundar") || title.includes("usfws region")) {
+                landStatus.push(entry);
+            }
+        }
+
+        var paragraphs = [];
+
+        // Opening overview
+        var acresStr = formatNumber(aoiAcres, 0);
+        paragraphs.push("<p>This screening analysis examined <strong>" + totalLayers + " geospatial datasets</strong> to identify land management considerations that may be relevant to permit applications, renewals, or challenges within the approximately <strong>" + escapeHtml(acresStr) + "-acre</strong> project area. Of the datasets reviewed, <strong>" + layersWithHits.length + "</strong> contained features intersecting the area of interest, identifying a total of <strong>" + totalHits + " overlapping features</strong>.</p>");
+
+        // Land status
+        if (landStatus.length > 0) {
+            var lsNames = landStatus.map(function (f) { return f.name; }).join(", ");
+            paragraphs.push("<p>The project area has been identified within federal land boundaries based on the following datasets: " + escapeHtml(lsNames) + ". These layers confirm the jurisdictional context and administrative responsibility for the area. Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications.</p>");
+        }
+
+        // Special designations (high priority for permitting)
+        if (specialDesignations.length > 0) {
+            var sdNames = specialDesignations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
+            paragraphs.push("<p><strong>Special designations</strong> were identified overlapping the project area, including: " + sdNames + ". Special designations such as Areas of Critical Environmental Concern (ACECs), Wilderness Study Areas (WSAs), National Conservation Lands, and Visual Resource Management areas may impose additional management prescriptions, activity restrictions, or conditions of approval that could affect project feasibility, design, or timing. Applicants should closely review these designations and consult with the local BLM field office to understand applicable management direction before submitting an application.</p>");
+        }
+
+        // Environmental concerns
+        if (environmentalConcerns.length > 0) {
+            var ecNames = environmentalConcerns.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + ")"; }).join(", ");
+            var hasCriticalHabitat = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("critical habitat"); });
+            var hasMigration = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("migration") || f.name.toLowerCase().includes("ungulate"); });
+            var hasWildHorse = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("wild horse") || f.name.toLowerCase().includes("burro"); });
+            var hasFire = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("fire"); });
+
+            var ecText = "<p><strong>Environmental and ecological considerations</strong> were identified, including: " + ecNames + ". ";
+            if (hasCriticalHabitat) {
+                ecText += "The presence of federally designated Critical Habitat may trigger Section 7 consultation under the Endangered Species Act (ESA), which could increase review timelines and require biological assessments. ";
+            }
+            if (hasMigration) {
+                ecText += "Wildlife migration corridors intersecting the project area may require seasonal timing restrictions or project design modifications to minimize disruption to migratory species. ";
+            }
+            if (hasWildHorse) {
+                ecText += "The presence of Wild Horse and Burro Herd Areas or Herd Management Areas may necessitate coordination with BLM wild horse and burro program staff during the application review. ";
+            }
+            if (hasFire) {
+                ecText += "Historical fire perimeters within or near the area may indicate elevated fire risk, post-fire rehabilitation requirements, or altered vegetation conditions that should be considered in project planning. ";
+            }
+            ecText += "These environmental factors may require additional NEPA analysis or mitigation measures as part of the permitting process.</p>";
+            paragraphs.push(ecText);
+        }
+
+        // Land use plans
+        if (landUsePlans.length > 0) {
+            var lupNames = landUsePlans.map(function (f) { return escapeHtml(f.name); }).join(", ");
+            paragraphs.push("<p>The area falls within the scope of applicable <strong>BLM Land Use Plans and resource allocations</strong> (" + lupNames + "). All permitted activities must be consistent with the governing Resource Management Plan (RMP), including specific land use allocations for minerals, timber, and other resources. Applicants should review the applicable plan documents for relevant management prescriptions, allowable uses, and any resource-specific stipulations that may apply.</p>");
+        }
+
+        // Existing authorizations
+        if (existingAuthorizations.length > 0) {
+            var eaNames = existingAuthorizations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
+            paragraphs.push("<p>The project area overlaps with <strong>existing authorizations</strong>, including: " + eaNames + ". Existing permits, leases, and rights-of-way represent current land uses that BLM must consider when evaluating new applications. Potential conflicts between proposed and existing uses may need to be addressed during the application review. Coordination with existing authorization holders is recommended, and applicants should be prepared to demonstrate how their proposed use will be compatible with existing authorized activities.</p>");
+        }
+
+        // No findings case
+        if (layersWithHits.length === 0) {
+            paragraphs.push("<p>No intersecting features were identified across any of the screened datasets. While this preliminary screening suggests the project area may have fewer regulatory constraints, this does not replace site-specific environmental review or a formal BLM determination. Field conditions, unlisted species, cultural resources, and other factors not captured in geospatial datasets may still require evaluation.</p>");
+        }
+
+        // Closing disclaimer
+        paragraphs.push("<p><em>This summary is generated automatically from available GIS data and is provided for informational purposes only. It does not constitute a formal determination, legal opinion, or guarantee of any permit outcome. Site-specific conditions not captured in geospatial datasets may exist. All findings should be verified through site visits and consultation with appropriate resource specialists. Applicants are strongly encouraged to contact their local BLM field office for authoritative guidance before submitting permit applications, renewals, or challenges.</em></p>");
+
+        return paragraphs.join("\n");
+    }
+
+    // ────────────────────────────────────────────
     // buildFinalReportHtmlDoc – HTML template
     // ────────────────────────────────────────────
-    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml }) {
+    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, findingsSummaryHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml }) {
         const safeTitle = escapeHtml(title || "Final Report");
 
         return `<!doctype html>
@@ -1058,6 +1182,147 @@ define([
                         print-color-adjust: exact;
                     }
                 }
+                /* Interactive Data Tables */
+                .interactive-table-wrapper {
+                    margin-top: 16px;
+                }
+                .table-toolbar {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                    flex-wrap: wrap;
+                }
+                .col-toggle-btn {
+                    background: var(--blm-green);
+                    color: var(--white);
+                    border: none;
+                    border-radius: 4px;
+                    padding: 5px 12px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: background 0.15s ease;
+                }
+                .col-toggle-btn:hover {
+                    background: var(--blm-green-light);
+                }
+                .col-menu {
+                    position: absolute;
+                    right: 0;
+                    top: 100%;
+                    background: var(--white);
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    padding: 10px 12px;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+                    z-index: 100;
+                    max-height: 340px;
+                    overflow-y: auto;
+                    min-width: 200px;
+                }
+                .col-toggle-label {
+                    display: block;
+                    font-size: 12px;
+                    padding: 3px 0;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    color: var(--fg);
+                }
+                .col-toggle-label:hover {
+                    color: var(--blm-green);
+                }
+                .col-toggle-label input {
+                    margin-right: 6px;
+                    accent-color: var(--blm-green);
+                }
+                .table-scroll {
+                    overflow-x: auto;
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    max-height: 500px;
+                    overflow-y: auto;
+                }
+                .interactive-table {
+                    width: max-content;
+                    min-width: 100%;
+                    border-collapse: collapse;
+                    font-size: 12px;
+                    background: var(--white);
+                }
+                .interactive-table th {
+                    background: var(--blm-green);
+                    color: var(--white);
+                    padding: 8px 12px;
+                    text-align: left;
+                    cursor: pointer;
+                    user-select: none;
+                    white-space: nowrap;
+                    position: sticky;
+                    top: 0;
+                    z-index: 2;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 0.3px;
+                    border-right: 1px solid rgba(255,255,255,0.15);
+                }
+                .interactive-table th:hover {
+                    background: var(--blm-green-light);
+                }
+                .interactive-table td {
+                    padding: 6px 12px;
+                    border-bottom: 1px solid var(--border);
+                    white-space: nowrap;
+                    max-width: 320px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    font-size: 12px;
+                }
+                .interactive-table tr:nth-child(even) {
+                    background: var(--blm-tan);
+                }
+                .interactive-table tr:hover {
+                    background: rgba(26,71,42,0.06);
+                }
+                .sort-arrow {
+                    font-size: 10px;
+                    opacity: 0.6;
+                    margin-left: 3px;
+                }
+                /* Findings Summary */
+                .findings-summary {
+                    margin: 24px 0;
+                    padding: 20px 24px;
+                    background: var(--white);
+                    border: 1px solid var(--border);
+                    border-left: 4px solid var(--blm-green);
+                    border-radius: 0 8px 8px 0;
+                    line-height: 1.65;
+                    font-size: 14px;
+                }
+                .findings-summary h3 {
+                    margin-top: 0;
+                    margin-bottom: 12px;
+                    color: var(--blm-green);
+                    font-size: 17px;
+                }
+                .findings-summary p {
+                    margin: 10px 0;
+                }
+                .findings-summary em {
+                    font-size: 12px;
+                    color: var(--muted);
+                }
+                @media print {
+                    .interactive-table-wrapper .table-toolbar { display: none !important; }
+                    .table-scroll { max-height: none; overflow: visible; }
+                    .interactive-table { font-size: 9px; }
+                    .interactive-table th {
+                        background: var(--blm-green) !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                }
             </style>
             </head>
             <body>
@@ -1077,6 +1342,8 @@ define([
                 ${totalsHtml || ""}
                 </div>
 
+                ${findingsSummaryHtml ? '<div class="findings-summary"><h3>Analysis Findings Summary</h3>' + findingsSummaryHtml + '</div>' : ''}
+
                 ${aoiSectionHtml || ""}
 
                 <h2>Layer Analysis Maps</h2>
@@ -1090,6 +1357,74 @@ define([
                     <div style="margin-top:8px;">This report was generated using geospatial data from BLM and partner agency web services.</div>
                 </div>
             </div>
+            <script>
+            // Interactive table: column sorting
+            function sortInteractiveTable(th) {
+                var table = th.closest('table');
+                if (!table) return;
+                var colIdx = parseInt(th.getAttribute('data-col'));
+                var tbody = table.querySelector('tbody');
+                if (!tbody) return;
+                var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+                var currentSort = th.getAttribute('data-sort-dir') || 'none';
+                var newSort = currentSort === 'asc' ? 'desc' : 'asc';
+                // Reset all headers in this table
+                var allTh = table.querySelectorAll('th');
+                for (var hi = 0; hi < allTh.length; hi++) {
+                    allTh[hi].setAttribute('data-sort-dir', 'none');
+                    var arrow = allTh[hi].querySelector('.sort-arrow');
+                    if (arrow) { arrow.textContent = '\u21C5'; }
+                }
+                th.setAttribute('data-sort-dir', newSort);
+                var sortArrow = th.querySelector('.sort-arrow');
+                if (sortArrow) sortArrow.textContent = newSort === 'asc' ? '\u25B2' : '\u25BC';
+                rows.sort(function(a, b) {
+                    var aCell = a.querySelector('td[data-col="' + colIdx + '"]');
+                    var bCell = b.querySelector('td[data-col="' + colIdx + '"]');
+                    var aVal = aCell ? (aCell.getAttribute('data-sort-val') || aCell.textContent.trim()) : '';
+                    var bVal = bCell ? (bCell.getAttribute('data-sort-val') || bCell.textContent.trim()) : '';
+                    var aNum = parseFloat(aVal);
+                    var bNum = parseFloat(bVal);
+                    var cmp;
+                    if (!isNaN(aNum) && !isNaN(bNum)) {
+                        cmp = aNum - bNum;
+                    } else {
+                        cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
+                    }
+                    return newSort === 'asc' ? cmp : -cmp;
+                });
+                for (var ri = 0; ri < rows.length; ri++) {
+                    tbody.appendChild(rows[ri]);
+                }
+            }
+            // Interactive table: column visibility toggle menu
+            function toggleColMenu(btn) {
+                var menu = btn.nextElementSibling;
+                if (!menu) return;
+                var isOpen = menu.style.display !== 'none';
+                // Close all menus first
+                var allMenus = document.querySelectorAll('.col-menu');
+                for (var mi = 0; mi < allMenus.length; mi++) allMenus[mi].style.display = 'none';
+                if (!isOpen) menu.style.display = 'block';
+            }
+            // Interactive table: toggle column visibility
+            function toggleTableCol(wrapperId, colIdx, visible) {
+                var wrapper = document.getElementById(wrapperId);
+                if (!wrapper) return;
+                var elements = wrapper.querySelectorAll('[data-col="' + colIdx + '"]');
+                var display = visible ? '' : 'none';
+                for (var ei = 0; ei < elements.length; ei++) {
+                    elements[ei].style.display = display;
+                }
+            }
+            // Close column menus when clicking outside
+            document.addEventListener('click', function(e) {
+                if (e.target.classList && !e.target.classList.contains('col-toggle-btn')) {
+                    var allMenus = document.querySelectorAll('.col-menu');
+                    for (var mi = 0; mi < allMenus.length; mi++) allMenus[mi].style.display = 'none';
+                }
+            });
+            </script>
             </body>
             </html>`;
     }
@@ -1478,8 +1813,6 @@ define([
                     ensureAoiOnTop();
                 }
 
-                const consistentExtent = selectionGeom.extent;
-
                 try {
                     view.map.basemap = imageryBasemapId;
                     await new Promise(r => setTimeout(r, 2000));
@@ -1508,8 +1841,8 @@ define([
                         try {
                             setVisibilityForScreenshot(temp);
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
-                            await view.goTo(consistentExtent, { animate: false });
-                            await view.goTo({ center: view.center, scale: view.scale * 0.5 }, { animate: false });
+                            if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                            else await view.goTo(selectionGeom.extent.expand(1.35), { animate: false });
                             await waitForViewStationary(2500);
 
                             const dataUrl = await captureScreenshotWithWait({ width });
@@ -1575,8 +1908,8 @@ define([
                     try {
                         setVisibilityForScreenshot(temp);
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 8000 });
-                        await view.goTo(consistentExtent, { animate: false });
-                        await view.goTo({ center: view.center, scale: view.scale * 0.5 }, { animate: false });
+                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                        else await view.goTo(selectionGeom.extent.expand(1.35), { animate: false });
                         await waitForViewStationary(2000);
 
                         const dataUrl = await captureScreenshotWithWait({ width });
@@ -1587,8 +1920,8 @@ define([
                         const pctCovered   = cov ? cov.pctAoiCovered : 0;
 
                         const layerAttrSummary = generateLayerAttributeSummary(item);
-                        const perFeatureTableHtml = (item.count > 1)
-                            ? await buildPerFeatureTable(item, selectionGeom)
+                        const perFeatureTableHtml = (item.count > 0)
+                            ? await buildPerFeatureTable(item, selectionGeom, i)
                             : "";
 
                         const isSingleFeatureLowCoverage = (item.count === 1 && pctCovered < 3);
@@ -1633,6 +1966,9 @@ define([
 
             // STEP 4: Data Sources Appendix
             const dataSourcesHtml = buildDataSourcesSection();
+
+            // STEP 4b: Generate findings summary paragraph
+            const findingsSummaryHtml = generateFindingsSummary(lastReportRowsByLayer, aoiAcres);
 
             // STEP 5: Build Final HTML Document
             const totalLayers    = lastReportRowsByLayer.length;
@@ -1734,6 +2070,7 @@ define([
                 title: "Land & Resource Intersection Analysis Report",
                 createdAt: formatDateTimeForReport(new Date()),
                 totalsHtml,
+                findingsSummaryHtml,
                 aoiSectionHtml,
                 sectionsHtml,
                 dataSourcesHtml
@@ -1774,6 +2111,7 @@ define([
             // Pure helpers
             formatLegalDescription,
             generateLayerAttributeSummary,
+            generateFindingsSummary,
             openHtmlInNewTab,
             formatDateTimeForReport,
             buildFinalReportHtmlDoc,
