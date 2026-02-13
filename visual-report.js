@@ -322,31 +322,20 @@ define([
                     continue;
                 }
 
-                // Create a temporary layer for this URL, regardless of toggle state
-                // Get geometry type for appropriate renderer \u2014 fully opaque for visual report
+                // Create a temporary layer for this URL
                 var tempGeomType = await getLayerGeometryType(item.url);
-                var vrItemCfg = layerCfgByUrl.get(item.url);
-                vrItemCfg = (vrItemCfg && vrItemCfg.cfg) ? vrItemCfg.cfg : null;
-                var vrUseNative = vrItemCfg && vrItemCfg.useServiceRenderer === true;
-                var opaqueVRRenderer = vrUseNative
-                    ? undefined
-                    : makeRendererOpaque(getPresetRenderer("report", vrItemCfg, tempGeomType));
                 var tempOpts = {
                     url: item.url,
                     title: item.title,
                     outFields: ["*"],
-                    visible: true
+                    visible: true,
+                    opacity: 0.8
                 };
-                if (!vrUseNative) {
-                    tempOpts.renderer = opaqueVRRenderer || undefined;
-                }
                 var temp2 = new FeatureLayer(tempOpts);
 
-                // Only force scale override for non-native-renderer layers
-                if (!vrUseNative) {
-                    temp2.minScale = 0;
-                    temp2.maxScale = 0;
-                }
+                // Always override scale to ensure layer draws at any zoom
+                temp2.minScale = 0;
+                temp2.maxScale = 0;
 
                 // Add temp, hide everything else, screenshot, then remove temp
                 view.map.add(temp2);
@@ -397,8 +386,9 @@ define([
                     var acresCovered = cov ? cov.acresCovered : 0;
                     var pctCovered = cov ? cov.pctAoiCovered : 0;
 
-                    // Check for low coverage warning (single feature with <3% coverage)
-                    var isSingleFeatureLowCoverage = (item.count === 1 && pctCovered < 3);
+                    // Check for low coverage warning — only for polygon layers
+                    var isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().indexOf('polygon') !== -1;
+                    var isSingleFeatureLowCoverage = isPolygonLayer && (item.count === 1 && pctCovered < 3);
                     var lowCoverageWarningHtml = isSingleFeatureLowCoverage
                         ? '<div style="margin-top:8px; padding:6px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px; font-size:11px;">' +
                             '<span style="color:#856404;">\u26a0\ufe0f Low coverage (&lt;3%) \u2014 possible sliver or boundary artifact</span>' +

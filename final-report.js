@@ -1082,8 +1082,31 @@ define([
                     background: var(--white); 
                     margin: 16px 0;
                     box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+                    position: relative;
                 }
-                .map img{ display:block; width:100%; height:auto; }
+                .map img{ display:block; width:100%; height:auto; cursor: grab; transition: transform 0.2s ease; transform-origin: center center; }
+                .map img.zoomed{ cursor: grab; }
+                .map img.panning{ cursor: grabbing; }
+                .map-zoom-controls {
+                    position: absolute;
+                    top: 10px; right: 10px;
+                    display: flex; flex-direction: column; gap: 4px;
+                    z-index: 10;
+                }
+                .map-zoom-controls button {
+                    width: 32px; height: 32px;
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    background: rgba(255,255,255,0.92);
+                    font-size: 18px; font-weight: 700;
+                    cursor: pointer;
+                    color: var(--blm-green);
+                    display: flex; align-items: center; justify-content: center;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+                    transition: background 0.15s;
+                    line-height: 1;
+                }
+                .map-zoom-controls button:hover { background: #e8f5e9; }
                 table.metaTbl{ 
                     width:100%; 
                     border-collapse: collapse; 
@@ -1191,6 +1214,8 @@ define([
                 @media print{
                     html, body{ background: white; }
                     .actions, .hint{ display:none !important; }
+                    .map-zoom-controls { display:none !important; }
+                    .map img { transform: none !important; }
                     .wrap{ 
                         max-width: none; 
                         padding: 0; 
@@ -1479,6 +1504,59 @@ define([
                     if (!bar.querySelector('.hidden-col-pill')) bar.style.display = 'none';
                 }
             }
+
+            // ── Map zoom / pan controls ──
+            (function() {
+                document.querySelectorAll('.map').forEach(function(container) {
+                    var img = container.querySelector('img');
+                    if (!img) return;
+                    var scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
+                    function applyTransform() {
+                        img.style.transform = 'scale(' + scale + ') translate(' + panX + 'px,' + panY + 'px)';
+                    }
+                    var zoomControls = container.querySelector('.map-zoom-controls');
+                    if (!zoomControls) return;
+                    var btnPlus = zoomControls.querySelector('.zoom-in');
+                    var btnMinus = zoomControls.querySelector('.zoom-out');
+                    var btnReset = zoomControls.querySelector('.zoom-reset');
+                    if (btnPlus) btnPlus.addEventListener('click', function() {
+                        scale = Math.min(scale * 1.3, 8);
+                        applyTransform();
+                    });
+                    if (btnMinus) btnMinus.addEventListener('click', function() {
+                        scale = Math.max(scale / 1.3, 1);
+                        if (scale === 1) { panX = 0; panY = 0; }
+                        applyTransform();
+                    });
+                    if (btnReset) btnReset.addEventListener('click', function() {
+                        scale = 1; panX = 0; panY = 0;
+                        applyTransform();
+                    });
+                    // Mouse-wheel zoom
+                    container.addEventListener('wheel', function(e) {
+                        e.preventDefault();
+                        var delta = e.deltaY < 0 ? 1.15 : 1/1.15;
+                        scale = Math.max(1, Math.min(scale * delta, 8));
+                        if (scale === 1) { panX = 0; panY = 0; }
+                        applyTransform();
+                    }, { passive: false });
+                    // Pan via drag
+                    img.addEventListener('mousedown', function(e) {
+                        if (scale <= 1) return;
+                        dragging = true; startX = e.clientX - panX; startY = e.clientY - panY;
+                        img.classList.add('panning');
+                        e.preventDefault();
+                    });
+                    document.addEventListener('mousemove', function(e) {
+                        if (!dragging) return;
+                        panX = e.clientX - startX; panY = e.clientY - startY;
+                        applyTransform();
+                    });
+                    document.addEventListener('mouseup', function() {
+                        if (dragging) { dragging = false; img.classList.remove('panning'); }
+                    });
+                });
+            })();
             </script>
             </body>
             </html>`;
@@ -1920,7 +1998,12 @@ define([
                             sectionsHtml += `
                               <div class="section layer-section page-break">
                                 <h3>${escapeHtml(item.title)}</h3>
-                                <div class="layer-map-container">
+                                <div class="map">
+                                  <div class="map-zoom-controls">
+                                      <button class="zoom-in" title="Zoom in">+</button>
+                                      <button class="zoom-out" title="Zoom out">&minus;</button>
+                                      <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
+                                  </div>
                                   <img src="${dataUrl}" alt="${escapeHtml(item.title)}" style="width:100%; border-radius:8px;" />
                                 </div>
                                 <table class="info-table" style="margin-top:16px;">
@@ -1940,24 +2023,18 @@ define([
 
                     // FeatureServer layers
                     const tempGeomType = await getLayerGeometryType(item.url);
-                    const itemCfg = layerCfgByUrl.get(item.url)?.cfg || null;
-                    const useNativeRenderer = itemCfg?.useServiceRenderer === true;
-                    const opaqueRenderer = useNativeRenderer
-                        ? undefined
-                        : makeRendererOpaque(getPresetRenderer("report", itemCfg, tempGeomType));
                     const tempOpts = {
                         url: item.url,
                         title: item.title,
                         outFields: ["*"],
-                        visible: true
+                        visible: true,
+                        opacity: 0.8
                     };
-                    if (!useNativeRenderer) tempOpts.renderer = opaqueRenderer || undefined;
                     const temp = new FeatureLayer(tempOpts);
 
-                    if (!useNativeRenderer) {
-                        temp.minScale = 0;
-                        temp.maxScale = 0;
-                    }
+                    // Always override scale to ensure layer draws at any zoom
+                    temp.minScale = 0;
+                    temp.maxScale = 0;
 
                     view.map.add(temp);
                     try {
@@ -1979,9 +2056,11 @@ define([
                             ? await buildPerFeatureTable(item, selectionGeom, i)
                             : "";
 
-                        const isSingleFeatureLowCoverage = (item.count === 1 && pctCovered < 3);
+                        // Only flag low-coverage for polygon layers (not points or lines)
+                        const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                        const isSingleFeatureLowCoverage = isPolygonLayer && (item.count === 1 && pctCovered < 3);
                         const lowCoverageWarningHtml = isSingleFeatureLowCoverage
-                            ? `<div style="margin-top:12px; padding:10px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px;">
+                            ? `<div style="margin-top:12px; padding:12px 16px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:6px; font-size:14px; line-height:1.5;">
                                 <span style="color:#856404;">\u26A0\uFE0F <b>Low Coverage Warning:</b> This feature covers less than 3% of the AOI. This may indicate a polygon sliver or boundary artifact rather than meaningful overlap.</span>
                                </div>`
                             : "";
@@ -1990,6 +2069,11 @@ define([
                         <div class="section">
                             <h3>${escapeHtml(item.title)}</h3>
                             <div class="map">
+                                <div class="map-zoom-controls">
+                                    <button class="zoom-in" title="Zoom in">+</button>
+                                    <button class="zoom-out" title="Zoom out">&minus;</button>
+                                    <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
+                                </div>
                                 <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
                             </div>
                             <table class="metaTbl">

@@ -503,6 +503,18 @@ define([
         ).join("");
         const headerHtml = `<tr>${thCells}</tr>`;
 
+        // Determine if this is a polygon layer — skip sliver warnings for points/lines
+        let isPolygonLayer = false;
+        try {
+            const layerGeomType = item._layer.geometryType || '';
+            isPolygonLayer = layerGeomType.toLowerCase().includes('polygon');
+        } catch (e) {
+            // Fallback: check the first feature
+            if (feats[0] && feats[0].geometry && feats[0].geometry.type) {
+                isPolygonLayer = feats[0].geometry.type.toLowerCase().includes('polygon');
+            }
+        }
+
         let hasSliverWarning = false;
         const bodyHtml = tableRows.map(row => {
             const tdCells = attrKeys.map((k, ci) => {
@@ -510,7 +522,7 @@ define([
                 const display = raw.length > 100 ? raw.slice(0, 99) + "\u2026" : raw;
                 return `<td data-col="${ci}" data-sort-val="${escapeHtml(raw)}" title="${escapeHtml(raw)}">${escapeHtml(display)}</td>`;
             });
-            const isSliverWarning = row.pctAoi < 3;
+            const isSliverWarning = isPolygonLayer && row.pctAoi < 3;
             if (isSliverWarning) hasSliverWarning = true;
             const acresIdx = attrKeys.length;
             const pctIdx = attrKeys.length + 1;
@@ -522,7 +534,7 @@ define([
         }).join("");
 
         const sliverNote = hasSliverWarning
-            ? `<div style="margin-top:8px; font-size:10px; color:#856404; background:#fff3cd; padding:6px 8px; border-radius:4px;">
+            ? `<div style="margin-top:10px; font-size:13px; color:#856404; background:#fff3cd; padding:10px 14px; border-radius:6px; line-height:1.5;">
                 <b>\u26A0\uFE0F Note:</b> Highlighted rows cover less than 3% of the AOI and may represent slivers, boundary artifacts, or minor overlaps rather than meaningful intersections.
             </div>`
             : '';

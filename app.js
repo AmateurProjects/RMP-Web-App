@@ -2270,10 +2270,18 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         plssParcelLayerUrl = (intersectedIdx >= 0) ? (selectionLayers[intersectedIdx]?.cfg?.url || null) : null;
 
-        // ---------- Permit layer indexes (Grazing Allotment / Pasture / Oil & Gas) ----------
+        // ---------- Permit layer indexes ----------
         const allotmentIdx = findSelectionLayerIndexByNameIncludes("grazing allotment");
         const pastureIdx = findSelectionLayerIndexByNameIncludes("grazing pasture");
         const oilGasIdx = findSelectionLayerIndexByNameIncludes("oil and gas");
+        const rowIdx = findSelectionLayerIndexByNameIncludes("rights-of-way");
+        const miningIdx = findSelectionLayerIndexByNameIncludes("mining claims");
+        const luaIdx = findSelectionLayerIndexByNameIncludes("lua leases");
+        const geothermalIdx = findSelectionLayerIndexByNameIncludes("geothermal");
+        const coalIdx = findSelectionLayerIndexByNameIncludes("coal");
+
+        // All permit layer indices (used for mutual exclusion)
+        const allPermitIndices = [allotmentIdx, pastureIdx, oilGasIdx, rowIdx, miningIdx, luaIdx, geothermalIdx, coalIdx].filter(i => i >= 0);
 
 
         // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
@@ -2285,8 +2293,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             }
 
             // Disable all permit layers first
-            const permitTrio = [allotmentIdx, pastureIdx, oilGasIdx].filter(i => i >= 0);
-            for (const idx of permitTrio) disableSelectionLayer(idx);
+            for (const idx of allPermitIndices) disableSelectionLayer(idx);
 
             // Enable chosen layer even if user unchecked it earlier
             const trio = [townshipIdx, sectionIdx, intersectedIdx].filter(i => i >= 0);
@@ -2339,8 +2346,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             for (const idx of plssTrio) disableSelectionLayer(idx);
 
             // Disable other permit layers
-            const permitTrio = [allotmentIdx, pastureIdx, oilGasIdx].filter(i => i >= 0);
-            for (const idx of permitTrio) {
+            for (const idx of allPermitIndices) {
                 if (idx !== idxToEnable) disableSelectionLayer(idx);
             }
 
@@ -2362,7 +2368,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const labels = {
                     allotment: "Grazing Allotments",
                     pasture: "Grazing Pastures",
-                    oilgas: "Oil & Gas Leases"
+                    oilgas: "Oil & Gas Leases",
+                    row: "Rights-of-Way",
+                    mining: "Mining Claims (Active)",
+                    lua: "Leases, Permits & Easements",
+                    geothermal: "Geothermal Leases",
+                    coal: "Coal Leases / Cases"
                 };
                 setStatus(`Permit select: ${labels[which] || which} (click a polygon)`);
             } else {
@@ -2500,6 +2511,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 if (val === "allotment") activatePermitLayer("allotment", allotmentIdx);
                 else if (val === "pasture") activatePermitLayer("pasture", pastureIdx);
                 else if (val === "oilgas") activatePermitLayer("oilgas", oilGasIdx);
+                else if (val === "row") activatePermitLayer("row", rowIdx);
+                else if (val === "mining") activatePermitLayer("mining", miningIdx);
+                else if (val === "lua") activatePermitLayer("lua", luaIdx);
+                else if (val === "geothermal") activatePermitLayer("geothermal", geothermalIdx);
+                else if (val === "coal") activatePermitLayer("coal", coalIdx);
             });
         }
 
