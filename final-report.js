@@ -1246,11 +1246,86 @@ define([
                     color: var(--blm-green);
                     margin-bottom: 4px;
                 }
+                /* Section hide/show toggle */
+                .section-hide-btn {
+                    float: right;
+                    background: transparent;
+                    border: 1px solid var(--border);
+                    border-radius: 5px;
+                    padding: 4px 12px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--muted);
+                    cursor: pointer;
+                    transition: background 0.15s, color 0.15s;
+                    margin-top: -2px;
+                }
+                .section-hide-btn:hover {
+                    background: #fce4ec;
+                    color: #c62828;
+                    border-color: #ef9a9a;
+                }
+                .section.section-hidden > *:not(h3) {
+                    display: none !important;
+                }
+                .section.section-hidden {
+                    opacity: 0.5;
+                    min-height: 0;
+                    padding: 16px 24px;
+                    background: #f9f9f7;
+                }
+                .section.section-hidden h3 {
+                    margin: 0;
+                    padding-bottom: 0;
+                    border-bottom: none;
+                    font-size: 14px;
+                    color: var(--muted);
+                    text-decoration: line-through;
+                }
+                .section.section-hidden .section-hide-btn {
+                    display: inline-block !important;
+                    background: #e8f5e9;
+                    color: #2e7d32;
+                    border-color: #a5d6a7;
+                }
+                .section.section-hidden .section-hide-btn:hover {
+                    background: #c8e6c9;
+                }
+                .section-hidden + .pagebreak { display: none; }
+                .layer-maps-toolbar {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 8px;
+                }
+                .layer-maps-toolbar .toolbar-btn {
+                    background: transparent;
+                    border: 1px solid var(--border);
+                    border-radius: 5px;
+                    padding: 5px 14px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: var(--blm-green);
+                    cursor: pointer;
+                    transition: background 0.15s;
+                }
+                .layer-maps-toolbar .toolbar-btn:hover {
+                    background: #e8f5e9;
+                }
+                .layer-maps-toolbar .hidden-count {
+                    font-size: 12px;
+                    color: var(--muted);
+                    font-style: italic;
+                }
                 @media print{
                     html, body{ background: white; }
                     .actions, .hint{ display:none !important; }
                     .map-zoom-controls { display:none !important; }
                     .map img { transform: none !important; }
+                    .section-hide-btn { display:none !important; }
+                    .layer-maps-toolbar { display:none !important; }
+                    .section.section-hidden { display:none !important; }
+                    .section-hidden + .pagebreak { display:none !important; }
                     .wrap{ 
                         max-width: none; 
                         padding: 0; 
@@ -1447,7 +1522,14 @@ define([
                 ${aoiSectionHtml || ""}
 
                 <h2>Layer Analysis Maps</h2>
+                <div class="layer-maps-toolbar">
+                    <button class="toolbar-btn" onclick="toggleAllSections(false)">Hide All</button>
+                    <button class="toolbar-btn" onclick="toggleAllSections(true)">Show All</button>
+                    <span class="hidden-count" id="hiddenLayerCount"></span>
+                </div>
+                <div id="layerSectionsContainer">
                 ${sectionsHtml || ""}
+                </div>
 
                 ${dataSourcesHtml || ""}
                 
@@ -1459,6 +1541,36 @@ define([
                 </div>
             </div>
             <script>
+            // Toggle individual layer section visibility
+            function toggleSection(btn) {
+                var section = btn.closest('.section');
+                if (!section) return;
+                var isHidden = section.classList.toggle('section-hidden');
+                btn.innerHTML = isHidden ? '&#x2713; Show' : '&#x2715; Hide';
+                updateHiddenCount();
+            }
+            function toggleAllSections(show) {
+                var sections = document.querySelectorAll('#layerSectionsContainer > .section');
+                for (var i = 0; i < sections.length; i++) {
+                    var btn = sections[i].querySelector('.section-hide-btn');
+                    if (show) {
+                        sections[i].classList.remove('section-hidden');
+                        if (btn) btn.innerHTML = '&#x2715; Hide';
+                    } else {
+                        sections[i].classList.add('section-hidden');
+                        if (btn) btn.innerHTML = '&#x2713; Show';
+                    }
+                }
+                updateHiddenCount();
+            }
+            function updateHiddenCount() {
+                var el = document.getElementById('hiddenLayerCount');
+                if (!el) return;
+                var total = document.querySelectorAll('#layerSectionsContainer > .section').length;
+                var hidden = document.querySelectorAll('#layerSectionsContainer > .section.section-hidden').length;
+                el.textContent = hidden > 0 ? (hidden + ' of ' + total + ' layers hidden') : '';
+            }
+
             // Interactive table: column sorting
             function sortInteractiveTable(th) {
                 var table = th.closest('table');
@@ -1726,11 +1838,25 @@ define([
         const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
 
         let plssTownshipLayer = null;
+        let plssTownshipOrigRenderer = null;
         for (const l of allLayers) {
             if (l.title && l.title.toLowerCase().includes("township")) {
                 plssTownshipLayer = l;
                 break;
             }
+        }
+
+        // Override township renderer to outline-only (no fill) for cleaner maps
+        if (plssTownshipLayer) {
+            plssTownshipOrigRenderer = plssTownshipLayer.renderer;
+            plssTownshipLayer.renderer = {
+                type: "simple",
+                symbol: {
+                    type: "simple-fill",
+                    color: [0, 0, 0, 0],
+                    outline: { color: [120, 120, 120, 0.6], width: 0.75 }
+                }
+            };
         }
 
         function setVisibilityForAoi() {
@@ -1746,6 +1872,10 @@ define([
         }
 
         function restoreVisibility() {
+            // Restore township renderer
+            if (plssTownshipLayer && plssTownshipOrigRenderer !== null) {
+                try { plssTownshipLayer.renderer = plssTownshipOrigRenderer; } catch (e) { }
+            }
             visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
             hideAoiMask();
             ensureAoiOnTop();
@@ -2089,7 +2219,7 @@ define([
 
                             sectionsHtml += `
                               <div class="section layer-section page-break">
-                                <h3>${escapeHtml(item.title)}</h3>
+                                <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
                                 <div class="map">
                                   <div class="map-zoom-controls">
                                       <button class="zoom-in" title="Zoom in">+</button>
@@ -2176,7 +2306,7 @@ define([
 
                         sectionsHtml += `
                         <div class="section">
-                            <h3>${escapeHtml(item.title)}</h3>
+                            <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
                             <div class="map">
                                 <div class="map-zoom-controls">
                                     <button class="zoom-in" title="Zoom in">+</button>

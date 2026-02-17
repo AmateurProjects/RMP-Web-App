@@ -6,8 +6,9 @@
 define([
     "app/config-helpers",
     "esri/layers/FeatureLayer",
-    "esri/geometry/geometryEngine"
-], function (configHelpers, FeatureLayer, geometryEngine) {
+    "esri/geometry/geometryEngine",
+    "esri/geometry/Extent"
+], function (configHelpers, FeatureLayer, geometryEngine, Extent) {
     "use strict";
 
     const { escapeHtml, formatNumber } = configHelpers;
@@ -227,6 +228,142 @@ define([
         }
 
         return { title: layerTitle, url: layerUrl, count, features, layer, exportQuery: q };
+    }
+
+    // ── Chunked query for large AOIs ─────────────────────────────
+
+    /**
+     * Subdivide a large AOI into a grid of cells, query each cell
+     * separately, then merge & deduplicate results by ObjectID.
+     * Falls back to a single unchunked query if the AOI is below threshold.
+     *
+     * Returns the same shape as querySingleLayer:
+     *   { title, url, count, features, layer, exportQuery }
+     */
+    async function querySingleLayerChunked(layerUrl, layerTitle, aoiGeom,
+                                            spatialRel = "intersects", options = {}) {
+        const gridSize = S.config.report?.aoiChunkGridSize ?? 4;
+        const ext = aoiGeom.extent;
+        const cellW = (ext.xmax - ext.xmin) / gridSize;
+        const cellH = (ext.ymax - ext.ymin) / gridSize;
+        const sr = ext.spatialReference;
+
+        // Build grid cells clipped to the AOI
+        const cells = [];
+        for (let row = 0; row < gridSize; row++) {
+            for (let col = 0; col < gridSize; col++) {
+                const cellExtent = new Extent({
+                    xmin: ext.xmin + col * cellW,
+                    ymin: ext.ymin + row * cellH,
+                    xmax: ext.xmin + (col + 1) * cellW,
+                    ymax: ext.ymin + (row + 1) * cellH,
+                    spatialReference: sr
+                });
+                // Clip cell to the actual AOI polygon
+                const clipped = geometryEngine.intersect(aoiGeom, cellExtent);
+                if (clipped) cells.push(clipped);
+            }
+        }
+
+        if (!cells.length) {
+            // Fallback: use original geometry
+            return querySingleLayer(layerUrl, layerTitle, aoiGeom, spatialRel, options);
+        }
+
+        const applyTouchFilter = !!options.applyTouchFilter;
+        const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
+
+        // Query counts for each cell in parallel (batched 6 at a time)
+        const CELL_BATCH = 6;
+        const oidSet = new Set();
+        let allSampleFeatures = [];
+        const maxSamples = S.config.report?.maxSampleFeaturesPerLayer ?? 25;
+
+        for (let ci = 0; ci < cells.length; ci += CELL_BATCH) {
+            const cellBatch = cells.slice(ci, ci + CELL_BATCH);
+            const batchResults = await Promise.allSettled(cellBatch.map(async (cellGeom) => {
+                const q = layer.createQuery();
+                q.outFields = ["*"];
+                q.geometry = cellGeom;
+                q.spatialRelationship = spatialRel;
+                q.returnGeometry = applyTouchFilter;
+
+                // Get object IDs to deduplicate across cells
+                let oids = [];
+                try {
+                    const oidResult = await layer.queryObjectIds(q);
+                    oids = oidResult || [];
+                } catch (e) {
+                    // If queryObjectIds fails, fall back to count
+                    const ct = await layer.queryFeatureCount(q);
+                    return { count: ct, oids: [], features: [] };
+                }
+
+                // Fetch sample features if we still need more
+                let feats = [];
+                if (oids.length > 0 && allSampleFeatures.length < maxSamples) {
+                    const q2 = q.clone();
+                    q2.num = Math.min(maxSamples, 2000);
+                    try {
+                        const fs = await layer.queryFeatures(q2);
+                        feats = fs?.features ?? [];
+                    } catch (e) {
+                        // Sample fetch failed, that's okay
+                    }
+                }
+
+                return { count: 0, oids, features: feats };
+            }));
+
+            for (const r of batchResults) {
+                if (r.status !== "fulfilled") continue;
+                const { oids, features, count } = r.value;
+
+                if (oids.length > 0) {
+                    for (const oid of oids) oidSet.add(oid);
+                }
+
+                if (features.length > 0 && allSampleFeatures.length < maxSamples) {
+                    // Deduplicate sample features by OID
+                    for (const f of features) {
+                        if (allSampleFeatures.length >= maxSamples) break;
+                        const fOid = f.attributes?.[layer.objectIdField || "OBJECTID"];
+                        if (fOid != null && oidSet.has(fOid)) {
+                            // Check if we already have this feature in our sample
+                            const alreadyHave = allSampleFeatures.some(sf =>
+                                sf.attributes?.[layer.objectIdField || "OBJECTID"] === fOid
+                            );
+                            if (!alreadyHave) allSampleFeatures.push(f);
+                        } else {
+                            allSampleFeatures.push(f);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply touch filter if needed
+        if (applyTouchFilter && allSampleFeatures.length > 0) {
+            allSampleFeatures = filterTouchingOnly(allSampleFeatures, aoiGeom);
+        }
+
+        const dedupedCount = oidSet.size;
+
+        // Build a combined export query using the full AOI geometry
+        const exportQ = layer.createQuery();
+        exportQ.outFields = ["*"];
+        exportQ.geometry = aoiGeom;
+        exportQ.spatialRelationship = spatialRel;
+        exportQ.returnGeometry = false;
+
+        return {
+            title: layerTitle,
+            url: layerUrl,
+            count: dedupedCount,
+            features: allSampleFeatures.slice(0, maxSamples),
+            layer,
+            exportQuery: exportQ
+        };
     }
 
     // ── Elevation stats ─────────────────────────────────────────
@@ -617,6 +754,9 @@ define([
 
             // Single-layer query
             querySingleLayer,
+
+            // Chunked query for large AOIs
+            querySingleLayerChunked,
 
             // Elevation
             computeElevationStats,

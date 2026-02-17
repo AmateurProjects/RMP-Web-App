@@ -454,6 +454,9 @@
     "maxSampleFeaturesPerLayer": 25,
     "maxFieldsInTable": 8,
     "pageSize": 1000,
-    "maxExportFeatures": 50000
+    "maxExportFeatures": 50000,
+    "aoiWarningAcres": 250000,
+    "aoiChunkThresholdAcres": 250000,
+    "aoiChunkGridSize": 4
   }
 }

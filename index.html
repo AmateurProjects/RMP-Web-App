@@ -65,6 +65,24 @@
   </div>
   
   <div id="viewBlocker" class="view-blocker hidden" aria-hidden="true"></div>
+
+  <!-- Floating Layer Manager Window -->
+  <div id="layerManagerWindow" class="layer-mgr-window hidden">
+    <div class="layer-mgr-header" id="layerMgrHeader">
+      <span class="layer-mgr-title">Layer Manager</span>
+      <button id="layerMgrCloseBtn" class="layer-mgr-close" type="button" title="Close">&times;</button>
+    </div>
+    <div class="layer-mgr-body">
+      <div class="layer-mgr-section">
+        <div class="layer-mgr-section-head">Selection Layers</div>
+        <div id="layerMgrSelectionList" class="layer-mgr-list"></div>
+      </div>
+      <div class="layer-mgr-section">
+        <div class="layer-mgr-section-head">Report Layers</div>
+        <div id="layerMgrReportList" class="layer-mgr-list"></div>
+      </div>
+    </div>
+  </div>
   
 <!-- Analysis Progress Modal -->
 <div id="analysisModal" class="analysis-modal hidden">
@@ -157,6 +175,9 @@
           <button id="permitModeBtn" class="mode-btn active" type="button" title="Guided permitting workflow">Permitting</button>
           <!-- <button id="advancedModeBtn" class="mode-btn" type="button" title="Full GIS intersect tools">Advanced</button> -->
         </div>
+        <button id="advLayersBtn" class="panel-toggle-btn" type="button" title="Layer Manager" aria-label="Layer Manager">
+          <span style="font-size:15px;">☰</span>
+        </button>
         <button id="panelToggleBtn" class="panel-toggle-btn" type="button" title="Minimize panel" aria-label="Minimize panel">
           <span class="panel-toggle-icon">▼</span>
         </button>
@@ -405,6 +426,8 @@
               <span class="aoi-confirm-value" id="wizAoiSource">—</span>
             </div>
           </div>
+          <!-- Large AOI warning (populated dynamically) -->
+          <div id="aoiSizeWarning" class="aoi-size-warning hidden"></div>
           <!-- Tier Selection -->
           <div class="tier-selector" id="tierSelector">
             <div class="tier-selector-label">Analysis Depth</div>

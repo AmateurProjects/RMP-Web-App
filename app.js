@@ -66,6 +66,14 @@ require([
 
     const viewBlockerEl = document.getElementById("viewBlocker");
 
+    // Layer Manager floating window
+    const advLayersBtn = document.getElementById("advLayersBtn");
+    const layerManagerWindow = document.getElementById("layerManagerWindow");
+    const layerMgrCloseBtn = document.getElementById("layerMgrCloseBtn");
+    const layerMgrHeader = document.getElementById("layerMgrHeader");
+    const layerMgrSelectionList = document.getElementById("layerMgrSelectionList");
+    const layerMgrReportList = document.getElementById("layerMgrReportList");
+
     const statusEl = document.getElementById("status");
     const statusTextEl = document.getElementById("statusText");
     const busyIndicatorEl = document.getElementById("busyIndicator");
@@ -355,7 +363,7 @@ function setBusy(isBusy) {
     const {
         queryAllFeaturesPaged, queryAllFeaturesPagedWithGeometry,
         filterTouchingOnly, getReportGeometry, unionGeomsChunked,
-        querySingleLayer, computeElevationStats,
+        querySingleLayer, querySingleLayerChunked, computeElevationStats,
         computeLayerCoverageStats, buildPerFeatureTable,
         getAoiKey, resetCoverageCacheForAoi, SQM_PER_ACRE,
         sampleWithoutReplacement, makeTable
@@ -642,17 +650,51 @@ function setActiveTab(tabName) {
         set(wizParcelBtn, which === "intersected");
     }
 
+    // Track whether the current AOI exceeds the large-AOI threshold
+    let aoiIsLarge = false;
+    let aoiCurrentAcres = 0;
+
     function populateAoiConfirmation() {
+        aoiIsLarge = false;
+        aoiCurrentAcres = 0;
+        const warningEl = document.getElementById("aoiSizeWarning");
+
         if (selectionGeom) {
             try {
                 const areaSqm = geometryEngine.geodesicArea(selectionGeom, "square-meters");
                 const acres = Math.abs(areaSqm) / 4046.8564224;
+                aoiCurrentAcres = acres;
                 const el = document.getElementById("wizAoiAcres");
                 if (el) el.textContent = formatNumber(acres, 2) + " acres";
+
+                // Check against warning threshold
+                const warningThreshold = config.report?.aoiWarningAcres ?? 250000;
+                if (acres > warningThreshold) {
+                    aoiIsLarge = true;
+                    const sqMiles = (acres / 640).toFixed(0);
+                    const estMinutes = Math.max(2, Math.round(acres / 50000));
+                    if (warningEl) {
+                        warningEl.innerHTML = `
+                            <span class="warn-icon">\u26A0\uFE0F</span>
+                            <div class="warn-body">
+                                <strong>Large Area of Interest Detected</strong>
+                                Your AOI is approximately <b>${formatNumber(acres, 0)} acres</b> (~${sqMiles} sq mi).
+                                Analysis over such large areas may take <b>${estMinutes}+ minutes</b> and some service queries may time out.
+                                The analysis will automatically use spatial chunking to improve reliability.
+                                <div class="warn-detail">For faster results, consider selecting a smaller area or using Tier 1 (Essential) analysis depth.</div>
+                            </div>`;
+                        warningEl.classList.remove("hidden");
+                    }
+                } else {
+                    if (warningEl) warningEl.classList.add("hidden");
+                }
             } catch (e) {
                 const el = document.getElementById("wizAoiAcres");
                 if (el) el.textContent = "(unable to compute)";
+                if (warningEl) warningEl.classList.add("hidden");
             }
+        } else {
+            if (warningEl) warningEl.classList.add("hidden");
         }
         const sourceEl = document.getElementById("wizAoiSource");
         if (sourceEl) {
@@ -1186,6 +1228,198 @@ cb.addEventListener("change", async () => {
 });
 }
 
+    // ---------- Layer Manager (floating window) ----------
+
+    function renderLayerManagerToggles() {
+        if (!layerMgrSelectionList || !layerMgrReportList) return;
+
+        // Selection layers
+        layerMgrSelectionList.innerHTML = (selectionLayers || []).map((e, i) => {
+            const checked = e.layer.visible ? "checked" : "";
+            const status = serviceStatus.get(e.cfg.url);
+            const statusIcon = (status === "DOWN")
+                ? `<span class="status-warning" title="Service is DOWN">⚠️</span>`
+                : "";
+            return `
+                <div class="toggle-row">
+                    <input type="checkbox" id="lm_sellayer_${i}" ${checked} />
+                    <span class="layer-swatch layer-swatch-selection" aria-hidden="true"></span>
+                    <label class="toggle-name" for="lm_sellayer_${i}">${statusIcon}${escapeHtml(e.cfg.title)}</label>
+                    <span id="lm_sellayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
+                </div>`;
+        }).join("");
+
+        // Wire selection layer checkboxes
+        (selectionLayers || []).forEach((e, i) => {
+            const cb = document.getElementById(`lm_sellayer_${i}`);
+            if (!cb) return;
+            cb.addEventListener("change", async () => {
+                const spin = document.getElementById(`lm_sellayer_spin_${i}`);
+                if (cb.checked) {
+                    if (spin) spin.classList.remove("hidden");
+                    const isOnMapNow = map.layers.includes(e.layer);
+                    if (!isOnMapNow) map.add(e.layer);
+                    e.layer.visible = true;
+                    ensureAoiOnTop();
+                    await hardRefreshLayer(e.layer);
+                    clearSpinnerWatch(e.layer);
+                    wireLayerUpdatingSpinner(e.layer, spin).then(h => setSpinnerWatch(e.layer, h));
+                    if (!activeSelectionLayer) await setActiveSelectionLayerByIndex(i);
+                } else {
+                    if (spin) spin.classList.add("hidden");
+                    clearSpinnerWatch(e.layer);
+                    e.layer.visible = false;
+                    if (activeSelectionLayer === e.layer) {
+                        activeSelectionLayer = null;
+                        activeSelectionLayerView = null;
+                    }
+                }
+                // Sync the old panel checkbox if it exists
+                const oldCb = document.getElementById(`sellayer_${i}`);
+                if (oldCb) oldCb.checked = cb.checked;
+            });
+        });
+
+        // Report layers
+        layerMgrReportList.innerHTML = (config.reportLayers || []).map((l, i) => {
+            const key = normalizeUrlKey(l.url);
+            const existing = reportLayerViews.get(key);
+            const isAlwaysOn = l.alwaysVisible === true;
+            const isVisible = isAlwaysOn || (existing
+                ? (Array.isArray(existing) ? existing.some(x => x.visible) : existing.visible)
+                : false);
+            const checked = isVisible ? "checked" : "";
+            const status = serviceStatus.get(l.url);
+            const statusIcon = (status === "DOWN")
+                ? `<span class="status-warning" title="Service is DOWN">⚠️</span>`
+                : "";
+            const tierBadge = l.tier ? `<span style="font-size:10px;opacity:.55;margin-left:4px;">T${l.tier}</span>` : "";
+            return `
+                <div class="toggle-row">
+                    <input type="checkbox" id="lm_rptlayer_${i}" ${checked} />
+                    <span class="layer-swatch layer-swatch-report" aria-hidden="true"></span>
+                    <label class="toggle-name" for="lm_rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}${tierBadge}</label>
+                    <span id="lm_rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
+                </div>`;
+        }).join("");
+
+        // Wire report layer checkboxes
+        (config.reportLayers || []).forEach((l, i) => {
+            const cb = document.getElementById(`lm_rptlayer_${i}`);
+            if (!cb) return;
+            cb.addEventListener("change", async () => {
+                const spin = document.getElementById(`lm_rptlayer_spin_${i}`);
+                const key = normalizeUrlKey(l.url);
+                const existing = reportLayerViews.get(key);
+                const setVisible = (obj, vis) => {
+                    if (!obj) return;
+                    if (Array.isArray(obj)) obj.forEach(x => { try { x.visible = vis; } catch (e) {} });
+                    else { try { obj.visible = vis; } catch (e) {} }
+                };
+                if (cb.checked) {
+                    if (spin) spin.classList.remove("hidden");
+                    setVisible(existing, true);
+                    if (Array.isArray(existing)) {
+                        for (const lyr of existing) {
+                            clearSpinnerWatch(lyr);
+                            wireLayerUpdatingSpinner(lyr, spin).then(h => setSpinnerWatch(lyr, h));
+                        }
+                    } else if (existing) {
+                        clearSpinnerWatch(existing);
+                        wireLayerUpdatingSpinner(existing, spin).then(h => setSpinnerWatch(existing, h));
+                    }
+                } else {
+                    if (spin) spin.classList.add("hidden");
+                    if (Array.isArray(existing)) existing.forEach(lyr => clearSpinnerWatch(lyr));
+                    else if (existing) clearSpinnerWatch(existing);
+                    setVisible(existing, false);
+                }
+                ensureAoiOnTop();
+                // Sync the old panel checkbox if it exists
+                const oldCb = document.getElementById(`rptlayer_${i}`);
+                if (oldCb) oldCb.checked = cb.checked;
+            });
+        });
+    }
+
+    // Layer Manager drag logic
+    (function wireLayerMgrDrag() {
+        if (!layerMgrHeader || !layerManagerWindow) return;
+        let isDragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+
+        layerMgrHeader.addEventListener("mousedown", function (e) {
+            if (e.target.tagName === "BUTTON") return;
+            isDragging = true;
+            const rect = layerManagerWindow.getBoundingClientRect();
+            startX = e.clientX;
+            startY = e.clientY;
+            origLeft = rect.left;
+            origTop = rect.top;
+            layerManagerWindow.style.transition = "none";
+        });
+
+        document.addEventListener("mousemove", function (e) {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            layerManagerWindow.style.left = (origLeft + dx) + "px";
+            layerManagerWindow.style.top = (origTop + dy) + "px";
+            layerManagerWindow.style.right = "auto";
+        });
+
+        document.addEventListener("mouseup", function () {
+            isDragging = false;
+            layerManagerWindow.style.transition = "";
+        });
+
+        // Touch support
+        layerMgrHeader.addEventListener("touchstart", function (e) {
+            if (e.target.tagName === "BUTTON") return;
+            const touch = e.touches[0];
+            isDragging = true;
+            const rect = layerManagerWindow.getBoundingClientRect();
+            startX = touch.clientX;
+            startY = touch.clientY;
+            origLeft = rect.left;
+            origTop = rect.top;
+            layerManagerWindow.style.transition = "none";
+        }, { passive: true });
+
+        document.addEventListener("touchmove", function (e) {
+            if (!isDragging) return;
+            const touch = e.touches[0];
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            layerManagerWindow.style.left = (origLeft + dx) + "px";
+            layerManagerWindow.style.top = (origTop + dy) + "px";
+            layerManagerWindow.style.right = "auto";
+        }, { passive: true });
+
+        document.addEventListener("touchend", function () {
+            isDragging = false;
+            layerManagerWindow.style.transition = "";
+        });
+    })();
+
+    // Layer Manager open/close
+    if (advLayersBtn) {
+        advLayersBtn.addEventListener("click", () => {
+            if (!layerManagerWindow) return;
+            const isOpen = !layerManagerWindow.classList.contains("hidden");
+            if (isOpen) {
+                layerManagerWindow.classList.add("hidden");
+            } else {
+                renderLayerManagerToggles();
+                layerManagerWindow.classList.remove("hidden");
+            }
+        });
+    }
+    if (layerMgrCloseBtn) {
+        layerMgrCloseBtn.addEventListener("click", () => {
+            if (layerManagerWindow) layerManagerWindow.classList.add("hidden");
+        });
+    }
+
     // ---------- Services tab ----------
 
 
@@ -1372,6 +1606,11 @@ async function runAnalysis() {
         // Step 2: Query all layers (25% → 60% progress)
         analysisModal.setStep("Step 2/4: Querying layers...");
         analysisModal.addLog("Starting layer queries");
+
+        if (aoiIsLarge) {
+            const gridSize = config.report?.aoiChunkGridSize ?? 4;
+            analysisModal.addLog(`Large AOI detected (${formatNumber(aoiCurrentAcres, 0)} acres) — using ${gridSize}×${gridSize} spatial chunking`, "warning");
+        }
         
         // Pass modal reference for live updates
         await queryAllLayers(reportGeom, myOp, analysisModal);
@@ -1681,7 +1920,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
                 ? "within" : "intersects";
 
-        const r = await querySingleLayer(t.url, t.title, reportGeom, spatialRel);
+        // Use chunked query for large AOIs to improve reliability
+        const chunkThreshold = config.report?.aoiChunkThresholdAcres ?? 250000;
+        const useChunking = aoiIsLarge && aoiCurrentAcres > chunkThreshold;
+
+        const r = useChunking
+            ? await querySingleLayerChunked(t.url, t.title, reportGeom, spatialRel)
+            : await querySingleLayer(t.url, t.title, reportGeom, spatialRel);
         const rows = flattenAttributes(r.features);
 
         const reportEntry = {
@@ -2492,7 +2737,21 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             });
         }
 
-        if (runBtn) runBtn.addEventListener("click", runAnalysis);
+        if (runBtn) runBtn.addEventListener("click", () => {
+            if (aoiIsLarge) {
+                const sqMiles = (aoiCurrentAcres / 640).toFixed(0);
+                const confirmed = window.confirm(
+                    `\u26A0\uFE0F Large Area of Interest\n\n` +
+                    `Your AOI is approximately ${formatNumber(aoiCurrentAcres, 0)} acres (~${sqMiles} sq mi).\n\n` +
+                    `Analysis over this area will take significantly longer and some ` +
+                    `service queries may time out. The analysis will use spatial chunking ` +
+                    `to improve reliability.\n\n` +
+                    `Do you want to proceed?`
+                );
+                if (!confirmed) return;
+            }
+            runAnalysis();
+        });
 
         if (clearBtn) clearBtn.addEventListener("click", clearAll);
 
@@ -2769,7 +3028,21 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             });
         }
 
-        if (wizScreenBtn) wizScreenBtn.addEventListener("click", runAnalysis);
+        if (wizScreenBtn) wizScreenBtn.addEventListener("click", () => {
+            if (aoiIsLarge) {
+                const sqMiles = (aoiCurrentAcres / 640).toFixed(0);
+                const confirmed = window.confirm(
+                    `\u26A0\uFE0F Large Area of Interest\n\n` +
+                    `Your AOI is approximately ${formatNumber(aoiCurrentAcres, 0)} acres (~${sqMiles} sq mi).\n\n` +
+                    `Analysis over this area will take significantly longer and some ` +
+                    `service queries may time out. The analysis will use spatial chunking ` +
+                    `to improve reliability.\n\n` +
+                    `Do you want to proceed?`
+                );
+                if (!confirmed) return;
+            }
+            runAnalysis();
+        });
 
         if (wizNewScreening) {
             wizNewScreening.addEventListener("click", () => {
