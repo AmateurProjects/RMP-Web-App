@@ -17,8 +17,17 @@ require([
     "esri/Graphic",
     "esri/geometry/geometryEngine",
     "esri/layers/TileLayer",
-    "esri/layers/ImageryLayer"
-], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, featurePickerModule, searchModule, uploadAoiModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer) {
+    "esri/layers/ImageryLayer",
+    "esri/identity/IdentityManager"
+], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, featurePickerModule, searchModule, uploadAoiModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer, esriId) {
+
+    // ── Suppress ArcGIS Online sign-in popup ──
+    // All services used by this app are publicly shared; prevent the
+    // IdentityManager from showing a login dialog on 401/403 responses.
+    esriId.useSignInPage = false;
+    esriId.on("credential-create", function (evt) {
+        if (evt.credential) evt.credential.destroy();
+    });
 
     // ── Destructure config-helpers for functions already extracted ──
     const {
