@@ -1669,6 +1669,28 @@ th{
     border-radius: 999px;
 }
 
+/* Stay-in-tab notice */
+.analysis-tab-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 24px;
+    padding: 10px 14px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #1e40af;
+    flex-shrink: 0;
+}
+
+.analysis-tab-notice svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: #3b82f6;
+}
+
 .analysis-body {
     padding: 20px 24px;
     overflow: hidden;
