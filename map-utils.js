@@ -45,11 +45,18 @@ define([
         return r || null;
     }
 
+    // PERF: Cache geometry type lookups to avoid refetching ?f=pjson
+    const _geomTypeCache = new Map();
+
     async function getLayerGeometryType(layerUrl) {
+        const cacheKey = layerUrl.replace(/\/$/, "");
+        if (_geomTypeCache.has(cacheKey)) return _geomTypeCache.get(cacheKey);
         try {
-            const pjsonUrl = layerUrl.replace(/\/$/, "") + "?f=pjson";
+            const pjsonUrl = cacheKey + "?f=pjson";
             const pjson = await helpers.fetchJsonWithTimeout(pjsonUrl, 5000);
-            return pjson?.geometryType || null;
+            const gt = pjson?.geometryType || null;
+            _geomTypeCache.set(cacheKey, gt);
+            return gt;
         } catch (e) {
             return null;
         }
@@ -460,6 +467,19 @@ define([
     }
 
     // ── Build Report Display Layers ──────────────────────────────────
+    //
+    // PERF: Processes layers in parallel batches (BATCH_SIZE at a time)
+    // instead of sequentially.  Each layer also gets a load timeout so
+    // a single slow/hung service can't block the whole init.
+
+    /** Race a promise against a timeout.  Rejects with an Error on timeout. */
+    function withTimeout(promise, ms, label) {
+        return new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error(`Timeout (${ms}ms) loading ${label}`)), ms);
+            promise.then(v => { clearTimeout(t); resolve(v); },
+                         e => { clearTimeout(t); reject(e); });
+        });
+    }
 
     async function buildReportDisplayLayers() {
         const map = S.map;
@@ -467,29 +487,41 @@ define([
 
         S.reportLayerViews.clear();
 
+        const BATCH_SIZE = 10;          // concurrent layers per batch
+        const LOAD_TIMEOUT_MS = 15000;  // per-layer load timeout
+
+        // Deduplicate by URL key
+        const cfgs = [];
+        const seenKeys = new Set();
         for (const cfg of (S.config.reportLayers || [])) {
             const key = helpers.normalizeUrlKey(cfg.url);
-            if (!key) continue;
-            if (S.reportLayerViews.has(key)) continue;
+            if (!key || seenKeys.has(key)) continue;
+            seenKeys.add(key);
+            cfgs.push({ cfg, key });
+        }
 
+        /**
+         * Process a single config entry — returns { key, layers[]|layer, cfg }
+         * or null on failure.  Runs entirely independently so it can be batched.
+         */
+        async function processOne({ cfg, key }) {
             const useServiceRenderer = cfg.useServiceRenderer === true;
             const isAlwaysVisible = cfg.alwaysVisible === true;
 
             try {
-                // FeatureServer root: expand sublayers
+                // ── FeatureServer root ──
                 if (helpers.isFeatureServerRoot(key)) {
                     const subs = useServiceRenderer
                         ? await helpers.expandFeatureServerToAllSublayers(key)
                         : await helpers.expandFeatureServerToPolygonSublayers(key);
 
-                    // Parallel geometry type lookups
                     const geomTypes = await Promise.all(
                         subs.map(sl => getLayerGeometryType(sl.url))
                     );
 
                     const layers = [];
-                    for (let si = 0; si < subs.length; si++) {
-                        const sl = subs[si];
+                    // Load sublayers in parallel (they are on the same server — browser queues them anyway)
+                    const loadResults = await Promise.allSettled(subs.map((sl, si) => {
                         const geomType = geomTypes[si];
                         const layerOpts = {
                             url: sl.url,
@@ -503,34 +535,34 @@ define([
                         if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
                         if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                         const lyr = new FeatureLayer(layerOpts);
-                        try {
-                            await lyr.load();
-                        } catch (e) {
-                            console.warn(`[buildReportDisplayLayers] Skipping unsupported sublayer "${sl.title}":`, e.message || e);
-                            continue;
-                        }
-                        layers.push(lyr);
-                        if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
-                        S.layerCfgByUrl.set(sl.url, { kind: "report", cfg });
+                        return withTimeout(lyr.load(), LOAD_TIMEOUT_MS, sl.title)
+                            .then(() => ({ lyr, sl, ok: true }))
+                            .catch(e => {
+                                console.warn(`[buildReportDisplayLayers] Skipping sublayer "${sl.title}":`, e.message || e);
+                                return { lyr: null, sl, ok: false };
+                            });
+                    }));
+
+                    for (const r of loadResults) {
+                        if (r.status !== "fulfilled" || !r.value.ok) continue;
+                        layers.push(r.value.lyr);
+                        if (isAlwaysVisible) S.alwaysVisibleLayers.push(r.value.lyr);
+                        S.layerCfgByUrl.set(r.value.sl.url, { kind: "report", cfg });
                     }
 
-                    layers.forEach(l => map.add(l));
-                    S.reportLayerViews.set(key, layers);
-                    continue;
+                    return { key, result: layers, cfg, type: "multi" };
                 }
 
-                // MapServer root: expand to sublayers
+                // ── MapServer root ──
                 if (helpers.isMapServerRoot(key)) {
                     const subs = await helpers.expandMapServerToSublayers(key, { polygonOnly: !useServiceRenderer });
 
-                    // Parallel geometry type lookups
                     const geomTypes = await Promise.all(
                         subs.map(sl => getLayerGeometryType(sl.url))
                     );
 
                     const layers = [];
-                    for (let si = 0; si < subs.length; si++) {
-                        const sl = subs[si];
+                    const loadResults = await Promise.allSettled(subs.map((sl, si) => {
                         const geomType = geomTypes[si];
                         const layerOpts = {
                             url: sl.url,
@@ -544,23 +576,25 @@ define([
                         if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
                         if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                         const lyr = new FeatureLayer(layerOpts);
-                        try {
-                            await lyr.load();
-                        } catch (e) {
-                            console.warn(`[buildReportDisplayLayers] Skipping unsupported sublayer "${sl.title}":`, e.message || e);
-                            continue;
-                        }
-                        layers.push(lyr);
-                        if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
-                        S.layerCfgByUrl.set(sl.url, { kind: "report", cfg });
+                        return withTimeout(lyr.load(), LOAD_TIMEOUT_MS, sl.title)
+                            .then(() => ({ lyr, sl, ok: true }))
+                            .catch(e => {
+                                console.warn(`[buildReportDisplayLayers] Skipping sublayer "${sl.title}":`, e.message || e);
+                                return { lyr: null, sl, ok: false };
+                            });
+                    }));
+
+                    for (const r of loadResults) {
+                        if (r.status !== "fulfilled" || !r.value.ok) continue;
+                        layers.push(r.value.lyr);
+                        if (isAlwaysVisible) S.alwaysVisibleLayers.push(r.value.lyr);
+                        S.layerCfgByUrl.set(r.value.sl.url, { kind: "report", cfg });
                     }
 
-                    layers.forEach(l => map.add(l));
-                    S.reportLayerViews.set(key, layers);
-                    continue;
+                    return { key, result: layers, cfg, type: "multi" };
                 }
 
-                // ImageServer: create ImageryLayer
+                // ── ImageServer ──
                 if (cfg.imageService === true) {
                     const layerOpts = {
                         url: key,
@@ -572,13 +606,11 @@ define([
                     }
                     const lyr = new ImageryLayer(layerOpts);
                     if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
-                    map.add(lyr);
-                    S.reportLayerViews.set(key, lyr);
                     S.layerCfgByUrl.set(key, { kind: "report", cfg, isImageService: true });
-                    continue;
+                    return { key, result: lyr, cfg, type: "single" };
                 }
 
-                // Normal single layer
+                // ── Normal single layer ──
                 const geomType = await getLayerGeometryType(key);
                 const layerOpts = {
                     url: key,
@@ -594,14 +626,35 @@ define([
                 const lyr = new FeatureLayer(layerOpts);
                 if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
 
-                map.add(lyr);
-                S.reportLayerViews.set(key, lyr);
+                return { key, result: lyr, cfg, type: "single" };
 
             } catch (e) {
                 console.warn(`[buildReportDisplayLayers] Failed to load "${cfg.title}" (${key}):`, e);
+                return null;
             }
         }
 
+        // Process in parallel batches of BATCH_SIZE
+        const t0 = performance.now();
+        for (let bi = 0; bi < cfgs.length; bi += BATCH_SIZE) {
+            const batch = cfgs.slice(bi, bi + BATCH_SIZE);
+            const results = await Promise.allSettled(batch.map(processOne));
+
+            for (const r of results) {
+                if (r.status !== "fulfilled" || !r.value) continue;
+                const { key, result, type } = r.value;
+
+                if (type === "multi") {
+                    result.forEach(l => map.add(l));
+                    S.reportLayerViews.set(key, result);
+                } else {
+                    map.add(result);
+                    S.reportLayerViews.set(key, result);
+                }
+            }
+        }
+
+        console.log(`[buildReportDisplayLayers] ${cfgs.length} layer configs processed in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
         ensureAoiOnTop();
     }
 

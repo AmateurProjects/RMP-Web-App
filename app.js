@@ -1462,7 +1462,7 @@ async function checkServiceStatusBackground() {
         items.map(async (it) => {
             const pjsonUrl = normalizePjsonUrl(it.url);
             try {
-                await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+                await fetchJsonWithTimeout(pjsonUrl, timeoutMs, { noCache: true });
                 return { url: it.url, status: "UP" };
             } catch (e) {
                 return { url: it.url, status: "DOWN" };
@@ -1505,7 +1505,7 @@ async function checkServiceStatusBackground() {
                 let errText = "";
 
                 try {
-                    const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs);
+                    const pjson = await fetchJsonWithTimeout(pjsonUrl, timeoutMs, { noCache: true });
 
                     if (pjson == null || (pjson.currentVersion == null && pjson.layers == null && pjson.type == null)) {
                         throw new Error("Unexpected JSON (missing expected ArcGIS REST fields)");
@@ -3401,8 +3401,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         // Initialize analysis modal
         analysisModal.init();
 
-        // Background service check on startup (also populates service status for the Services tab)
-        checkServiceStatusBackground().catch(() => {});
+        // Background service check — delay 5s so it doesn't compete with
+        // critical layer loading for browser connection slots
+        setTimeout(() => checkServiceStatusBackground().catch(() => {}), 5000);
     }
 
     init().catch((e) => {

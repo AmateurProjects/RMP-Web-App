@@ -80,16 +80,20 @@ define([], function () {
         return res.json();
     }
 
-    async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
+    async function fetchJsonWithTimeout(url, timeoutMs = 8000, opts = {}) {
         const controller = new AbortController();
         const t = window.setTimeout(() => controller.abort(), timeoutMs);
 
         try {
-            const res = await fetch(url, {
+            const fetchOpts = {
                 credentials: "omit",
-                signal: controller.signal,
-                cache: "no-store"
-            });
+                signal: controller.signal
+            };
+            // Only bypass cache when explicitly requested (e.g. health checks).
+            // Metadata / pjson lookups benefit from the browser cache.
+            if (opts.noCache) fetchOpts.cache = "no-store";
+
+            const res = await fetch(url, fetchOpts);
 
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
