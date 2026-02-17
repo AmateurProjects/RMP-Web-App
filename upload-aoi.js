@@ -10,9 +10,11 @@
  */
 define([
     "esri/geometry/Polygon",
+    "esri/geometry/Polyline",
+    "esri/geometry/Point",
     "esri/geometry/geometryEngine",
     "esri/geometry/support/webMercatorUtils"
-], function (Polygon, geometryEngine, webMercatorUtils) {
+], function (Polygon, Polyline, Point, geometryEngine, webMercatorUtils) {
 
     "use strict";
 
@@ -92,14 +94,16 @@ define([
 
     // ── GeoJSON → normalised FeatureCollection ──────────────────────
 
+    var SUPPORTED_GEOM_TYPES = ["Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon"];
+
     function _parseGeoJSON(text) {
         var obj = JSON.parse(text);
         if (obj.type === "FeatureCollection") return obj;
         if (obj.type === "Feature")
             return { type: "FeatureCollection", features: [obj] };
-        if (obj.type === "Polygon" || obj.type === "MultiPolygon")
+        if (SUPPORTED_GEOM_TYPES.indexOf(obj.type) !== -1)
             return { type: "FeatureCollection", features: [{ type: "Feature", geometry: obj, properties: {} }] };
-        throw new Error("Unrecognised GeoJSON structure (expected FeatureCollection, Feature, Polygon, or MultiPolygon).");
+        throw new Error("Unrecognised GeoJSON structure (expected FeatureCollection, Feature, or a geometry object).");
     }
 
     // ── KML → GeoJSON ───────────────────────────────────────────────
@@ -127,8 +131,31 @@ define([
 
         for (var i = 0; i < placemarks.length; i++) {
             var pm = placemarks[i];
-            var polygons = byTag(pm, "Polygon");
 
+            // Points
+            var kmlPoints = byTag(pm, "Point");
+            for (var pi = 0; pi < kmlPoints.length; pi++) {
+                var pc = byTag(kmlPoints[pi], "coordinates");
+                if (pc.length === 0) continue;
+                var coords = _parseKMLCoords(pc[0].textContent);
+                if (coords.length > 0) {
+                    features.push({ type: "Feature", geometry: { type: "Point", coordinates: coords[0] }, properties: {} });
+                }
+            }
+
+            // LineStrings
+            var kmlLines = byTag(pm, "LineString");
+            for (var li = 0; li < kmlLines.length; li++) {
+                var lc = byTag(kmlLines[li], "coordinates");
+                if (lc.length === 0) continue;
+                var lineCoords = _parseKMLCoords(lc[0].textContent);
+                if (lineCoords.length > 1) {
+                    features.push({ type: "Feature", geometry: { type: "LineString", coordinates: lineCoords }, properties: {} });
+                }
+            }
+
+            // Polygons
+            var polygons = byTag(pm, "Polygon");
             for (var j = 0; j < polygons.length; j++) {
                 var poly = polygons[j];
                 var outerEls = byTag(poly, "outerBoundaryIs");
@@ -154,7 +181,7 @@ define([
             }
         }
 
-        if (features.length === 0) throw new Error("No polygon features found in the KML file.");
+        if (features.length === 0) throw new Error("No features found in the KML file.");
         return { type: "FeatureCollection", features: features };
     }
 
@@ -190,40 +217,114 @@ define([
         return null;
     }
 
+    /**
+     * Convert a GeoJSON FeatureCollection to ArcGIS geometries.
+     * Returns { geometry, featureCount, geometryType, hasPoints, hasLines, hasPolygons }.
+     * The geometry is unified (unioned) per geometry family.
+     * If the file contains only points or lines (no polygons), the raw
+     * unified geometry is returned and the caller is responsible for
+     * buffering it into a polygon AOI.
+     */
     function _toAoiGeometry(geojsonFC, viewSR) {
+        var points   = [];
+        var lines    = [];
         var polygons = [];
+        var SR4326   = { wkid: 4326 };
 
         for (var i = 0; i < (geojsonFC.features || []).length; i++) {
             var feat = geojsonFC.features[i];
             if (!feat.geometry) continue;
             var t = feat.geometry.type;
-            if (t !== "Polygon" && t !== "MultiPolygon") continue;
 
-            var rings = _extractRings(feat.geometry);
-            if (!rings || rings.length === 0) continue;
-
-            polygons.push(new Polygon({
-                rings: rings,
-                spatialReference: { wkid: 4326 }
-            }));
+            if (t === "Point") {
+                points.push(new Point({ longitude: feat.geometry.coordinates[0], latitude: feat.geometry.coordinates[1], spatialReference: SR4326 }));
+            } else if (t === "MultiPoint") {
+                for (var mp = 0; mp < feat.geometry.coordinates.length; mp++) {
+                    points.push(new Point({ longitude: feat.geometry.coordinates[mp][0], latitude: feat.geometry.coordinates[mp][1], spatialReference: SR4326 }));
+                }
+            } else if (t === "LineString") {
+                lines.push(new Polyline({ paths: [feat.geometry.coordinates], spatialReference: SR4326 }));
+            } else if (t === "MultiLineString") {
+                lines.push(new Polyline({ paths: feat.geometry.coordinates, spatialReference: SR4326 }));
+            } else if (t === "Polygon" || t === "MultiPolygon") {
+                var rings = _extractRings(feat.geometry);
+                if (rings && rings.length > 0) {
+                    polygons.push(new Polygon({ rings: rings, spatialReference: SR4326 }));
+                }
+            }
         }
 
-        if (polygons.length === 0) {
-            throw new Error("No polygon geometries found in the uploaded file. "
-                + "The file may contain only points or lines.");
+        var totalCount = points.length + lines.length + polygons.length;
+        if (totalCount === 0) {
+            throw new Error("No supported geometries found in the uploaded file.");
         }
 
-        // Union/dissolve all polygons into one AOI
-        var unified = polygons.length === 1
-            ? polygons[0]
-            : geometryEngine.union(polygons);
+        // Determine dominant type label for UI
+        var geometryType = "polygon";
+        if (polygons.length > 0)      geometryType = "polygon";
+        else if (lines.length > 0)    geometryType = "polyline";
+        else                          geometryType = "point";
 
-        // Project to view SR (typically Web Mercator 3857)
+        // Union each family
+        var unified = null;
+        var allGeoms = [];
+        if (polygons.length > 0) {
+            var uPoly = polygons.length === 1 ? polygons[0] : geometryEngine.union(polygons);
+            allGeoms.push(uPoly);
+            unified = uPoly;
+        }
+        if (lines.length > 0) {
+            var uLine = lines.length === 1 ? lines[0] : geometryEngine.union(lines);
+            allGeoms.push(uLine);
+            if (!unified) unified = uLine;
+        }
+        if (points.length > 0) {
+            // Union points into a multipoint-like set — but geometryEngine.union
+            // on points returns a single point or multipoint. We'll just keep the first
+            // or union them. For buffer purposes any single point works if only 1.
+            var uPoint = points.length === 1 ? points[0] : geometryEngine.union(points);
+            allGeoms.push(uPoint);
+            if (!unified) unified = uPoint;
+        }
+
+        // Project to view SR
         if (viewSR && viewSR.isWebMercator) {
             unified = webMercatorUtils.geographicToWebMercator(unified);
+            for (var ai = 0; ai < allGeoms.length; ai++) {
+                allGeoms[ai] = webMercatorUtils.geographicToWebMercator(allGeoms[ai]);
+            }
         }
 
-        return { geometry: unified, featureCount: polygons.length };
+        return {
+            geometry:     unified,
+            allGeometries: allGeoms,
+            featureCount: totalCount,
+            geometryType: geometryType,
+            hasPoints:    points.length > 0,
+            hasLines:     lines.length > 0,
+            hasPolygons:  polygons.length > 0
+        };
+    }
+
+    /**
+     * Apply a geodesic buffer (in miles) to one or more geometries
+     * and union the result into a single Polygon.
+     */
+    function applyBuffer(geometries, bufferMiles) {
+        if (!geometries || geometries.length === 0) return null;
+        if (!bufferMiles || bufferMiles <= 0) {
+            // No buffer — union polygons only
+            var polys = geometries.filter(function (g) { return g.type === "polygon"; });
+            if (polys.length === 0) return null;
+            return polys.length === 1 ? polys[0] : geometryEngine.union(polys);
+        }
+        var buffered = [];
+        for (var i = 0; i < geometries.length; i++) {
+            var b = geometryEngine.geodesicBuffer(geometries[i], bufferMiles, "miles");
+            if (b) buffered.push(b);
+        }
+        if (buffered.length === 0) return null;
+        return buffered.length === 1 ? buffered[0] : geometryEngine.union(buffered);
     }
 
     // ── Main entry point ────────────────────────────────────────────
@@ -283,6 +384,7 @@ define([
 
     return {
         processFile:   processFile,
+        applyBuffer:   applyBuffer,
         MAX_FILE_SIZE: MAX_FILE_SIZE,
         ACCEPT_STRING: ACCEPT_STRING,
         FORMAT_LABELS: FORMAT_LABELS

@@ -325,6 +325,7 @@ function setBusy(isBusy) {
 
 
     let sketch = null;
+    let currentDrawToolType = "polygon";
 
     let lastReportRowsByLayer = []; // for export-all
     let reportLayerViews = new Map();
@@ -784,30 +785,48 @@ function setActiveTab(tabName) {
             tab.appendChild(badge);
         });
 
-        // Overview bucket
+        // Overview bucket — compact dashboard
         const overviewEl = document.getElementById("bucketOverview");
         if (overviewEl) {
             const tl = lastReportRowsByLayer.length;
             const th = lastReportRowsByLayer.reduce((s, x) => s + (x.count || 0), 0);
             const lwh = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
-            let oh = '<div style="padding:0 16px 8px;"><div class="permit-summary-grid">';
+            let oh = '<div class="overview-dash">';
+
+            // ── Summary stats row ──
+            oh += '<div class="permit-summary-grid">';
             oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + tl + '</div><div class="permit-summary-stat-label">Datasets Checked</div></div>';
             oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + lwh + '</div><div class="permit-summary-stat-label">With Findings</div></div>';
             oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + th + '</div><div class="permit-summary-stat-label">Total Features</div></div>';
-            oh += '</div></div>';
+            oh += '</div>';
+
+            // ── Category status rows (traffic-light dashboard) ──
+            oh += '<div class="overview-category-grid">';
             for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
                 const items = buckets[bk] || [];
                 const hc = items.reduce((s, it) => s + (it.count || 0), 0);
                 const lhc = items.filter(it => (it.count || 0) > 0).length;
-                if (hc > 0) {
-                    const names = items.filter(it => (it.count || 0) > 0).map(it => '<strong>' + escapeHtml(it.title) + '</strong> (' + it.count + ')').join(", ");
-                    oh += '<div class="bucket-alert bucket-alert-caution"><strong>' + bd.icon + ' ' + escapeHtml(bd.label) + '</strong> \u2014 ' + lhc + ' layer' + (lhc !== 1 ? 's' : '') + ' with findings. <span style="font-size:12px;">' + names + '</span></div>';
-                } else {
-                    oh += '<div class="bucket-alert bucket-alert-clear"><strong>' + bd.icon + ' ' + escapeHtml(bd.label) + '</strong> \u2014 No features found in this category. This does not guarantee the absence of relevant considerations.</div>';
-                }
+                const statusClass = hc > 0 ? 'findings' : 'clear';
+                const statusLabel = hc > 0 ? (hc + ' feature' + (hc !== 1 ? 's' : '') + ' in ' + lhc + ' layer' + (lhc !== 1 ? 's' : '')) : 'Clear';
+                oh += '<button class="overview-cat-row ' + statusClass + '" type="button" data-goto-bucket="' + bk + '">';
+                oh += '<span class="overview-cat-indicator"></span>';
+                oh += '<span class="overview-cat-icon">' + bd.icon + '</span>';
+                oh += '<span class="overview-cat-label">' + escapeHtml(bd.label) + '</span>';
+                oh += '<span class="overview-cat-status">' + statusLabel + '</span>';
+                oh += '<span class="overview-cat-arrow">›</span>';
+                oh += '</button>';
             }
-            oh += '<div class="bucket-alert bucket-alert-info" style="margin-top:4px;"><strong>Important:</strong> These results are based on available GIS data and may not reflect all conditions on the ground. Additional site-specific review may be required during the permitting process. Contact your local BLM field office for authoritative guidance.</div>';
+            oh += '</div>';
+
+            // ── Disclaimer ──
+            oh += '<div class="overview-disclaimer"><strong>Important:</strong> These results are based on available GIS data and may not reflect all conditions on the ground. Additional site-specific review may be required during the permitting process. Contact your local BLM field office for authoritative guidance.</div>';
+            oh += '</div>';
             overviewEl.innerHTML = oh;
+
+            // Wire up category row clicks to switch to that bucket tab
+            overviewEl.querySelectorAll('.overview-cat-row[data-goto-bucket]').forEach(btn => {
+                btn.addEventListener('click', () => setActiveBucket(btn.dataset.gotoBucket));
+            });
         }
 
         // Summary in header card
@@ -1040,10 +1059,12 @@ function clearAll() {
         currentInteractionMode = mode; // PERF-TEST: track mode locally
         function startDrawingNow() {
             if (!sketch) return;
-            // Cancel any prior sketch session and start a new polygon immediately
+            // Cancel any prior sketch session and start drawing
             sketch.cancel();
-            sketch.create("polygon");
-            setStatus("drawing polygon…");
+            // currentDrawToolType is set by the draw tool selector buttons (default: "polygon")
+            const toolType = (typeof currentDrawToolType !== "undefined" && currentDrawToolType) || "polygon";
+            sketch.create(toolType);
+            setStatus("drawing " + toolType + "…");
         }
 
         if (mode === "select") {
@@ -2513,7 +2534,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         sketch = new Sketch({
             view,
             layer: aoiLayer,
-            availableCreateTools: ["polygon"],
+            availableCreateTools: ["polygon", "polyline", "point"],
             creationMode: "single",
             updateOnGraphicClick: false
         });
@@ -2527,19 +2548,56 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             sketch.polygonSymbol = aoiRenderer.symbol;
         }
 
+        // Point and line symbols for sketch preview
+        sketch.pointSymbol = {
+            type: "simple-marker",
+            color: [40, 100, 60, 0.7],
+            size: 10,
+            outline: { color: [40, 100, 60, 1], width: 2 }
+        };
+        sketch.polylineSymbol = {
+            type: "simple-line",
+            color: [40, 100, 60, 0.85],
+            width: 3,
+            style: "solid"
+        };
+
         sketch.on("create", (evt) => {
             if (evt.state === "complete") {
                 const geom = evt.graphic?.geometry || null;
-                setAoiGeometry(geom);          // ensure AOI is a single clean graphic
-                resetCoverageCacheForAoi(geom);
-                aoiSource = "draw";
-                aoiSourceLayerTitle = null;
-                aoiSourceLayerUrl = null;
-                aoiSourceObjectId = null;
-                aoiSourceObjectIdField = null;
-                aoiSourceFeature = null; // ✅ drawn AOI has no source feature
-                setGeometryFromSelection(geom);
-                setStatus("drawn polygon ready (run report)");
+                if (!geom) return;
+
+                const gType = geom.type; // "polygon", "polyline", "point"
+                const needsBuffer = gType !== "polygon";
+
+                // Show the raw drawn geometry as a preview
+                setAoiGeometry(geom);
+
+                // Show the draw buffer panel
+                const drawBufPanel = document.getElementById("drawBufferPanel");
+                const drawBufMsg   = document.getElementById("drawBufferMsg");
+                const drawBufInput = document.getElementById("drawBufferInput");
+                const drawBufSkip  = document.getElementById("drawBufferSkip");
+
+                if (drawBufPanel) {
+                    const typeLabel = gType === "polyline" ? "line" : gType;
+                    if (needsBuffer) {
+                        if (drawBufMsg) drawBufMsg.innerHTML = "Your drawn <strong>" + typeLabel + "</strong> requires a buffer to create a polygon AOI.";
+                        if (drawBufInput) drawBufInput.value = gType === "point" ? "1" : "0.5";
+                        if (drawBufSkip) drawBufSkip.classList.add("hidden");
+                    } else {
+                        if (drawBufMsg) drawBufMsg.innerHTML = "Optionally add a buffer around your drawn <strong>polygon</strong>.";
+                        if (drawBufInput) drawBufInput.value = "";
+                        if (drawBufSkip) drawBufSkip.classList.remove("hidden");
+                    }
+
+                    // Store drawn geometry for buffer apply
+                    drawBufPanel._drawnGeom = geom;
+                    drawBufPanel.classList.remove("hidden");
+
+                    // Clear active preset
+                    document.querySelectorAll(".draw-buf-preset").forEach(b => b.classList.remove("active"));
+                }
             }
         });
 
@@ -2848,42 +2906,159 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 hideUploadStatus();
                 showUploadStatus('<span class="spinner" style="width:14px;height:14px;"></span> Processing <b>' + configHelpers.escapeHtml(file.name) + '</b>…', "loading");
 
+                // Hide any previous buffer panel
+                const bufferPanel = document.getElementById("uploadBufferPanel");
+                if (bufferPanel) bufferPanel.classList.add("hidden");
+
                 try {
                     const viewSR = state.view ? state.view.spatialReference : null;
                     const result = await uploadAoiModule.processFile(file, viewSR);
 
-                    // Set as AOI
-                    selectionGeom = result.geometry;
-                    aoiSource = "upload";
-                    aoiSourceLayerTitle = result.fileName;
+                    const needsBuffer = !result.hasPolygons; // points/lines MUST be buffered
+                    const geomLabel = result.geometryType === "point" ? "point"
+                                    : result.geometryType === "polyline" ? "line" : "polygon";
+                    const geomLabelPlural = result.featureCount === 1 ? geomLabel : geomLabel + "s";
 
-                    setAoiGeometry(result.geometry);
+                    // Show the file info
+                    const countLabel = result.featureCount + " " + geomLabelPlural;
+                    showUploadStatus("📂 <b>" + configHelpers.escapeHtml(result.fileName) + "</b> — " + countLabel, "success");
 
-                    if (runBtn) runBtn.disabled = false;
-
-                    // Zoom to extent
+                    // Zoom to uploaded geometry preview
                     if (view && result.geometry && result.geometry.extent) {
-                        await view.goTo(result.geometry.extent.expand(1.3), { animate: true, duration: 600 });
+                        // Show the raw geometry on the map as a preview
+                        setAoiGeometry(result.geometry);
+                        await view.goTo(result.geometry.extent.expand(1.5), { animate: true, duration: 600 });
                     }
 
-                    // Update mask
-                    if (typeof updateAoiMask === "function") updateAoiMask();
+                    // Show buffer panel
+                    if (bufferPanel) {
+                        const bufferMsg = document.getElementById("uploadBufferMsg");
+                        const bufferInput = document.getElementById("uploadBufferInput");
+                        const bufferApplyBtn = document.getElementById("uploadBufferApply");
+                        const bufferSkipBtn = document.getElementById("uploadBufferSkip");
 
-                    const countLabel = result.featureCount === 1
-                        ? "1 polygon"
-                        : result.featureCount + " polygons (dissolved)";
-                    showUploadStatus("✅ <b>" + configHelpers.escapeHtml(result.fileName) + "</b> loaded — " + countLabel, "success");
+                        if (needsBuffer) {
+                            // Points/lines require a buffer
+                            if (bufferMsg) bufferMsg.innerHTML = "Your file contains <strong>" + geomLabelPlural + "</strong>. A buffer is required to create a polygon AOI.";
+                            if (bufferInput) bufferInput.value = geomLabel === "point" ? "1" : "0.5";
+                            if (bufferSkipBtn) bufferSkipBtn.classList.add("hidden");
+                        } else {
+                            // Polygons — buffer is optional
+                            if (bufferMsg) bufferMsg.innerHTML = "Optionally add a buffer around your <strong>" + geomLabelPlural + "</strong>.";
+                            if (bufferInput) bufferInput.value = "";
+                            if (bufferSkipBtn) bufferSkipBtn.classList.remove("hidden");
+                        }
 
-                    // Advance wizard to Step 2
-                    if (currentAppMode === "permit" && currentWizardStep === 1) {
-                        populateAoiConfirmation();
-                        goToWizardStep(2);
+                        bufferPanel.classList.remove("hidden");
+
+                        // Store result for the Apply/Skip handlers
+                        bufferPanel._uploadResult = result;
                     }
                 } catch (err) {
                     console.error("Upload AOI error:", err);
                     showUploadStatus("❌ " + configHelpers.escapeHtml(err.message || "Failed to process file"), "error");
                 }
             }
+
+            /**
+             * Finalize the upload AOI — apply buffer if needed, set geometry.
+             */
+            function finalizeUpload(result, bufferMiles) {
+                let geometry;
+                if (bufferMiles && bufferMiles > 0) {
+                    geometry = uploadAoiModule.applyBuffer(result.allGeometries, bufferMiles);
+                    if (!geometry) {
+                        showUploadStatus("❌ Buffer operation failed. Try a different value.", "error");
+                        return;
+                    }
+                } else if (result.hasPolygons) {
+                    // Use polygon geometries without buffer
+                    geometry = uploadAoiModule.applyBuffer(result.allGeometries, 0);
+                    if (!geometry) {
+                        showUploadStatus("❌ No polygon geometry available.", "error");
+                        return;
+                    }
+                } else {
+                    showUploadStatus("❌ A buffer is required for point/line features.", "error");
+                    return;
+                }
+
+                selectionGeom = geometry;
+                aoiSource = "upload";
+                aoiSourceLayerTitle = result.fileName;
+                setAoiGeometry(geometry);
+
+                if (runBtn) runBtn.disabled = false;
+
+                // Zoom to buffered extent
+                if (view && geometry && geometry.extent) {
+                    view.goTo(geometry.extent.expand(1.3), { animate: true, duration: 600 });
+                }
+
+                // Update mask
+                if (typeof updateAoiMask === "function") updateAoiMask();
+
+                const bufLabel = bufferMiles > 0 ? " with " + bufferMiles + " mi buffer" : "";
+                showUploadStatus("✅ <b>" + configHelpers.escapeHtml(result.fileName) + "</b> loaded" + bufLabel, "success");
+
+                // Hide buffer panel
+                const bp = document.getElementById("uploadBufferPanel");
+                if (bp) bp.classList.add("hidden");
+
+                // Advance wizard to Step 2
+                if (currentAppMode === "permit" && currentWizardStep === 1) {
+                    populateAoiConfirmation();
+                    goToWizardStep(2);
+                }
+            }
+
+            // Wire buffer panel buttons
+            const bufferApplyBtn = document.getElementById("uploadBufferApply");
+            const bufferSkipBtn  = document.getElementById("uploadBufferSkip");
+            const bufferPanel    = document.getElementById("uploadBufferPanel");
+
+            if (bufferApplyBtn) {
+                bufferApplyBtn.addEventListener("click", function () {
+                    const input = document.getElementById("uploadBufferInput");
+                    const val = parseFloat(input ? input.value : "");
+                    const result = bufferPanel ? bufferPanel._uploadResult : null;
+                    if (!result) return;
+
+                    if (isNaN(val) || val <= 0) {
+                        if (!result.hasPolygons) {
+                            showUploadStatus("❌ Please enter a buffer distance greater than 0.", "error");
+                            return;
+                        }
+                        // Polygon with no buffer — treat as skip
+                        finalizeUpload(result, 0);
+                        return;
+                    }
+                    if (val > 50) {
+                        showUploadStatus("❌ Buffer cannot exceed 50 miles.", "error");
+                        return;
+                    }
+                    finalizeUpload(result, val);
+                });
+            }
+
+            if (bufferSkipBtn) {
+                bufferSkipBtn.addEventListener("click", function () {
+                    const result = bufferPanel ? bufferPanel._uploadResult : null;
+                    if (!result) return;
+                    finalizeUpload(result, 0);
+                });
+            }
+
+            // Wire buffer preset buttons
+            document.querySelectorAll(".upload-buffer-preset").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    const input = document.getElementById("uploadBufferInput");
+                    if (input) input.value = btn.dataset.val;
+                    // Highlight active preset
+                    document.querySelectorAll(".upload-buffer-preset").forEach(b => b.classList.remove("active"));
+                    btn.classList.add("active");
+                });
+            });
 
             // File input change
             fileInput.addEventListener("change", function () {
@@ -3030,10 +3205,36 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         }
 
         // Wizard draw buttons
+
+        // Draw tool type selector
+        const drawToolBtns = document.querySelectorAll(".draw-tool-btn");
+        const drawHintEl   = document.getElementById("drawHint");
+        const DRAW_HINTS = {
+            polygon: "Click on the map to place vertices. Double-click to finish the polygon.",
+            polyline: "Click on the map to place vertices. Double-click to finish the line.",
+            point: "Click on the map to place a point."
+        };
+
+        drawToolBtns.forEach(btn => {
+            btn.addEventListener("click", () => {
+                drawToolBtns.forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                if (btn.id === "wizDrawPolygon")  currentDrawToolType = "polygon";
+                else if (btn.id === "wizDrawLine") currentDrawToolType = "polyline";
+                else if (btn.id === "wizDrawPoint") currentDrawToolType = "point";
+                if (drawHintEl) drawHintEl.textContent = DRAW_HINTS[currentDrawToolType];
+            });
+        });
+
         if (wizDrawBtn) {
             wizDrawBtn.addEventListener("click", () => {
-                if (modeSelect && modeSelect.value !== "draw") modeSelect.value = "draw";
-                setMode("draw");
+                if (!sketch) return;
+                // Hide any previous draw buffer panel
+                const dbp = document.getElementById("drawBufferPanel");
+                if (dbp) dbp.classList.add("hidden");
+                sketch.cancel();
+                sketch.create(currentDrawToolType);
+                setStatus("drawing " + currentDrawToolType + "\u2026");
             });
         }
         if (wizStopDrawBtn) {
@@ -3042,6 +3243,85 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 setStatus("draw stopped");
             });
         }
+
+        // Draw buffer panel handlers
+        function finalizeDrawAoi(geom, bufferMiles) {
+            let finalGeom;
+            if (bufferMiles && bufferMiles > 0) {
+                finalGeom = uploadAoiModule.applyBuffer([geom], bufferMiles);
+                if (!finalGeom) {
+                    setStatus("Buffer operation failed.");
+                    return;
+                }
+            } else if (geom.type === "polygon") {
+                finalGeom = geom;
+            } else {
+                setStatus("A buffer is required for point/line features.");
+                return;
+            }
+
+            setAoiGeometry(finalGeom);
+            resetCoverageCacheForAoi(finalGeom);
+            aoiSource = "draw";
+            aoiSourceLayerTitle = null;
+            aoiSourceLayerUrl = null;
+            aoiSourceObjectId = null;
+            aoiSourceObjectIdField = null;
+            aoiSourceFeature = null;
+            setGeometryFromSelection(finalGeom);
+
+            const bufLabel = bufferMiles > 0 ? " with " + bufferMiles + " mi buffer" : "";
+            setStatus("Drawn AOI ready" + bufLabel);
+
+            // Hide buffer panel
+            const dbp = document.getElementById("drawBufferPanel");
+            if (dbp) dbp.classList.add("hidden");
+        }
+
+        const drawBufApply = document.getElementById("drawBufferApply");
+        const drawBufSkip  = document.getElementById("drawBufferSkip");
+        const drawBufPanel = document.getElementById("drawBufferPanel");
+
+        if (drawBufApply) {
+            drawBufApply.addEventListener("click", () => {
+                const input = document.getElementById("drawBufferInput");
+                const val = parseFloat(input ? input.value : "");
+                const geom = drawBufPanel ? drawBufPanel._drawnGeom : null;
+                if (!geom) return;
+
+                if (isNaN(val) || val <= 0) {
+                    if (geom.type === "polygon") {
+                        finalizeDrawAoi(geom, 0);
+                        return;
+                    }
+                    setStatus("Please enter a buffer distance greater than 0.");
+                    return;
+                }
+                if (val > 50) {
+                    setStatus("Buffer cannot exceed 50 miles.");
+                    return;
+                }
+                finalizeDrawAoi(geom, val);
+            });
+        }
+
+        if (drawBufSkip) {
+            drawBufSkip.addEventListener("click", () => {
+                const geom = drawBufPanel ? drawBufPanel._drawnGeom : null;
+                if (!geom) return;
+                finalizeDrawAoi(geom, 0);
+            });
+        }
+
+        // Draw buffer preset buttons
+        document.querySelectorAll(".draw-buf-preset").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const input = document.getElementById("drawBufferInput");
+                if (input) input.value = btn.dataset.val;
+                document.querySelectorAll(".draw-buf-preset").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+            });
+        });
 
         // Location search
         if (wizLocationInput) {

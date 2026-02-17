@@ -398,7 +398,31 @@
                 <div class="upload-drop-formats">Shapefile (.zip), GeoJSON, KML, KMZ &bull; Max 10 MB</div>
               </div>
               <div id="uploadStatus" class="upload-status hidden"></div>
-              <div class="hint">Upload a spatial file containing polygon boundaries to use as your project area. Multiple polygons will be merged into one AOI.</div>
+
+              <!-- Buffer panel (shown after file is processed) -->
+              <div id="uploadBufferPanel" class="upload-buffer-panel hidden">
+                <p id="uploadBufferMsg" class="upload-buffer-msg"></p>
+                <div class="upload-buffer-row">
+                  <label for="uploadBufferInput" class="upload-buffer-label">Buffer distance</label>
+                  <div class="upload-buffer-input-wrap">
+                    <input type="number" id="uploadBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
+                    <span class="upload-buffer-unit">miles</span>
+                  </div>
+                </div>
+                <div class="upload-buffer-presets">
+                  <button type="button" class="upload-buffer-preset" data-val="0.25">¼ mi</button>
+                  <button type="button" class="upload-buffer-preset" data-val="0.5">½ mi</button>
+                  <button type="button" class="upload-buffer-preset" data-val="1">1 mi</button>
+                  <button type="button" class="upload-buffer-preset" data-val="2">2 mi</button>
+                  <button type="button" class="upload-buffer-preset" data-val="5">5 mi</button>
+                </div>
+                <div class="upload-buffer-actions">
+                  <button type="button" id="uploadBufferApply" class="btn primary">Apply Buffer</button>
+                  <button type="button" id="uploadBufferSkip" class="btn subtle">No Buffer</button>
+                </div>
+              </div>
+
+              <div class="hint">Upload a spatial file containing points, lines, or polygons. Non-polygon features will require a buffer to create the AOI. Multiple features are merged automatically.</div>
             </div>
           </div>
 
@@ -409,11 +433,51 @@
               <span>Draw Custom Area</span>
             </div>
             <div class="aoi-method-panel-body">
+              <div class="draw-tool-group">
+                <span class="draw-tool-label">Draw type:</span>
+                <div class="draw-tool-btns">
+                  <button id="wizDrawPolygon" class="draw-tool-btn active" type="button" title="Draw polygon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,3 22,15 12,21 2,15"/></svg>
+                    <span>Polygon</span>
+                  </button>
+                  <button id="wizDrawLine" class="draw-tool-btn" type="button" title="Draw line">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20 L12 8 L20 16"/></svg>
+                    <span>Line</span>
+                  </button>
+                  <button id="wizDrawPoint" class="draw-tool-btn" type="button" title="Place point">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>
+                    <span>Point</span>
+                  </button>
+                </div>
+              </div>
               <div class="row">
                 <button id="wizDrawBtn" class="btn primary" type="button">Start Drawing</button>
                 <button id="wizStopDrawBtn" class="btn subtle" type="button">Cancel</button>
               </div>
-              <div class="hint">Click on the map to place vertices. Double-click to finish the polygon.</div>
+              <div id="drawHint" class="hint">Click on the map to place vertices. Double-click to finish the polygon.</div>
+
+              <!-- Draw buffer panel (shown after geometry is drawn) -->
+              <div id="drawBufferPanel" class="upload-buffer-panel hidden">
+                <p id="drawBufferMsg" class="upload-buffer-msg"></p>
+                <div class="upload-buffer-row">
+                  <label for="drawBufferInput" class="upload-buffer-label">Buffer distance</label>
+                  <div class="upload-buffer-input-wrap">
+                    <input type="number" id="drawBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
+                    <span class="upload-buffer-unit">miles</span>
+                  </div>
+                </div>
+                <div class="upload-buffer-presets draw-buffer-presets">
+                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.25">¼ mi</button>
+                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.5">½ mi</button>
+                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="1">1 mi</button>
+                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="2">2 mi</button>
+                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="5">5 mi</button>
+                </div>
+                <div class="upload-buffer-actions">
+                  <button type="button" id="drawBufferApply" class="btn primary">Apply Buffer</button>
+                  <button type="button" id="drawBufferSkip" class="btn subtle">No Buffer</button>
+                </div>
+              </div>
             </div>
           </div>
 
