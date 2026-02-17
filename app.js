@@ -244,17 +244,27 @@ function setBusy(isBusy) {
             if (this.stats.mapsGenerated) this.stats.mapsGenerated.textContent = mapsGenerated;
         },
         
-        showSuccess(layersQueried, featuresFound, mapsGenerated) {
+        showSuccess(layersQueried, featuresFound, mapsGenerated, elapsedMs) {
             if (!this.success) return;
             
             // Update success summary
             const successLayersQueried = document.getElementById("successLayersQueried");
             const successFeaturesFound = document.getElementById("successFeaturesFound");
             const successMapsGenerated = document.getElementById("successMapsGenerated");
+            const successDuration = document.getElementById("successDuration");
             
             if (successLayersQueried) successLayersQueried.textContent = layersQueried;
             if (successFeaturesFound) successFeaturesFound.textContent = featuresFound;
             if (successMapsGenerated) successMapsGenerated.textContent = mapsGenerated;
+            
+            if (successDuration && elapsedMs != null) {
+                const totalSec = Math.round(elapsedMs / 1000);
+                const min = Math.floor(totalSec / 60);
+                const sec = totalSec % 60;
+                successDuration.textContent = min > 0
+                    ? `Completed in ${min}m ${sec}s`
+                    : `Completed in ${sec}s`;
+            }
             
             this.success.classList.remove("hidden");
             
@@ -1325,6 +1335,8 @@ async function runAnalysis() {
     const reportGeom = getReportGeometry();
     if (!reportGeom) { endReportOp(myOp); return; }
 
+    const analysisStartTime = Date.now();
+
     // ✅ Show analysis modal
     analysisModal.show();
     analysisModal.setProgress(0);
@@ -1412,7 +1424,7 @@ async function runAnalysis() {
         setStatus("Analysis complete!");
         
         // ✅ Show success animation
-        analysisModal.showSuccess(layersQueried, featuresFound, mapsGenerated);
+        analysisModal.showSuccess(layersQueried, featuresFound, mapsGenerated, Date.now() - analysisStartTime);
 
         // Permitting mode: populate bucket results
         if (currentAppMode === "permit") {

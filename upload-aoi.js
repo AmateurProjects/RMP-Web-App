@@ -27,10 +27,21 @@ define([
     function _loadScript(url, globalName) {
         if (window[globalName]) return Promise.resolve(window[globalName]);
         return new Promise(function (resolve, reject) {
+            // Temporarily hide AMD `define` so UMD libraries fall back to
+            // setting a window global instead of registering as an AMD module.
+            var origDefine = window.define;
+            window.define = undefined;
+
             var s = document.createElement("script");
             s.src = url;
-            s.onload = function () { resolve(window[globalName]); };
-            s.onerror = function () { reject(new Error("Failed to load library: " + globalName)); };
+            s.onload = function () {
+                window.define = origDefine;   // restore AMD loader
+                resolve(window[globalName]);
+            };
+            s.onerror = function () {
+                window.define = origDefine;   // restore AMD loader
+                reject(new Error("Failed to load library: " + globalName));
+            };
             document.head.appendChild(s);
         });
     }

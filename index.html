@@ -123,6 +123,7 @@
                 <div><strong id="successLayersQueried">0</strong> layers queried</div>
                 <div><strong id="successFeaturesFound">0</strong> features found</div>
                 <div><strong id="successMapsGenerated">0</strong> maps generated</div>
+                <div id="successDuration" style="margin-top:6px;font-size:13px;color:var(--text-muted);"></div>
             </div>
             <button id="analysisSuccessCloseBtn" class="btn btn-primary">View Results</button>
         </div>
@@ -261,22 +262,6 @@
                 <span class="permit-legend-item"><span class="permit-feat-dot" data-status="none" style="position:static;"></span> None in view</span>
               </div>
               <div id="wizPermitList" class="permit-list">
-                <div class="permit-group-label">Grazing</div>
-                <button class="permit-item" data-permit="allotment" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Grazing Allotment</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
-                <button class="permit-item" data-permit="pasture" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Grazing Pasture</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
-
                 <div class="permit-group-label">Energy &amp; Minerals</div>
                 <button class="permit-item" data-permit="oilgas" type="button" aria-pressed="false">
                   <span class="permit-item-label">Oil &amp; Gas Lease</span>
@@ -317,6 +302,22 @@
                 </button>
                 <button class="permit-item" data-permit="lua" type="button" aria-pressed="false">
                   <span class="permit-item-label">Lease, Permit, or Easement</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+
+                <div class="permit-group-label">Grazing</div>
+                <button class="permit-item" data-permit="allotment" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Grazing Allotment</span>
+                  <span class="permit-indicators">
+                    <span class="permit-spinner hidden" title="Checking…"></span>
+                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                  </span>
+                </button>
+                <button class="permit-item" data-permit="pasture" type="button" aria-pressed="false">
+                  <span class="permit-item-label">Grazing Pasture</span>
                   <span class="permit-indicators">
                     <span class="permit-spinner hidden" title="Checking…"></span>
                     <span class="permit-feat-dot" data-status="unknown" title=""></span>
