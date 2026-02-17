@@ -32,48 +32,29 @@ define([
     let visualReportOutputsEl = null;
     let visualReportSummaryEl = null;
 
-    // ── Background-tab resilience helpers ──
-    let _wakeLock = null;
-
-    /** Request a Wake Lock to keep the screen active during analysis. */
-    async function requestWakeLock() {
-        try {
-            if (navigator.wakeLock) {
-                _wakeLock = await navigator.wakeLock.request("screen");
-                console.log("[visual-report] Wake Lock acquired");
-            }
-        } catch (e) {
-            console.warn("[visual-report] Wake Lock request failed:", e.message);
-        }
-    }
-
-    /** Release the Wake Lock when analysis is done. */
-    async function releaseWakeLock() {
-        try {
-            if (_wakeLock) { await _wakeLock.release(); _wakeLock = null; console.log("[visual-report] Wake Lock released"); }
-        } catch (e) { /* ignore */ }
-    }
-
     /**
-     * Retry wrapper for view.takeScreenshot.
-     * Browsers throttle rendering in hidden/background tabs.  If the first
-     * attempt returns no data we wait a moment and retry.
+     * Retry wrapper for view.takeScreenshot with background-tab resilience.
+     * Uses waitForTabVisible() from map-utils so that the promise never
+     * deadlocks on requestAnimationFrame in a hidden tab.
      */
     async function takeScreenshotSafe(view, opts, maxRetries) {
         if (maxRetries === undefined) maxRetries = 3;
+        const { waitForTabVisible } = mapUtils;
         for (var attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                await waitForTabVisible();                      // pause if tab hidden
+                await new Promise(function (r) { requestAnimationFrame(r); }); // force a paint
                 var ss = await view.takeScreenshot(opts);
                 if (ss && ss.dataUrl) return ss;
             } catch (e) {
                 console.warn("[visual-report] takeScreenshot attempt " + attempt + " failed:", e.message);
             }
-            // Wait before retrying — give browser a chance to repaint
+            // Wait before retrying
             await new Promise(function (r) { setTimeout(r, 800 * attempt); });
-            // Force a frame to encourage the browser to paint
-            await new Promise(function (r) { requestAnimationFrame(r); });
         }
-        // Final fallback attempt
+        // Final fallback — ensure tab is visible first
+        await waitForTabVisible();
+        await new Promise(function (r) { requestAnimationFrame(r); });
         return await view.takeScreenshot(opts);
     }
 
@@ -133,8 +114,8 @@ define([
     async function generateVisualReportData(myOp, modal) {
         if (modal === undefined) modal = null;
 
-        // Request Wake Lock to prevent browser throttling during screenshots
-        await requestWakeLock();
+        // Request Wake Lock to prevent device sleeping during screenshots
+        await mapUtils.acquireWakeLock();
 
         const view = S.view;
         const selectionGeom = S.selectionGeom;
@@ -148,7 +129,7 @@ define([
         const {
             getPresetRenderer, getLayerGeometryType, makeRendererOpaque,
             ensureAoiOnTop, updateAoiMask, hideAoiMask,
-            waitForViewStationary, waitForLayerReadyToCapture
+            waitForViewStationary, waitForLayerReadyToCapture, waitForTabVisible
         } = mapUtils;
 
         const {
@@ -432,7 +413,7 @@ define([
             setVisualStatus("Failed to generate maps (see console).");
         } finally {
             // Always release the Wake Lock when done
-            await releaseWakeLock();
+            await mapUtils.releaseWakeLock();
         }
     }
 

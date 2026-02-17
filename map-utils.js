@@ -241,6 +241,52 @@ define([
         });
     }
 
+    // ── Background-tab resilience ────────────────────────────────────
+
+    /**
+     * Returns a Promise that resolves as soon as the page is visible.
+     * If the tab is already visible it resolves immediately.  Otherwise it
+     * waits for the `visibilitychange` event.  This is used to pause
+     * screenshot-dependent work while the canvas isn't being painted.
+     */
+    function waitForTabVisible() {
+        if (!document.hidden) return Promise.resolve();
+        console.log("[map-utils] Tab hidden — pausing until visible…");
+        return new Promise(resolve => {
+            function onVis() {
+                if (!document.hidden) {
+                    document.removeEventListener("visibilitychange", onVis);
+                    console.log("[map-utils] Tab visible — resuming.");
+                    resolve();
+                }
+            }
+            document.addEventListener("visibilitychange", onVis);
+        });
+    }
+
+    let _wakeLock = null;
+
+    /** Acquire a Wake Lock to prevent the device from sleeping. */
+    async function acquireWakeLock() {
+        try {
+            if (navigator.wakeLock) {
+                _wakeLock = await navigator.wakeLock.request("screen");
+                // Re-acquire if released (e.g. tab switch on some browsers)
+                _wakeLock.addEventListener("release", () => { _wakeLock = null; });
+                console.log("[map-utils] Wake Lock acquired");
+            }
+        } catch (e) {
+            console.warn("[map-utils] Wake Lock request failed:", e.message);
+        }
+    }
+
+    /** Release the Wake Lock. */
+    async function releaseWakeLock() {
+        try {
+            if (_wakeLock) { await _wakeLock.release(); _wakeLock = null; console.log("[map-utils] Wake Lock released"); }
+        } catch (e) { /* ignore */ }
+    }
+
     // ── Screenshot / Capture Helpers ─────────────────────────────────
 
     async function waitForLayerReadyToCapture(layer, view, opts) {
@@ -299,6 +345,9 @@ define([
 
         // Final render settle
         await new Promise(r => setTimeout(r, 300));
+
+        // Ensure tab is visible so the canvas gets painted
+        await waitForTabVisible();
     }
 
     async function captureScreenshotWithWait(screenConfig) {
@@ -307,28 +356,48 @@ define([
         if (!view) return null;
 
         const width = screenConfig.width || (S.config?.visualReport?.screenshotWidth ?? 1400);
+        const maxRetries = screenConfig.maxRetries || 3;
+
+        // Ensure the tab is visible (canvas must be painted)
+        await waitForTabVisible();
 
         await waitForViewStationary(3000);
 
-        // Brief settle delay (reduced from 4×300ms to 2×200ms)
+        // Brief settle delay
         for (let i = 0; i < 2; i++) {
             await new Promise(r => setTimeout(r, 200));
         }
 
         await waitForViewStationary(2000);
 
-        try {
-            const ss = await view.takeScreenshot({
-                format: "png",
-                quality: 100,
-                width: width,
-                height: Math.round(width * 0.5625)
-            });
-            return ss?.dataUrl || null;
-        } catch (e) {
-            console.error("Screenshot capture failed:", e);
-            return null;
+        // Force a render frame so the canvas is up-to-date
+        await new Promise(r => requestAnimationFrame(r));
+
+        const ssOpts = {
+            format: "png",
+            quality: 100,
+            width: width,
+            height: Math.round(width * 0.5625)
+        };
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // If the tab went hidden between retries, wait again
+                await waitForTabVisible();
+                const ss = await view.takeScreenshot(ssOpts);
+                if (ss?.dataUrl) return ss.dataUrl;
+            } catch (e) {
+                console.warn("[map-utils] Screenshot attempt " + attempt + " failed:", e.message);
+            }
+            // Back-off delay before retry
+            await new Promise(r => setTimeout(r, 600 * attempt));
+            // Request a fresh frame before next attempt
+            await waitForTabVisible();
+            await new Promise(r => requestAnimationFrame(r));
         }
+
+        console.error("[map-utils] Screenshot capture failed after " + maxRetries + " attempts.");
+        return null;
     }
 
     async function hardRefreshLayer(layer, opts) {
@@ -434,6 +503,12 @@ define([
                         if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
                         if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                         const lyr = new FeatureLayer(layerOpts);
+                        try {
+                            await lyr.load();
+                        } catch (e) {
+                            console.warn(`[buildReportDisplayLayers] Skipping unsupported sublayer "${sl.title}":`, e.message || e);
+                            continue;
+                        }
                         layers.push(lyr);
                         if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
                         S.layerCfgByUrl.set(sl.url, { kind: "report", cfg });
@@ -469,6 +544,12 @@ define([
                         if (cfg.minScale !== undefined) layerOpts.minScale = cfg.minScale;
                         if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                         const lyr = new FeatureLayer(layerOpts);
+                        try {
+                            await lyr.load();
+                        } catch (e) {
+                            console.warn(`[buildReportDisplayLayers] Skipping unsupported sublayer "${sl.title}":`, e.message || e);
+                            continue;
+                        }
                         layers.push(lyr);
                         if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
                         S.layerCfgByUrl.set(sl.url, { kind: "report", cfg });
@@ -487,7 +568,7 @@ define([
                         visible: isAlwaysVisible
                     };
                     if (cfg.renderingRule) {
-                        layerOpts.renderingRule = { functionName: cfg.renderingRule };
+                        layerOpts.rasterFunction = { functionName: cfg.renderingRule };
                     }
                     const lyr = new ImageryLayer(layerOpts);
                     if (isAlwaysVisible) S.alwaysVisibleLayers.push(lyr);
@@ -556,6 +637,11 @@ define([
 
         // View / stationary
         waitForViewStationary,
+
+        // Background-tab resilience
+        waitForTabVisible,
+        acquireWakeLock,
+        releaseWakeLock,
 
         // Screenshot / capture
         waitForLayerReadyToCapture,

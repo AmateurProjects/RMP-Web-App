@@ -1580,6 +1580,34 @@ async function runAnalysis() {
 
     const analysisStartTime = Date.now();
 
+    // ── Background-tab warning system ──
+    const bgBanner = document.getElementById("bgTabWarning");
+    let bgNotifSent = false;
+
+    function onVisibilityChange() {
+        if (document.hidden) {
+            // Tab went to background during analysis — show warning
+            if (bgBanner) bgBanner.classList.remove("hidden");
+            analysisModal.addLog("Tab hidden — screenshots will pause until you return", "warning");
+
+            // Send a browser Notification so the user knows to return
+            if (!bgNotifSent && "Notification" in window && Notification.permission === "granted") {
+                new Notification("RMP Screening Tool", {
+                    body: "Analysis is paused — return to this tab to continue map generation.",
+                    icon: "https://www.blm.gov/themes/usasearch/img/favicon.ico"
+                });
+                bgNotifSent = true;
+            } else if (!bgNotifSent && "Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission(); // prompt for next time
+            }
+        } else {
+            // Tab visible again — hide warning
+            if (bgBanner) bgBanner.classList.add("hidden");
+            bgNotifSent = false;
+        }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     // ✅ Show analysis modal
     analysisModal.show();
     analysisModal.setProgress(0);
@@ -1691,6 +1719,8 @@ async function runAnalysis() {
     } finally {
         setBusy(false);
         endReportOp(myOp);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        if (bgBanner) bgBanner.classList.add("hidden");
     }
 }
 

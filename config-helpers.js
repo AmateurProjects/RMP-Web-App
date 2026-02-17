@@ -189,11 +189,17 @@ define([], function () {
         const layers = Array.isArray(info?.layers) ? info.layers : [];
 
         if (!polygonOnly) {
-            return layers.map(l => {
-                let title = String(l.name || "");
-                title = title.replace(/intersected/ig, "Parcel");
-                return { title, url: serviceUrl.replace(/\/$/, "") + "/" + l.id };
-            });
+            // Filter out Annotation sublayers — FeatureLayer cannot render them
+            return layers
+                .filter(l => {
+                    const t = String(l.type || l.subLayerType || "").toLowerCase();
+                    return !t.includes("annotation");
+                })
+                .map(l => {
+                    let title = String(l.name || "");
+                    title = title.replace(/intersected/ig, "Parcel");
+                    return { title, url: serviceUrl.replace(/\/$/, "") + "/" + l.id };
+                });
         }
 
         // Parallel geometry type checks for polygon filtering
@@ -222,10 +228,16 @@ define([], function () {
         const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
         const info = await fetchJson(pjsonUrl);
         const layers = (info && info.layers) ? info.layers : [];
-        return layers.map(l => ({
-            title: (l && l.name) ? String(l.name) : `Layer ${l.id}`,
-            url: serviceUrl.replace(/\/$/, "") + "/" + l.id
-        }));
+        // Filter out Annotation sublayers — FeatureLayer cannot render them
+        return layers
+            .filter(l => {
+                const t = String(l.type || l.subLayerType || "").toLowerCase();
+                return !t.includes("annotation");
+            })
+            .map(l => ({
+                title: (l && l.name) ? String(l.name) : `Layer ${l.id}`,
+                url: serviceUrl.replace(/\/$/, "") + "/" + l.id
+            }));
     }
 
     async function expandFeatureServerToPolygonSublayers(serviceUrl) {
@@ -262,6 +274,10 @@ define([], function () {
 
         const out = [];
         for (const l of layers) {
+            // Skip Annotation sublayers — FeatureLayer cannot render them
+            const t = String(l.type || l.subLayerType || "").toLowerCase();
+            if (t.includes("annotation")) continue;
+
             const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
             let title = l?.name ? String(l.name) : `Layer ${l.id}`;
             out.push({ title, url: layerUrl });

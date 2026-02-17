@@ -1822,7 +1822,7 @@ define([
         const aoiMaskLayer = S.aoiMaskLayer;
         const alwaysVisibleLayers = S.alwaysVisibleLayers;
 
-        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait } = mapUtils;
+        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait, waitForTabVisible } = mapUtils;
 
         const width  = config?.visualReport?.screenshotWidth ?? 1400;
         const height = Math.round(width * 0.5625);
@@ -2009,7 +2009,8 @@ define([
         const {
             updateAoiMask, hideAoiMask, ensureAoiOnTop,
             waitForViewStationary, waitForLayerReadyToCapture,
-            captureScreenshotWithWait,
+            captureScreenshotWithWait, waitForTabVisible,
+            acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer
         } = mapUtils;
 
@@ -2017,6 +2018,9 @@ define([
             queryAllFeaturesPaged, computeElevationStats,
             computeLayerCoverageStats, buildPerFeatureTable, SQM_PER_ACRE
         } = queryEngine;
+
+        // Acquire Wake Lock to prevent device sleeping during report generation
+        await acquireWakeLock();
 
         try {
             // STEP 1: Compute AOI area
@@ -2186,7 +2190,7 @@ define([
                             visible: true
                         };
                         if (item.__renderingRule) {
-                            imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
+                            imgLayerOpts.rasterFunction = { functionName: item.__renderingRule };
                         }
                         const temp = new ImageryLayer(imgLayerOpts);
                         view.map.add(temp);
@@ -2410,6 +2414,8 @@ define([
         } catch (e) {
             console.error(e);
             if (finalReportStatus) finalReportStatus.textContent = "Failed to build report (see console).";
+        } finally {
+            await releaseWakeLock();
         }
     }
 
