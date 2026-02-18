@@ -1674,7 +1674,7 @@ th{
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    margin: 0 24px;
+    margin: 12px 24px 0;
     padding: 10px 14px;
     background: #eff6ff;
     border: 1px solid #bfdbfe;

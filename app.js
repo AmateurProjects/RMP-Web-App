@@ -126,7 +126,6 @@ require([
     const wizNewScreening = document.getElementById("wizNewScreening");
     const wizFullReport = document.getElementById("wizFullReport");
     const wizExportAll = document.getElementById("wizExportAll");
-    const wizDrawBtn = document.getElementById("wizDrawBtn");
     const wizStopDrawBtn = document.getElementById("wizStopDrawBtn");
     const wizTownshipBtn = document.getElementById("wizTownshipBtn");
     const wizSectionBtn = document.getElementById("wizSectionBtn");
@@ -651,6 +650,10 @@ function setActiveTab(tabName) {
         const methodsEl = document.getElementById("aoiMethods");
         if (methodsEl) methodsEl.classList.remove("hidden");
         currentAoiMethod = null;
+
+        // Stop any active sketch and restore click-to-select
+        if (sketch) sketch.cancel();
+        currentInteractionMode = "select";
     }
 
     function setWizPlssActive(which) {
@@ -748,8 +751,7 @@ function setActiveTab(tabName) {
                             if (wizLocationInput) wizLocationInput.value = txt;
                             wizLocationResults.classList.add("hidden");
                             try {
-                                const sr = (view && view.spatialReference && view.spatialReference.wkid) || 102100;
-                                const gUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?SingleLine=" + encodeURIComponent(txt) + "&magicKey=" + encodeURIComponent(mk) + "&outSR=" + sr + "&f=json";
+                                const gUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?SingleLine=" + encodeURIComponent(txt) + "&magicKey=" + encodeURIComponent(mk) + "&outSR=4326&f=json";
                                 const gData = await fetchJson(gUrl);
                                 const c = gData && gData.candidates && gData.candidates[0];
                                 if (c && c.location) {
@@ -2564,6 +2566,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         sketch.on("create", (evt) => {
             if (evt.state === "complete") {
+                currentInteractionMode = "select"; // restore click-to-select after drawing
                 const geom = evt.graphic?.geometry || null;
                 if (!geom) return;
 
@@ -3223,24 +3226,44 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 else if (btn.id === "wizDrawLine") currentDrawToolType = "polyline";
                 else if (btn.id === "wizDrawPoint") currentDrawToolType = "point";
                 if (drawHintEl) drawHintEl.textContent = DRAW_HINTS[currentDrawToolType];
-            });
-        });
 
-        if (wizDrawBtn) {
-            wizDrawBtn.addEventListener("click", () => {
+                // Immediately start drawing with the selected tool type
                 if (!sketch) return;
-                // Hide any previous draw buffer panel
                 const dbp = document.getElementById("drawBufferPanel");
                 if (dbp) dbp.classList.add("hidden");
                 sketch.cancel();
+                currentInteractionMode = "draw";
                 sketch.create(currentDrawToolType);
                 setStatus("drawing " + currentDrawToolType + "\u2026");
             });
-        }
+        });
+
         if (wizStopDrawBtn) {
             wizStopDrawBtn.addEventListener("click", () => {
                 if (sketch) sketch.cancel();
-                setStatus("draw stopped");
+                currentInteractionMode = "select";
+
+                // Clear any existing drawn AOI
+                selectionGeom = null;
+                aoiSource = null;
+                aoiSourceLayerTitle = null;
+                aoiSourceLayerUrl = null;
+                aoiSourceObjectId = null;
+                aoiSourceObjectIdField = null;
+                aoiSourceFeature = null;
+                if (aoiLayer) aoiLayer.removeAll();
+                aoiGraphic = null;
+                if (runBtn) runBtn.disabled = true;
+
+                // Hide draw buffer panel
+                const dbp = document.getElementById("drawBufferPanel");
+                if (dbp) dbp.classList.add("hidden");
+
+                // Reset wizard UI
+                if (wizFullReport) wizFullReport.disabled = true;
+                if (wizExportAll) wizExportAll.disabled = true;
+
+                setStatus("draw canceled");
             });
         }
 
