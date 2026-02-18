@@ -213,14 +213,24 @@ function setBusy(isBusy) {
         },
         
         show() {
-            if (!this.el) return;
+            if (!this.el) {
+                // Fallback: try to find it again
+                this.el = document.getElementById("analysisModal");
+            }
+            if (!this.el) {
+                console.error("[analysisModal] Cannot find #analysisModal element!");
+                return;
+            }
             this.el.classList.remove("hidden");
+            this.el.style.display = "flex"; // belt-and-suspenders
             this.reset();
+            console.log("[analysisModal] Modal shown", this.el);
         },
         
         hide() {
             if (!this.el) return;
             this.el.classList.add("hidden");
+            this.el.style.display = ""; // clear inline override
         },
         
         reset() {
