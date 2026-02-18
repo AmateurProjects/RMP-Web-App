@@ -207,8 +207,36 @@ define([
         const applyTouchFilter = !!options.applyTouchFilter;
         const objectId         = options.objectId ?? null;
         const objectIdField    = options.objectIdField || "OBJECTID";
+        const skipExtentCheck  = !!options.skipExtentCheck;
 
         const layer = getCachedLayer(layerUrl);
+        
+        // ── Extent pre-check: skip layers with no geographic overlap ──
+        // This avoids unnecessary queries for layers that don't cover the AOI region
+        if (!skipExtentCheck && objectId == null) {
+            try {
+                await layer.load();
+                if (layer.fullExtent && geom?.extent) {
+                    const overlaps = geometryEngine.intersects(layer.fullExtent, geom.extent);
+                    if (!overlaps) {
+                        // Layer extent doesn't overlap AOI - skip query entirely
+                        return { 
+                            title: layerTitle, 
+                            url: layerUrl, 
+                            count: 0, 
+                            features: [], 
+                            layer, 
+                            exportQuery: null,
+                            _skippedExtentCheck: true
+                        };
+                    }
+                }
+            } catch (e) {
+                // If extent check fails, proceed with query anyway
+                console.warn(`[querySingleLayer] Extent check failed for ${layerTitle}:`, e.message);
+            }
+        }
+        
         const q     = layer.createQuery();
         q.outFields = ["*"];
 

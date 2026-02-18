@@ -3314,7 +3314,7 @@ th{
 /* Bucket report actions */
 .bucket-report-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     gap: 8px;
 }
 
@@ -3322,11 +3322,24 @@ th{
     font-size: 13px;
     padding: 8px 14px;
     white-space: nowrap;
+    transition: all 0.3s ease;
+    min-width: 180px;
 }
 
 .bucket-report-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.bucket-report-btn.ready-to-view {
+    background: var(--blm-green);
+    animation: pulse-ready 0.6s ease-out;
+}
+
+@keyframes pulse-ready {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
 }
 
 /* ============================================

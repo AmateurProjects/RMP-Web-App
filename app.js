@@ -1010,7 +1010,17 @@ function setActiveTab(tabName) {
         document.querySelectorAll('.bucket-report-btn[data-bucket]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const bucketKey = btn.dataset.bucket;
-                generateBucketReport(bucketKey);
+                
+                // Check if report is already ready to view
+                if (btn.dataset.reportReady === 'true' && cachedBucketReports[bucketKey]) {
+                    const opened = openCompletedReport(cachedBucketReports[bucketKey]);
+                    if (!opened) {
+                        alert("Could not open report. Please allow popups for this site.");
+                    }
+                    return;
+                }
+                
+                generateBucketReport(bucketKey, btn);
             });
         });
 
@@ -1042,11 +1052,14 @@ function setActiveTab(tabName) {
         }
     }
 
+    // Cache for generated bucket reports
+    const cachedBucketReports = {};
+
     /**
      * Generate a report for a specific bucket
-     * Shows modal during generation, opens in new tab when complete
+     * Shows modal during generation, then button changes to "View" state
      */
-    async function generateBucketReport(bucketKey) {
+    async function generateBucketReport(bucketKey, buttonEl) {
         if (!selectionGeom) {
             setStatus("No AOI selected — cannot generate report");
             return;
@@ -1082,12 +1095,16 @@ function setActiveTab(tabName) {
             
             reportModal.hide();
             
-            // Open the completed report in a new tab
-            const opened = openCompletedReport(htmlContent);
-            if (!opened) {
-                alert("Could not open report. Please allow popups for this site.");
+            // Cache the report and update button to "View" state
+            cachedBucketReports[bucketKey] = htmlContent;
+            
+            if (buttonEl) {
+                buttonEl.dataset.reportReady = 'true';
+                buttonEl.innerHTML = '📄 View ' + escapeHtml(bucketLabel) + ' Report';
+                buttonEl.classList.add('ready-to-view');
             }
-            setStatus(`${bucketLabel} report opened in new tab`);
+            
+            setStatus(`${bucketLabel} report ready — click button to view`);
             
         } catch (e) {
             reportModal.hide();
