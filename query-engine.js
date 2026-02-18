@@ -23,6 +23,20 @@ define([
     const coverageCache  = new Map();   // `${aoiKey}||${layerUrl}` → { acresCovered, pctAoiCovered }
     let   coverageAoiKey = "";
 
+    // ── Layer instance cache (avoid recreating FeatureLayer for every query) ──
+    const _layerCache = new Map();  // url → FeatureLayer instance
+
+    /**
+     * Get or create a FeatureLayer instance (avoids metadata re-fetch).
+     */
+    function getCachedLayer(url) {
+        const key = String(url).replace(/\/+$/, "").toLowerCase();
+        if (!_layerCache.has(key)) {
+            _layerCache.set(key, new FeatureLayer({ url, outFields: ["*"] }));
+        }
+        return _layerCache.get(key);
+    }
+
     // ── Geometry feature cache (shared between coverage stats and per-feature table) ──
     // Key: `${aoiKey}||${layerUrl}` → Feature[] (with geometry + attributes)
     const _geomFeatureCache = new Map();
@@ -194,7 +208,7 @@ define([
         const objectId         = options.objectId ?? null;
         const objectIdField    = options.objectIdField || "OBJECTID";
 
-        const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
+        const layer = getCachedLayer(layerUrl);
         const q     = layer.createQuery();
         q.outFields = ["*"];
 
@@ -285,7 +299,7 @@ define([
         }
 
         const applyTouchFilter = !!options.applyTouchFilter;
-        const layer = new FeatureLayer({ url: layerUrl, outFields: ["*"] });
+        const layer = getCachedLayer(layerUrl);
 
         // Query counts for each cell in parallel (batched 6 at a time)
         const CELL_BATCH = 6;

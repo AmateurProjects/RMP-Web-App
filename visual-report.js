@@ -42,7 +42,7 @@ define([
         const { waitForTabVisible } = mapUtils;
         for (var attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                await waitForTabVisible();                      // pause if tab hidden
+                await waitForTabVisible(10000);                 // pause if tab hidden (with 10s timeout)
                 await new Promise(function (r) { requestAnimationFrame(r); }); // force a paint
                 var ss = await view.takeScreenshot(opts);
                 if (ss && ss.dataUrl) return ss;
@@ -53,7 +53,7 @@ define([
             await new Promise(function (r) { setTimeout(r, 400 * attempt); });
         }
         // Final fallback — ensure tab is visible first
-        await waitForTabVisible();
+        await waitForTabVisible(5000);
         await new Promise(function (r) { requestAnimationFrame(r); });
         return await view.takeScreenshot(opts);
     }

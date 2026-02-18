@@ -2677,7 +2677,7 @@ define([
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
 
-            const ovSs = await captureScreenshotWithWait({ width });
+            const ovSs = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
             if (!ovSs) return mainDataUrl;
 
             const ovExtent = view.extent;
@@ -2821,7 +2821,7 @@ define([
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
 
-            const ss1 = await captureScreenshotWithWait({ width });
+            const ss1 = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
             const mainExtent1 = view.extent.clone();
 
             if (ss1) {
@@ -2836,7 +2836,7 @@ define([
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
 
-            const ss2 = await captureScreenshotWithWait({ width });
+            const ss2 = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
             const mainExtent2 = view.extent.clone();
 
             if (ss2) {
@@ -3065,8 +3065,9 @@ define([
 
     /**
      * Open a progressive report window and return an interface for streaming content
+     * Returns a Promise that resolves when the window is ready
      */
-    function openProgressiveReport(options = {}) {
+    async function openProgressiveReport(options = {}) {
         const title = options.title || "Report";
         const bucketLabel = options.bucketLabel || null;
         const createdAt = formatDateTimeForReport(new Date());
@@ -3118,6 +3119,8 @@ define([
             if (titleEl) titleEl.textContent = title;
             if (statusEl) statusEl.textContent = status;
         };
+        // Signal that the page is ready
+        window.reportReady = true;
     </script>
 </body>
 </html>`;
@@ -3125,13 +3128,39 @@ define([
         // Open the window
         const blob = new Blob([shellHtml], { type: "text/html;charset=utf-8" });
         const url = URL.createObjectURL(blob);
-        const win = window.open(url, "_blank", "noopener");
+        // Note: Cannot use "noopener" because we need to access win.document to stream content
+        const win = window.open(url, "_blank");
         
         // Clean up blob URL after a delay
         window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 
         if (!win) {
             console.error("Failed to open report window - popup blocked?");
+            return null;
+        }
+
+        // Wait for the popup document to be ready (poll for reportReady flag)
+        const maxWaitMs = 10000;
+        const startTime = Date.now();
+        while (Date.now() - startTime < maxWaitMs) {
+            try {
+                if (win.reportReady && win.document.getElementById('reportContent')) {
+                    break;
+                }
+            } catch (e) {
+                // Cross-origin or window not ready
+            }
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        // Final check
+        try {
+            if (!win.document.getElementById('reportContent')) {
+                console.error("Report window did not initialize properly");
+                return null;
+            }
+        } catch (e) {
+            console.error("Cannot access report window:", e);
             return null;
         }
 
@@ -3296,7 +3325,7 @@ define([
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 
         // Open the progressive report window
-        const report = openProgressiveReport({
+        const report = await openProgressiveReport({
             title: reportTitle,
             bucketLabel: bucketInfo?.label || null
         });
@@ -3468,9 +3497,9 @@ define([
                             setVisibilityForScreenshot(tempLayer);
 
                             await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                            await waitForTabVisible();
+                            await waitForTabVisible(5000);
 
-                            const ss = await captureScreenshotWithWait({ width });
+                            const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             const dataUrl = ss?.dataUrl || null;
 
                             // Clean up temp layer
@@ -3773,7 +3802,7 @@ define([
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                             await waitForViewStationary(1500);
 
-                            const dataUrl = await captureScreenshotWithWait({ width });
+                            const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
                             const meta = item.__serviceMeta || {};
@@ -3873,7 +3902,7 @@ define([
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
                         await waitForViewStationary(1500);
 
-                        const dataUrl = await captureScreenshotWithWait({ width });
+                        const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                         if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
                         // Determine geometry class for this layer

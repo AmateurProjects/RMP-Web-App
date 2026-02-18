@@ -275,21 +275,39 @@ define([
     /**
      * Returns a Promise that resolves as soon as the page is visible.
      * If the tab is already visible it resolves immediately.  Otherwise it
-     * waits for the `visibilitychange` event.  This is used to pause
-     * screenshot-dependent work while the canvas isn't being painted.
+     * waits for the `visibilitychange` event with a configurable timeout.
+     * @param {number} timeoutMs - Max time to wait before proceeding anyway (default: 60000ms)
      */
-    function waitForTabVisible() {
+    function waitForTabVisible(timeoutMs = 60000) {
         if (!document.hidden) return Promise.resolve();
-        console.log("[map-utils] Tab hidden — pausing until visible…");
+        console.log("[map-utils] Tab hidden — pausing until visible (max " + (timeoutMs/1000) + "s)…");
         return new Promise(resolve => {
-            function onVis() {
-                if (!document.hidden) {
+            let resolved = false;
+            
+            function cleanup() {
+                if (!resolved) {
+                    resolved = true;
                     document.removeEventListener("visibilitychange", onVis);
-                    console.log("[map-utils] Tab visible — resuming.");
                     resolve();
                 }
             }
+            
+            function onVis() {
+                if (!document.hidden) {
+                    console.log("[map-utils] Tab visible — resuming.");
+                    cleanup();
+                }
+            }
+            
             document.addEventListener("visibilitychange", onVis);
+            
+            // Timeout: proceed anyway after waiting to avoid hanging forever
+            setTimeout(() => {
+                if (!resolved) {
+                    console.warn("[map-utils] Tab visibility wait timed out — proceeding anyway (screenshots may be blank)");
+                    cleanup();
+                }
+            }, timeoutMs);
         });
     }
 
@@ -375,8 +393,8 @@ define([
         // Final render settle
         await new Promise(r => setTimeout(r, 150));
 
-        // Ensure tab is visible so the canvas gets painted
-        await waitForTabVisible();
+        // Ensure tab is visible so the canvas gets painted (short timeout to avoid hanging)
+        await waitForTabVisible(5000);
     }
 
     async function captureScreenshotWithWait(screenConfig) {
@@ -386,9 +404,11 @@ define([
 
         const width = screenConfig.width || (S.config?.visualReport?.screenshotWidth ?? 1400);
         const maxRetries = screenConfig.maxRetries || 3;
+        // For progressive reports, use shorter timeout since user is likely viewing the popup
+        const tabWaitTimeout = screenConfig.tabWaitTimeout || 5000;
 
-        // Ensure the tab is visible (canvas must be painted)
-        await waitForTabVisible();
+        // Brief wait for tab visibility (with timeout to avoid hanging)
+        await waitForTabVisible(tabWaitTimeout);
 
         await waitForViewStationary(1500);
 
@@ -406,8 +426,6 @@ define([
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                // If the tab went hidden between retries, wait again
-                await waitForTabVisible();
                 const ss = await view.takeScreenshot(ssOpts);
                 if (ss?.dataUrl) return ss.dataUrl;
             } catch (e) {
@@ -416,7 +434,6 @@ define([
             // Back-off delay before retry
             await new Promise(r => setTimeout(r, 400 * attempt));
             // Request a fresh frame before next attempt
-            await waitForTabVisible();
             await new Promise(r => requestAnimationFrame(r));
         }
 

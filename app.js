@@ -2197,8 +2197,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     }
     // ── End of processOneTarget ──
 
-    // ── Batched parallel queries (batches of 8) ──
-    const BATCH_SIZE = 12;
+    // ── Batched parallel queries ──
+    // Larger batch size is safe since layers are on different domains
+    const BATCH_SIZE = config.report?.queryBatchSize ?? 20;
     const cards = [];
 
     for (let bStart = 0; bStart < expandedTargets.length; bStart += BATCH_SIZE) {
@@ -2787,15 +2788,21 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         selectionLayers.forEach(e => map.add(e.layer));
 
-        setLoadingState("Loading report layers...", 45);
-
-        // ✅ NEW: build report layers (for map display toggles)
-        await buildReportDisplayLayers();
-
+        // Render selection layer toggles immediately (report layers will populate later)
         renderLayerToggles(map);
         ensureAoiOnTop();
 
-        setLoadingState("Waiting for map view...", 65);
+        // ✅ Build report layers in BACKGROUND (don't block init)
+        // This can take 30+ seconds with 50+ layer configs
+        buildReportDisplayLayers().then(() => {
+            console.log("[init] Report layers ready, refreshing layer toggles");
+            renderLayerToggles(map);
+            ensureAoiOnTop();
+        }).catch(e => {
+            console.error("[init] Failed to build report layers:", e);
+        });
+
+        setLoadingState("Waiting for map view...", 55);
 
         await view.when();
         setLoadingState("Setting up tools...", 80);
