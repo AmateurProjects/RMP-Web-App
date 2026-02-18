@@ -23,6 +23,10 @@ define([
     const coverageCache  = new Map();   // `${aoiKey}||${layerUrl}` → { acresCovered, pctAoiCovered }
     let   coverageAoiKey = "";
 
+    // ── Geometry feature cache (shared between coverage stats and per-feature table) ──
+    // Key: `${aoiKey}||${layerUrl}` → Feature[] (with geometry + attributes)
+    const _geomFeatureCache = new Map();
+
     // ── Helpers ──────────────────────────────────────────────────
 
     /**
@@ -43,6 +47,7 @@ define([
      */
     function resetCoverageCacheForAoi(geom) {
         coverageCache.clear();
+        _geomFeatureCache.clear();
         coverageAoiKey = getAoiKey(geom);
     }
 
@@ -110,7 +115,10 @@ define([
     }
 
     /**
-     * Page through all features WITH geometry (no attributes).
+     * Page through all features WITH geometry AND attributes.
+     * Fetching attributes here allows the geometry cache to serve
+     * both computeLayerCoverageStats and buildPerFeatureTable without
+     * a second round trip.
      */
     async function queryAllFeaturesPagedWithGeometry(layer, baseQuery, pageSize, maxExportFeatures) {
         const all = [];
@@ -121,7 +129,7 @@ define([
             q.num   = pageSize;
             q.start = offset;
             q.returnGeometry    = true;
-            q.outFields         = [];
+            q.outFields         = ["*"];
             q.outSpatialReference = S.view?.spatialReference;
 
             const fs   = await layer.queryFeatures(q);
@@ -215,15 +223,21 @@ define([
         q.spatialRelationship = spatialRel;
         q.returnGeometry      = applyTouchFilter;
 
-        const count      = await layer.queryFeatureCount(q);
+        // Fire count + sample queries in parallel (saves one full round trip)
         const maxSamples = S.config.report?.maxSampleFeaturesPerLayer ?? 25;
-        let   features   = [];
+        const q2 = q.clone();
+        q2.num = Math.min(maxSamples, 2000);
 
-        if (count > 0 && maxSamples > 0) {
-            const q2 = q.clone();
-            q2.num   = Math.min(maxSamples, 2000);
-            const fs = await layer.queryFeatures(q2);
-            const raw = fs?.features ?? [];
+        const [countResult, sampleResult] = await Promise.all([
+            layer.queryFeatureCount(q),
+            maxSamples > 0 ? layer.queryFeatures(q2).catch(() => null) : Promise.resolve(null)
+        ]);
+
+        const count = countResult;
+        let features = [];
+
+        if (count > 0 && sampleResult) {
+            const raw = sampleResult?.features ?? [];
             features = applyTouchFilter ? filterTouchingOnly(raw, geom) : raw;
         }
 
@@ -454,6 +468,9 @@ define([
 
         const feats = await queryAllFeaturesPagedWithGeometry(item._layer, item._exportQuery, pageSize, maxExport);
 
+        // Cache the geometry features for reuse by buildPerFeatureTable
+        _geomFeatureCache.set(cacheKey, feats);
+
         // Intersect each feature with AOI
         const interGeoms = [];
         for (const f of feats) {
@@ -564,31 +581,49 @@ define([
         const pageSize  = S.config.report?.pageSize ?? 1000;
         const maxExport = S.config.report?.maxExportFeatures ?? 50000;
 
-        // Query all features WITH geometry + attributes
-        let feats = [];
-        try {
-            const q = item._exportQuery.clone();
-            q.returnGeometry      = true;
-            q.outFields           = ["*"];
-            q.outSpatialReference = S.view?.spatialReference;
+        // Check geometry cache first (populated by computeLayerCoverageStats)
+        const layerUrlKey = String(item.url || "").replace(/\/+$/, "");
+        const aoiKey      = coverageAoiKey || getAoiKey(aoiGeom);
+        const geomCacheKey = `${aoiKey}||${layerUrlKey}`;
 
-            const all = [];
-            let offset = 0;
-            while (true) {
-                const pq = q.clone();
-                pq.num   = pageSize;
-                pq.start = offset;
-                const fs    = await item._layer.queryFeatures(pq);
-                const batch = fs?.features ?? [];
-                all.push(...batch);
-                if (batch.length < pageSize) break;
-                offset += pageSize;
-                if (all.length >= maxExport) break;
+        let feats = [];
+
+        if (_geomFeatureCache.has(geomCacheKey)) {
+            // Reuse cached geometry features — but we need attributes too.
+            // Coverage stats queries geometry-only; re-query with attributes if needed.
+            const cachedFeats = _geomFeatureCache.get(geomCacheKey);
+            const hasAttrs = cachedFeats.length > 0 && cachedFeats[0].attributes && Object.keys(cachedFeats[0].attributes).length > 0;
+            if (hasAttrs) {
+                feats = cachedFeats;
             }
-            feats = all;
-        } catch (e) {
-            console.warn("buildPerFeatureTable: query failed", e);
-            return "";
+        }
+
+        if (feats.length === 0) {
+            // Query all features WITH geometry + attributes
+            try {
+                const q = item._exportQuery.clone();
+                q.returnGeometry      = true;
+                q.outFields           = ["*"];
+                q.outSpatialReference = S.view?.spatialReference;
+
+                const all = [];
+                let offset = 0;
+                while (true) {
+                    const pq = q.clone();
+                    pq.num   = pageSize;
+                    pq.start = offset;
+                    const fs    = await item._layer.queryFeatures(pq);
+                    const batch = fs?.features ?? [];
+                    all.push(...batch);
+                    if (batch.length < pageSize) break;
+                    offset += pageSize;
+                    if (all.length >= maxExport) break;
+                }
+                feats = all;
+            } catch (e) {
+                console.warn("buildPerFeatureTable: query failed", e);
+                return "";
+            }
         }
 
         if (feats.length < 1) return "";

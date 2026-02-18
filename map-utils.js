@@ -367,13 +367,13 @@ define([
             });
             // Stability check: wait a moment and see if it stays non-updating
             if (!lv.updating) {
-                await new Promise(r => setTimeout(r, 250));
+                await new Promise(r => setTimeout(r, 150));
                 // If it started updating again, loop continues
             }
         }
 
         // Final render settle
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 150));
 
         // Ensure tab is visible so the canvas gets painted
         await waitForTabVisible();
@@ -390,14 +390,9 @@ define([
         // Ensure the tab is visible (canvas must be painted)
         await waitForTabVisible();
 
-        await waitForViewStationary(3000);
+        await waitForViewStationary(1500);
 
-        // Brief settle delay
-        for (let i = 0; i < 2; i++) {
-            await new Promise(r => setTimeout(r, 200));
-        }
-
-        await waitForViewStationary(2000);
+        await waitForViewStationary(800);
 
         // Force a render frame so the canvas is up-to-date
         await new Promise(r => requestAnimationFrame(r));
@@ -419,7 +414,7 @@ define([
                 console.warn("[map-utils] Screenshot attempt " + attempt + " failed:", e.message);
             }
             // Back-off delay before retry
-            await new Promise(r => setTimeout(r, 600 * attempt));
+            await new Promise(r => setTimeout(r, 400 * attempt));
             // Request a fresh frame before next attempt
             await waitForTabVisible();
             await new Promise(r => requestAnimationFrame(r));

@@ -50,7 +50,7 @@ define([
                 console.warn("[visual-report] takeScreenshot attempt " + attempt + " failed:", e.message);
             }
             // Wait before retrying
-            await new Promise(function (r) { setTimeout(r, 800 * attempt); });
+            await new Promise(function (r) { setTimeout(r, 400 * attempt); });
         }
         // Final fallback — ensure tab is visible first
         await waitForTabVisible();
@@ -226,6 +226,8 @@ define([
             }
 
             var outCards = [];
+            // Deferred coverage: collect data during screenshots, resolve coverage in parallel after
+            var deferredFeatureLayers = []; // { item, dataUrl, tempGeomType, cardIndex }
 
             for (var i = 0; i < targets.length; i++) {
                 if (_isReportCanceled(myOp)) {
@@ -360,39 +362,17 @@ define([
                     var dataUrl2 = ss2 && ss2.dataUrl;
                     if (!dataUrl2) throw new Error("Screenshot failed (no dataUrl).");
 
-                    // Compute coverage stats (acres + % AOI covered)
-                    var cov = await computeLayerCoverageStats(item, selectionGeom);
-
-                    // Render a card for this layer
-                    var acresCovered = cov ? cov.acresCovered : 0;
-                    var pctCovered = cov ? cov.pctAoiCovered : 0;
-
-                    // Check for low coverage warning — only for polygon layers
-                    var isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().indexOf('polygon') !== -1;
-                    var isSingleFeatureLowCoverage = isPolygonLayer && (item.count === 1 && pctCovered < 3);
-                    var lowCoverageWarningHtml = isSingleFeatureLowCoverage
-                        ? '<div style="margin-top:8px; padding:6px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px; font-size:11px;">' +
-                            '<span style="color:#856404;">\u26a0\ufe0f Low coverage (&lt;3%) \u2014 possible sliver or boundary artifact</span>' +
-                          '</div>'
-                        : "";
-
-                    outCards.push(
-                        '<div class="visual-output-card">' +
-                          '<div class="visual-output-title">' + escapeHtml(item.title) + '</div>' +
-                          '<img class="visual-output-img" src="' + dataUrl2 + '" alt="AOI + ' + escapeHtml(item.title) + '" />' +
-                          '<div class="visual-output-meta">' +
-                            '<table>' +
-                              '<tr><td>AOI area</td><td><span class="mono">' + formatNumber(aoiAcres, 2) + '</span> acres</td></tr>' +
-                              '<tr><td>Intersecting features</td><td><span class="mono">' + escapeHtml(String(item.count || 0)) + '</span></td></tr>' +
-                              '<tr><td>AOI covered by layer</td><td><span class="mono">' + formatNumber(acresCovered, 2) + '</span> acres</td></tr>' +
-                              '<tr><td>% AOI covered</td><td><span class="mono">' + formatNumber(pctCovered, 2) + '</span>%' +
-                                  (isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver">\u26a0\ufe0f</span>' : '') +
-                              '</td></tr>' +
-                            '</table>' +
-                            lowCoverageWarningHtml +
-                          '</div>' +
-                        '</div>'
-                    );
+                    // Defer coverage stats — store screenshot data, compute coverage in parallel later
+                    var cardIndex = outCards.length;
+                    outCards.push(null); // placeholder
+                    deferredFeatureLayers.push({
+                        item: item,
+                        dataUrl: dataUrl2,
+                        tempGeomType: tempGeomType,
+                        cardIndex: cardIndex,
+                        // Fire coverage network request NOW so it overlaps with next screenshot's render wait
+                        coveragePromise: computeLayerCoverageStats(item, selectionGeom).catch(function () { return null; })
+                    });
 
                 } finally {
                     // Remove temp layer and restore visibility
@@ -401,7 +381,50 @@ define([
                 }
             }
 
-            if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = outCards.join("");
+            // ── Resolve all deferred coverage stats in parallel ──
+            if (deferredFeatureLayers.length > 0) {
+                if (modal) {
+                    modal.addLog("Computing coverage statistics (" + deferredFeatureLayers.length + " layers)...");
+                }
+                var covResults = await Promise.all(
+                    deferredFeatureLayers.map(function (d) { return d.coveragePromise; })
+                );
+
+                for (var di = 0; di < deferredFeatureLayers.length; di++) {
+                    var d = deferredFeatureLayers[di];
+                    var cov = covResults[di];
+
+                    var acresCovered = cov ? cov.acresCovered : 0;
+                    var pctCovered = cov ? cov.pctAoiCovered : 0;
+
+                    var isPolygonLayer = d.tempGeomType && String(d.tempGeomType).toLowerCase().indexOf('polygon') !== -1;
+                    var isSingleFeatureLowCoverage = isPolygonLayer && (d.item.count === 1 && pctCovered < 3);
+                    var lowCoverageWarningHtml = isSingleFeatureLowCoverage
+                        ? '<div style="margin-top:8px; padding:6px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px; font-size:11px;">' +
+                            '<span style="color:#856404;">\u26a0\ufe0f Low coverage (&lt;3%) \u2014 possible sliver or boundary artifact</span>' +
+                          '</div>'
+                        : "";
+
+                    outCards[d.cardIndex] =
+                        '<div class="visual-output-card">' +
+                          '<div class="visual-output-title">' + escapeHtml(d.item.title) + '</div>' +
+                          '<img class="visual-output-img" src="' + d.dataUrl + '" alt="AOI + ' + escapeHtml(d.item.title) + '" />' +
+                          '<div class="visual-output-meta">' +
+                            '<table>' +
+                              '<tr><td>AOI area</td><td><span class="mono">' + formatNumber(aoiAcres, 2) + '</span> acres</td></tr>' +
+                              '<tr><td>Intersecting features</td><td><span class="mono">' + escapeHtml(String(d.item.count || 0)) + '</span></td></tr>' +
+                              '<tr><td>AOI covered by layer</td><td><span class="mono">' + formatNumber(acresCovered, 2) + '</span> acres</td></tr>' +
+                              '<tr><td>% AOI covered</td><td><span class="mono">' + formatNumber(pctCovered, 2) + '</span>%' +
+                                  (isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver">\u26a0\ufe0f</span>' : '') +
+                              '</td></tr>' +
+                            '</table>' +
+                            lowCoverageWarningHtml +
+                          '</div>' +
+                        '</div>';
+                }
+            }
+
+            if (visualReportOutputsEl) visualReportOutputsEl.innerHTML = outCards.filter(Boolean).join("");
             if (visualReportMapWrapEl) visualReportMapWrapEl.classList.remove("hidden");
 
             // Keep existing summary panel behavior

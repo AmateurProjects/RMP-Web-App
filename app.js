@@ -302,6 +302,10 @@ function setBusy(isBusy) {
     // Track service status (url -> "UP" | "DOWN")
     const serviceStatus = new Map();
 
+    // ── Sublayer expansion cache ──
+    // Pre-expanded sublayer lists keyed by service root URL → Promise<sublayer[]>
+    const _sublayerCache = new Map();
+
     // AOI overlay (always on top)
     let aoiLayer = null;      // GraphicsLayer
     let aoiGraphic = null;    // Graphic (single AOI graphic)
@@ -1514,6 +1518,27 @@ async function checkServiceStatusBackground() {
     renderLayerToggles(map);
 }
 
+/**
+ * Pre-expand FeatureServer/MapServer roots in the background so
+ * the sublayer list is cached before the user runs analysis.
+ */
+function preExpandServiceRoots() {
+    const reportLayers = config.reportLayers || [];
+    for (const cfg of reportLayers) {
+        const url = String(cfg.url || "");
+        if (isFeatureServerRoot(url)) {
+            const key = "fs:" + url;
+            if (!_sublayerCache.has(key)) {
+                _sublayerCache.set(key, expandServiceToSublayers(url).catch(() => []));
+            }
+        } else if (isMapServerRoot(url)) {
+            const key = "ms:" + url;
+            if (!_sublayerCache.has(key)) {
+                _sublayerCache.set(key, expandMapServerToSublayers(url, { polygonOnly: false }).catch(() => []));
+            }
+        }
+    }
+}
 
 
 
@@ -1683,7 +1708,12 @@ async function runAnalysis() {
         analysisModal.setProgress(10);
         analysisModal.addLog("Checking service availability");
         
-        await refreshServicesTab();
+        // Skip full health check if background check already populated status
+        if (serviceStatus.size > 0) {
+            analysisModal.addLog("Using cached service status (background check already ran)", "success");
+        } else {
+            await refreshServicesTab();
+        }
 
         if (isReportCanceled(myOp)) {
             analysisModal.addLog("Analysis canceled by user", "error");
@@ -1874,11 +1904,16 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         directTargets.push({ title: cfg.title, url });
     }
 
-    // Expand all service roots in parallel
+    // Expand all service roots in parallel (with cache)
     const [fsResults, msResults] = await Promise.all([
         Promise.allSettled(featureServerRoots.map(async cfg => {
             try {
-                const sublayers = await expandServiceToSublayers(cfg.url);
+                // Use cached expansion if available
+                const cacheKey = "fs:" + cfg.url;
+                if (!_sublayerCache.has(cacheKey)) {
+                    _sublayerCache.set(cacheKey, expandServiceToSublayers(cfg.url));
+                }
+                const sublayers = await _sublayerCache.get(cacheKey);
                 return sublayers.map(sl => ({
                     title: `${cfg.title}: ${sl.title}`,
                     url: sl.url
@@ -1889,7 +1924,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         })),
         Promise.allSettled(mapServerRoots.map(async cfg => {
             try {
-                const subs = await expandMapServerToSublayers(cfg.url, { polygonOnly: false });
+                // Use cached expansion if available
+                const cacheKey = "ms:" + cfg.url;
+                if (!_sublayerCache.has(cacheKey)) {
+                    _sublayerCache.set(cacheKey, expandMapServerToSublayers(cfg.url, { polygonOnly: false }));
+                }
+                const subs = await _sublayerCache.get(cacheKey);
                 return subs.map(sl => ({
                     title: `${cfg.title}: ${sl.title}`,
                     url: sl.url
@@ -2086,7 +2126,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     // ── End of processOneTarget ──
 
     // ── Batched parallel queries (batches of 8) ──
-    const BATCH_SIZE = 8;
+    const BATCH_SIZE = 12;
     const cards = [];
 
     for (let bStart = 0; bStart < expandedTargets.length; bStart += BATCH_SIZE) {
@@ -3496,7 +3536,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // Background service check — delay 5s so it doesn't compete with
         // critical layer loading for browser connection slots
-        setTimeout(() => checkServiceStatusBackground().catch(() => {}), 5000);
+        setTimeout(() => {
+            checkServiceStatusBackground().catch(() => {});
+            // Pre-expand service roots in background so they're cached for analysis
+            preExpandServiceRoots();
+        }, 5000);
     }
 
     init().catch((e) => {
