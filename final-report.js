@@ -4076,6 +4076,336 @@ define([
     }
 
     // ────────────────────────────────────────────
+    // buildReportInBackground – builds report without opening window
+    // Returns complete HTML document ready to open
+    // ────────────────────────────────────────────
+    async function buildReportInBackground(options = {}) {
+        const bucketKey = options.bucketKey || null;
+        const onProgress = options.onProgress || (() => {});
+        const onStep = options.onStep || (() => {});
+        const isCanceled = options.isCanceled || (() => false);
+
+        const view = S.view;
+        const selectionGeom = S.selectionGeom;
+        const config = S.config;
+        const lastReportRowsByLayer = S.lastReportRowsByLayer;
+        const aoiLayer = S.aoiLayer;
+        const aoiMaskLayer = S.aoiMaskLayer;
+        const alwaysVisibleLayers = S.alwaysVisibleLayers;
+
+        if (!view || !selectionGeom) {
+            throw new Error("No AOI selected");
+        }
+
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            throw new Error("No analysis data available");
+        }
+
+        // Get bucket info
+        const bucketInfo = bucketKey ? REPORT_BUCKETS[bucketKey] : null;
+        const reportTitle = bucketInfo 
+            ? `${bucketInfo.icon} ${bucketInfo.label} Report`
+            : "Land & Resource Intersection Analysis Report";
+
+        // Filter layers to this bucket (or all for full report)
+        let targetLayers;
+        if (bucketKey) {
+            const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
+            targetLayers = buckets[bucketKey] || [];
+        } else {
+            targetLayers = lastReportRowsByLayer;
+        }
+
+        // Filter to layers with hits that can generate maps
+        const mappableLayers = targetLayers
+            .filter(x => (x?.count || 0) > 0)
+            .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
+            .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+
+        const {
+            updateAoiMask, hideAoiMask, ensureAoiOnTop,
+            waitForViewStationary, waitForLayerReadyToCapture,
+            captureScreenshotWithWait, waitForTabVisible,
+            acquireWakeLock, releaseWakeLock,
+            getLayerGeometryType, makeRendererOpaque, getPresetRenderer
+        } = mapUtils;
+
+        const { computeLayerCoverageStats, SQM_PER_ACRE } = queryEngine;
+
+        // Accumulate content sections
+        const contentParts = [];
+        let mapsGenerated = 0;
+        let sectionsComplete = 0;
+
+        try {
+            await acquireWakeLock();
+
+            // === STEP 1: AOI Overview ===
+            onStep("Generating AOI overview maps");
+            onProgress(5, mapsGenerated, sectionsComplete);
+
+            if (isCanceled()) throw new Error("Canceled");
+
+            // Calculate AOI info
+            let aoiAcres = 0;
+            try {
+                const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
+                aoiAcres = aoiSqm / SQM_PER_ACRE;
+            } catch (e) {
+                aoiAcres = 0;
+            }
+
+            let aoiMethod = "Manually Drawn";
+            if (S.aoiSource === "select") {
+                const tool = plssToolLabel(S.aoiSourcePlssTool);
+                aoiMethod = `Selected ${tool}`;
+            } else if (S.aoiSource === "upload") {
+                aoiMethod = `Uploaded File: ${S.aoiSourceLayerTitle || "unknown"}`;
+            }
+
+            // Generate AOI maps
+            const aoiMapsHtml = await generateAoiMapsWithCircles();
+            mapsGenerated += 2; // Usually generates 2 AOI maps
+            sectionsComplete++;
+            onProgress(15, mapsGenerated, sectionsComplete);
+
+            if (isCanceled()) throw new Error("Canceled");
+
+            // Build AOI section
+            contentParts.push(`
+                <h2>Area of Interest</h2>
+                <p style="color: var(--muted); font-style: italic;">The geographic boundary used for this analysis.</p>
+                ${aoiMapsHtml}
+                <div class="aoi-details">
+                    <div class="aoi-field"><span class="aoi-label">Area:</span> ${formatNumber(aoiAcres, 2)} acres</div>
+                    <div class="aoi-field"><span class="aoi-label">Method:</span> ${escapeHtml(aoiMethod)}</div>
+                </div>
+            `);
+
+            // === STEP 2: Summary stats ===
+            const totalLayers = targetLayers.length;
+            const layersWithHits = targetLayers.filter(x => (x.count || 0) > 0).length;
+            const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
+
+            contentParts.push(`
+                <h2>Summary</h2>
+                <div class="totals">
+                    <div class="row">
+                        <div class="pill">${totalLayers} Layers Queried</div>
+                        <div class="pill">${layersWithHits} With Findings</div>
+                        <div class="pill">${totalFeatures} Total Features</div>
+                    </div>
+                </div>
+            `);
+            sectionsComplete++;
+            onProgress(20, mapsGenerated, sectionsComplete);
+
+            // === STEP 3: Generate maps for each layer ===
+            if (mappableLayers.length === 0) {
+                contentParts.push(`
+                    <h2>Layer Details</h2>
+                    <p style="color: var(--muted); font-style: italic;">No intersecting features found in the ${bucketInfo?.label || 'screened'} datasets.</p>
+                `);
+            } else {
+                contentParts.push(`<h2>Layer Details</h2>`);
+
+                const paddingFactor = config?.visualReport?.paddingFactor ?? 1.12;
+                const width = config?.visualReport?.screenshotWidth ?? 1400;
+
+                let fixedExtent = null;
+                const ext = selectionGeom?.extent;
+                if (ext && ext.expand) fixedExtent = ext.expand(paddingFactor);
+
+                // Snapshot layer visibility
+                const allLayers = view.map.layers.toArray();
+                const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+                const originalBasemap = view.map.basemap;
+                const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
+
+                function setVisibilityForScreenshot(tempLayer) {
+                    for (const l of allLayers) {
+                        if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                        if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
+                        if (l?.type === "tile") { l.visible = true; continue; }
+                        if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
+                        l.visible = false;
+                    }
+                    if (tempLayer) tempLayer.visible = true;
+                    updateAoiMask(true);
+                    ensureAoiOnTop();
+                }
+
+                function restoreVisibility() {
+                    visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) {} });
+                    hideAoiMask();
+                    ensureAoiOnTop();
+                }
+
+                try {
+                    // Switch to imagery basemap
+                    view.map.basemap = imageryBasemapId;
+                    await new Promise(r => setTimeout(r, 1500));
+                    await waitForViewStationary(2500);
+
+                    if (fixedExtent) {
+                        await view.goTo(fixedExtent, { animate: false });
+                        await waitForViewStationary(1500);
+                    }
+
+                    // Process each layer
+                    for (let i = 0; i < mappableLayers.length; i++) {
+                        if (isCanceled()) throw new Error("Canceled");
+
+                        const item = mappableLayers[i];
+                        const layerTitle = item.title || "Unknown Layer";
+
+                        onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
+                        onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
+
+                        // Skip ImageServer layers
+                        if (item.__isImageService) {
+                            contentParts.push(`
+                                <div class="section">
+                                    <h3>${escapeHtml(layerTitle)}</h3>
+                                    <div class="sub">Imagery layer — coverage statistics not available</div>
+                                </div>
+                            `);
+                            sectionsComplete++;
+                            continue;
+                        }
+
+                        try {
+                            // Create temp layer for screenshot
+                            const renderer = getPresetRenderer("report", item, await getLayerGeometryType(item.url));
+                            const tempRenderer = renderer ? makeRendererOpaque(renderer) : null;
+
+                            const tempLayer = new FeatureLayer({
+                                url: item.url,
+                                outFields: ["*"],
+                                renderer: tempRenderer,
+                                visible: false
+                            });
+                            view.map.add(tempLayer);
+                            tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
+
+                            setVisibilityForScreenshot(tempLayer);
+
+                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+
+                            const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                            const dataUrl = ss || null;
+
+                            // Clean up temp layer
+                            view.map.remove(tempLayer);
+                            mapsGenerated++;
+
+                            // Calculate coverage stats
+                            let coverageHtml = "";
+                            try {
+                                const stats = await computeLayerCoverageStats(item);
+                                if (stats && stats.acresCovered > 0) {
+                                    coverageHtml = `
+                                        <table class="metaTbl">
+                                            <tr><td>Features Found</td><td>${item.count || 0}</td></tr>
+                                            <tr><td>Approx. Coverage</td><td>${formatNumber(stats.acresCovered, 2)} acres (${formatNumber(stats.pctAoiCovered, 1)}% of AOI)</td></tr>
+                                        </table>
+                                    `;
+                                }
+                            } catch (e) {
+                                // Stats failed, skip
+                            }
+
+                            // Build section HTML
+                            const attrSummary = generateLayerAttributeSummary(item);
+                            contentParts.push(`
+                                <div class="section">
+                                    <h3>${escapeHtml(layerTitle)}</h3>
+                                    ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : '<div class="sub">Map generation failed</div>'}
+                                    <div class="sub">${item.count || 0} feature${item.count !== 1 ? 's' : ''} intersecting AOI</div>
+                                    ${coverageHtml}
+                                    ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
+                                </div>
+                            `);
+                            sectionsComplete++;
+
+                        } catch (e) {
+                            console.warn(`Failed to generate map for ${layerTitle}:`, e);
+                            contentParts.push(`
+                                <div class="section">
+                                    <h3>${escapeHtml(layerTitle)}</h3>
+                                    <div class="sub" style="color: #c62828;">Map generation failed: ${escapeHtml(e.message)}</div>
+                                </div>
+                            `);
+                            sectionsComplete++;
+                        }
+
+                        onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
+                    }
+
+                } finally {
+                    // Restore original state
+                    try {
+                        view.map.basemap = originalBasemap;
+                    } catch (e) {}
+                    restoreVisibility();
+                }
+            }
+
+            onStep("Finalizing report...");
+            onProgress(95, mapsGenerated, sectionsComplete);
+
+            // Build complete HTML document
+            const createdAt = formatDateTimeForReport(new Date());
+            const bucketLabel = bucketInfo?.label || null;
+
+            const fullHtml = `<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>${escapeHtml(reportTitle)}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>${getReportStyles()}</style>
+</head>
+<body>
+    <header class="report-header">
+        <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
+        <h1>${escapeHtml(reportTitle)}</h1>
+        <p class="meta">Generated: ${escapeHtml(createdAt)}${bucketLabel ? ` &bull; Category: ${escapeHtml(bucketLabel)}` : ''}</p>
+    </header>
+    <main class="wrap">
+        ${contentParts.join('\n')}
+    </main>
+    <footer class="report-footer">
+        <p>This report is for informational purposes only and does not constitute a formal BLM determination.</p>
+        <p>Generated by the BLM Permit Screening Tool &bull; ${formatDateTimeForReport(new Date())}</p>
+    </footer>
+</body>
+</html>`;
+
+            onProgress(100, mapsGenerated, sectionsComplete);
+            return fullHtml;
+
+        } finally {
+            await releaseWakeLock();
+        }
+    }
+
+    /**
+     * Open a completed report HTML document in a new tab
+     */
+    function openCompletedReport(htmlContent) {
+        if (!htmlContent) return false;
+        const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, "_blank");
+        window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return !!win;
+    }
+
+    // ────────────────────────────────────────────
     // init – called once from app.js
     // ────────────────────────────────────────────
     function init(state, deps) {
@@ -4107,6 +4437,9 @@ define([
             buildProgressiveReport,
             categorizeLayersIntoBuckets,
             REPORT_BUCKETS,
+            // Background report builder (builds complete HTML without opening window)
+            buildReportInBackground,
+            openCompletedReport,
             // Accessors for cachedFinalReportHtml
             getCachedFinalReportHtml: () => cachedFinalReportHtml,
             setCachedFinalReportHtml: (v) => { cachedFinalReportHtml = v; },

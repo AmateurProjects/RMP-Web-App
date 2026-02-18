@@ -297,6 +297,94 @@ function setBusy(isBusy) {
         }
     };
 
+    // ---------- Report Building Modal Helpers ----------
+    let reportBuildCanceled = false;
+
+    const reportModal = {
+        el: null,
+        progressFill: null,
+        currentStep: null,
+        progressDetail: null,
+        stats: {
+            mapsGenerated: null,
+            sectionsComplete: null
+        },
+        
+        init() {
+            this.el = document.getElementById("reportModal");
+            this.progressFill = document.getElementById("reportProgressFill");
+            this.currentStep = document.getElementById("reportCurrentStep");
+            this.progressDetail = document.getElementById("reportProgressDetail");
+            this.stats.mapsGenerated = document.getElementById("reportMapsGenerated");
+            this.stats.sectionsComplete = document.getElementById("reportSectionsComplete");
+            
+            // Wire cancel button
+            const cancelBtn = document.getElementById("reportModalCancelBtn");
+            if (cancelBtn) {
+                cancelBtn.addEventListener("click", () => {
+                    reportBuildCanceled = true;
+                    this.hide();
+                    lockMapInteraction(false);
+                    setStatus("Report canceled");
+                });
+            }
+        },
+        
+        show() {
+            if (!this.el) {
+                this.el = document.getElementById("reportModal");
+            }
+            if (!this.el) {
+                console.error("[reportModal] Cannot find #reportModal element!");
+                return;
+            }
+            reportBuildCanceled = false;
+            this.el.classList.remove("hidden");
+            this.reset();
+            lockMapInteraction(true);
+        },
+        
+        hide() {
+            if (!this.el) return;
+            this.el.classList.add("hidden");
+            lockMapInteraction(false);
+        },
+        
+        reset() {
+            this.setProgress(0);
+            this.setStep("Initializing...");
+            this.setProgressDetail("Preparing report...");
+            this.updateStats(0, 0);
+        },
+        
+        setProgress(percent) {
+            if (this.progressFill) {
+                this.progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+            }
+        },
+        
+        setStep(text) {
+            if (this.currentStep) {
+                this.currentStep.textContent = text;
+            }
+        },
+        
+        setProgressDetail(text) {
+            if (this.progressDetail) {
+                this.progressDetail.textContent = text;
+            }
+        },
+        
+        updateStats(mapsGenerated, sectionsComplete) {
+            if (this.stats.mapsGenerated) this.stats.mapsGenerated.textContent = mapsGenerated;
+            if (this.stats.sectionsComplete) this.stats.sectionsComplete.textContent = sectionsComplete;
+        },
+        
+        isCanceled() {
+            return reportBuildCanceled;
+        }
+    };
+
 
     // ---------- State ----------
     let config = null;
@@ -407,7 +495,9 @@ function setBusy(isBusy) {
         // Progressive report builder
         openProgressiveReport, buildProgressiveReport,
         categorizeLayersIntoBuckets: categorizeFinalReportBuckets,
-        REPORT_BUCKETS: FINAL_REPORT_BUCKETS
+        REPORT_BUCKETS: FINAL_REPORT_BUCKETS,
+        // Background report builder (new)
+        buildReportInBackground, openCompletedReport
     } = finalReport;
 
     // ── Initialize visual-report module with shared state + deps ──
@@ -953,8 +1043,8 @@ function setActiveTab(tabName) {
     }
 
     /**
-     * Generate a progressive report for a specific bucket
-     * Opens a new tab immediately and streams content as it's generated
+     * Generate a report for a specific bucket
+     * Shows modal during generation, opens in new tab when complete
      */
     async function generateBucketReport(bucketKey) {
         if (!selectionGeom) {
@@ -966,25 +1056,53 @@ function setActiveTab(tabName) {
             return;
         }
 
-        setStatus(`Generating ${PERMIT_BUCKETS[bucketKey]?.label || bucketKey} report...`);
-
+        const bucketLabel = PERMIT_BUCKETS[bucketKey]?.label || bucketKey;
+        
+        // Show modal
+        reportModal.show();
+        reportModal.setStep(`Building ${bucketLabel} Report`);
+        
         try {
-            await buildProgressiveReport({
+            const htmlContent = await buildReportInBackground({
                 bucketKey: bucketKey,
-                onProgress: (msg, pct) => {
-                    setStatus(`Report: ${msg} (${Math.round(pct)}%)`);
-                }
+                onProgress: (pct, maps, sections) => {
+                    reportModal.setProgress(pct);
+                    reportModal.updateStats(maps, sections);
+                },
+                onStep: (stepText) => {
+                    reportModal.setProgressDetail(stepText);
+                },
+                isCanceled: () => reportModal.isCanceled()
             });
-            setStatus("Report generated in new tab");
+            
+            if (reportModal.isCanceled()) {
+                setStatus("Report canceled");
+                return;
+            }
+            
+            reportModal.hide();
+            
+            // Open the completed report in a new tab
+            const opened = openCompletedReport(htmlContent);
+            if (!opened) {
+                alert("Could not open report. Please allow popups for this site.");
+            }
+            setStatus(`${bucketLabel} report opened in new tab`);
+            
         } catch (e) {
-            console.error("Bucket report error:", e);
-            setStatus("Report generation failed — see console");
+            reportModal.hide();
+            if (e.message === "Canceled") {
+                setStatus("Report canceled");
+            } else {
+                console.error("Report error:", e);
+                setStatus("Report generation failed — see console");
+            }
         }
     }
 
     /**
-     * Generate the full progressive report (all buckets)
-     * Opens a new tab immediately and streams content as it's generated
+     * Generate the full report (all buckets)
+     * Shows modal during generation, opens in new tab when complete
      */
     async function generateFullProgressiveReport() {
         if (!selectionGeom) {
@@ -996,19 +1114,45 @@ function setActiveTab(tabName) {
             return;
         }
 
-        setStatus("Generating full report...");
-
+        // Show modal
+        reportModal.show();
+        reportModal.setStep("Building Full Report");
+        
         try {
-            await buildProgressiveReport({
+            const htmlContent = await buildReportInBackground({
                 bucketKey: null, // null = full report
-                onProgress: (msg, pct) => {
-                    setStatus(`Report: ${msg} (${Math.round(pct)}%)`);
-                }
+                onProgress: (pct, maps, sections) => {
+                    reportModal.setProgress(pct);
+                    reportModal.updateStats(maps, sections);
+                },
+                onStep: (stepText) => {
+                    reportModal.setProgressDetail(stepText);
+                },
+                isCanceled: () => reportModal.isCanceled()
             });
-            setStatus("Full report generated in new tab");
+            
+            if (reportModal.isCanceled()) {
+                setStatus("Report canceled");
+                return;
+            }
+            
+            reportModal.hide();
+            
+            // Open the completed report in a new tab
+            const opened = openCompletedReport(htmlContent);
+            if (!opened) {
+                alert("Could not open report. Please allow popups for this site.");
+            }
+            setStatus("Full report opened in new tab");
+            
         } catch (e) {
-            console.error("Full report error:", e);
-            setStatus("Report generation failed — see console");
+            reportModal.hide();
+            if (e.message === "Canceled") {
+                setStatus("Report canceled");
+            } else {
+                console.error("Full report error:", e);
+                setStatus("Report generation failed — see console");
+            }
         }
     }
 
@@ -3607,6 +3751,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // Initialize analysis modal
         analysisModal.init();
+        
+        // Initialize report building modal
+        reportModal.init();
 
         // Background service check — delay 5s so it doesn't compete with
         // critical layer loading for browser connection slots

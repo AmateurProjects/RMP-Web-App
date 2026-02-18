@@ -161,6 +161,53 @@
     </div>
 </div>
 
+<!-- Report Building Modal -->
+<div id="reportModal" class="report-modal hidden">
+    <div class="report-modal-backdrop"></div>
+    <div class="report-modal-content">
+        <div class="report-modal-header">
+            <h2>Building Report</h2>
+            <div class="report-progress-bar">
+                <div id="reportProgressFill" class="report-progress-fill"></div>
+            </div>
+        </div>
+        
+        <div class="report-modal-notice">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span>Please keep this tab <strong>open and visible</strong> until the report is finished. Map screenshots require this tab to be active.</span>
+        </div>
+
+        <div class="report-modal-body">
+            <div class="report-modal-section">
+                <div class="report-modal-step-label">Current Step</div>
+                <div id="reportCurrentStep" class="report-modal-step-value">Initializing...</div>
+            </div>
+            
+            <div class="report-modal-section">
+                <div class="report-modal-step-label">Progress</div>
+                <div id="reportProgressDetail" class="report-modal-progress-detail">Preparing report...</div>
+            </div>
+        </div>
+        
+        <div class="report-modal-stats">
+            <div class="report-modal-stat">
+                <div class="report-modal-stat-value" id="reportMapsGenerated">0</div>
+                <div class="report-modal-stat-label">Maps Generated</div>
+            </div>
+            <div class="report-modal-stat">
+                <div class="report-modal-stat-value" id="reportSectionsComplete">0</div>
+                <div class="report-modal-stat-label">Sections Complete</div>
+            </div>
+        </div>
+        
+        <div class="report-modal-footer">
+            <button id="reportModalCancelBtn" class="btn btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <!-- Background-tab warning banner (fixed at top, shown when tab is hidden during analysis) -->
 <div id="bgTabWarning" class="bg-tab-warning hidden">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
