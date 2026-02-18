@@ -2605,6 +2605,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     drawBufPanel._drawnGeom = geom;
                     drawBufPanel.classList.remove("hidden");
 
+                    // Scroll the buffer options into view
+                    requestAnimationFrame(() => {
+                        drawBufPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                    });
+
                     // Clear active preset
                     document.querySelectorAll(".draw-buf-preset").forEach(b => b.classList.remove("active"));
                 }

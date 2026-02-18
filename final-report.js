@@ -1976,6 +1976,71 @@ define([
             ctx.lineWidth = 1.5;
             ctx.strokeRect(ix - 1, iy - 1, insetW + 2, insetH + 2);
 
+            // Draw red arrow pointing at the AOI
+            {
+                const aoiExt = selectionGeom.extent;
+                const mw = mainExtent.xmax - mainExtent.xmin;
+                const mh = mainExtent.ymax - mainExtent.ymin;
+                if (aoiExt && mw > 0 && mh > 0) {
+                    const aoiCx = (aoiExt.xmin + aoiExt.xmax) / 2;
+                    const aoiCy = (aoiExt.ymin + aoiExt.ymax) / 2;
+                    const tipX = ((aoiCx - mainExtent.xmin) / mw) * width;
+                    const tipY = ((mainExtent.ymax - aoiCy) / mh) * height;
+
+                    // Shaft from upper-right, 90px at 45°
+                    const shaftLen = 90;
+                    const d = Math.SQRT1_2; // cos(45°)
+                    const tailX = tipX + shaftLen * d;
+                    const tailY = tipY - shaftLen * d;
+
+                    // Arrowhead geometry
+                    const lineAngle = Math.atan2(tipY - tailY, tipX - tailX);
+                    const headLen = 18;
+                    const headHalf = Math.PI / 6;
+                    const h1x = tipX - headLen * Math.cos(lineAngle - headHalf);
+                    const h1y = tipY - headLen * Math.sin(lineAngle - headHalf);
+                    const h2x = tipX - headLen * Math.cos(lineAngle + headHalf);
+                    const h2y = tipY - headLen * Math.sin(lineAngle + headHalf);
+
+                    ctx.save();
+                    ctx.lineCap = "round";
+                    ctx.lineJoin = "round";
+
+                    // White halo for contrast
+                    ctx.strokeStyle = "#fff";
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(tailX, tailY);
+                    ctx.lineTo(tipX, tipY);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(tipX, tipY);
+                    ctx.lineTo(h1x, h1y);
+                    ctx.lineTo(h2x, h2y);
+                    ctx.closePath();
+                    ctx.fillStyle = "#fff";
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Red arrow
+                    ctx.strokeStyle = "#e63946";
+                    ctx.fillStyle = "#e63946";
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(tailX, tailY);
+                    ctx.lineTo(tipX, tipY);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(tipX, tipY);
+                    ctx.lineTo(h1x, h1y);
+                    ctx.lineTo(h2x, h2y);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+            }
+
             return canvas.toDataURL("image/png");
         }
 

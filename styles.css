@@ -1635,7 +1635,6 @@ th{
     border-radius: 16px;
     width: 90%;
     max-width: 600px;
-    max-height: 80vh;
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     position: relative;
@@ -1693,9 +1692,8 @@ th{
 
 .analysis-body {
     padding: 20px 24px;
-    overflow-y: auto;
-    flex: 1 1 auto;
-    min-height: 0;
+    overflow: hidden;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -1748,8 +1746,8 @@ th{
     border-radius: 8px;
     padding: 12px;
     overflow-y: auto;
-    height: 150px;
-    max-height: 150px;
+    height: 120px;
+    max-height: 120px;
     font-size: 13px;
     font-family: monospace;
     color: #444;
