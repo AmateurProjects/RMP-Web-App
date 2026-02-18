@@ -2753,7 +2753,7 @@ define([
 
             cachedFinalReportHtml = htmlDoc;
 
-            // Persist report to IndexedDB for shareable URL
+            // Persist report to IndexedDB for bookmarkable URL (device-local only)
             try {
                 const reportId = await saveReportToDb(htmlDoc);
                 _lastReportId = reportId;

@@ -1,6 +1,112 @@
 html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
 
 /* ============================================
+   ACCESSIBILITY WIDGET
+   ============================================ */
+.a11y-widget {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 50000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.a11y-toggle {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid #1a73e8;
+    background: #fff;
+    color: #1a73e8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    transition: background 0.2s, color 0.2s, transform 0.15s;
+}
+.a11y-toggle:hover,
+.a11y-toggle:focus-visible {
+    background: #1a73e8;
+    color: #fff;
+    transform: scale(1.08);
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+.a11y-toggle[aria-expanded="true"] {
+    background: #1a73e8;
+    color: #fff;
+}
+.a11y-menu {
+    position: absolute;
+    bottom: 52px;
+    right: 0;
+    min-width: 220px;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    padding: 6px 0;
+    animation: a11yFadeIn 0.15s ease;
+}
+.a11y-menu.hidden {
+    display: none;
+}
+@keyframes a11yFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.a11y-menu-header {
+    padding: 8px 14px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 4px;
+}
+.a11y-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.a11y-option:hover,
+.a11y-option:focus-visible {
+    background: #e8f0fe;
+    outline: none;
+}
+.a11y-option[aria-checked="true"] {
+    font-weight: 700;
+    color: #1a73e8;
+    background: #e8f0fe;
+}
+.a11y-option[aria-checked="true"]::before {
+    content: '✓ ';
+}
+.a11y-option small {
+    color: #888;
+    font-weight: 400;
+}
+/* Filter applied to the whole page */
+html.cv-protanopia    { filter: url(#cv-protanopia); }
+html.cv-deuteranopia  { filter: url(#cv-deuteranopia); }
+html.cv-tritanopia    { filter: url(#cv-tritanopia); }
+html.cv-achromatopsia { filter: url(#cv-achromatopsia); }
+html.cv-highcontrast  { filter: url(#cv-highcontrast); }
+/* Prevent the filter from creating a new stacking context that breaks fixed positioning */
+html[class*="cv-"] body {
+    /* Ensures modals, popups etc. still render correctly under the page-level filter */
+    isolation: auto;
+}
+
+/* ============================================
    APP LOADING OVERLAY
    ============================================ */
 .app-loading-overlay {

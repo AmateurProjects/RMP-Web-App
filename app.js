@@ -661,6 +661,10 @@ function setActiveTab(tabName) {
         if (dbp) dbp.classList.add("hidden");
         setStatus("");
 
+        // Hide all selection layers (permit & PLSS) so they don't linger when switching methods
+        for (let i = 0; i < selectionLayers.length; i++) disableSelectionLayer(i);
+        clearAllSelectionToolButtons();
+
         currentAoiMethod = method;
         const methodsEl = document.getElementById("aoiMethods");
         if (methodsEl) methodsEl.classList.add("hidden");
@@ -2912,7 +2916,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
         if (viewReportBtn) viewReportBtn.addEventListener("click", viewFinalReport);
 
-        // Copy Report Link buttons
+        // Bookmark Report buttons (saves link to reopen on this device/browser)
         async function copyReportLink(btn) {
             const reportId = getLastReportId();
             if (!reportId) {
@@ -2923,11 +2927,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             try {
                 await navigator.clipboard.writeText(url);
                 const origText = btn.textContent;
-                btn.textContent = "✅ Copied!";
+                btn.textContent = "✅ Bookmarked!";
                 setTimeout(() => { btn.textContent = origText; }, 2000);
             } catch (e) {
                 // Fallback: select from a prompt
-                window.prompt("Copy this link:", url);
+                window.prompt("Copy this bookmark URL (works on this device only):", url);
             }
         }
         if (copyReportLinkBtn) copyReportLinkBtn.addEventListener("click", () => copyReportLink(copyReportLinkBtn));
@@ -3536,7 +3540,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 if (html) {
                     openHtmlInNewTab(html);
                 } else {
-                    alert("This report link has expired or is not available on this device.\n\nReport links are valid for 7 days and can only be opened on the device where the analysis was run.");
+                    alert("This report bookmark has expired or is not available.\n\nBookmarks are valid for 7 days and can only be opened on the device/browser where the analysis was run.");
                 }
                 // Clean the URL so a refresh doesn't re-open
                 const cleanUrl = window.location.origin + window.location.pathname;
@@ -3567,3 +3571,79 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     });
 
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Accessibility Color-Vision Widget (independent of ArcGIS modules)
+// ════════════════════════════════════════════════════════════════════════════
+(function initA11yWidget() {
+    const STORAGE_KEY = "a11y-cv-mode";
+    const toggleBtn = document.getElementById("a11yToggleBtn");
+    const menu = document.getElementById("a11yMenu");
+    if (!toggleBtn || !menu) return;
+
+    const options = menu.querySelectorAll(".a11y-option");
+    const CV_CLASSES = ["cv-protanopia", "cv-deuteranopia", "cv-tritanopia", "cv-achromatopsia", "cv-highcontrast"];
+
+    function applyMode(mode) {
+        // Remove all cv- classes from <html>
+        CV_CLASSES.forEach(c => document.documentElement.classList.remove(c));
+        // Apply the chosen one
+        if (mode && mode !== "none") {
+            document.documentElement.classList.add("cv-" + mode);
+        }
+        // Update aria-checked on menu items
+        options.forEach(btn => {
+            btn.setAttribute("aria-checked", btn.dataset.cv === mode ? "true" : "false");
+        });
+        // Persist
+        try { localStorage.setItem(STORAGE_KEY, mode || "none"); } catch (_) {}
+    }
+
+    // Restore saved preference
+    let saved = "none";
+    try { saved = localStorage.getItem(STORAGE_KEY) || "none"; } catch (_) {}
+    applyMode(saved);
+
+    // Toggle menu open/close
+    toggleBtn.addEventListener("click", () => {
+        const open = menu.classList.toggle("hidden");
+        toggleBtn.setAttribute("aria-expanded", !open ? "true" : "false");
+        if (!open) {
+            // Focus first menu item for keyboard navigation
+            const first = menu.querySelector(".a11y-option");
+            if (first) first.focus();
+        }
+    });
+
+    // Menu item clicks
+    options.forEach(btn => {
+        btn.addEventListener("click", () => {
+            applyMode(btn.dataset.cv);
+        });
+    });
+
+    // Keyboard navigation inside menu
+    menu.addEventListener("keydown", (e) => {
+        const items = [...options];
+        const idx = items.indexOf(document.activeElement);
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+            e.preventDefault();
+            items[(idx + 1) % items.length].focus();
+        } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+            e.preventDefault();
+            items[(idx - 1 + items.length) % items.length].focus();
+        } else if (e.key === "Escape") {
+            menu.classList.add("hidden");
+            toggleBtn.setAttribute("aria-expanded", "false");
+            toggleBtn.focus();
+        }
+    });
+
+    // Close if user clicks outside
+    document.addEventListener("click", (e) => {
+        if (!menu.classList.contains("hidden") && !menu.contains(e.target) && e.target !== toggleBtn) {
+            menu.classList.add("hidden");
+            toggleBtn.setAttribute("aria-expanded", "false");
+        }
+    });
+})();

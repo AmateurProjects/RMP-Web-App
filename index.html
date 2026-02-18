@@ -555,7 +555,7 @@
             <button id="wizNewScreening" class="btn subtle" type="button">← New Screening</button>
             <button id="wizExportAll" class="btn subtle" type="button" disabled>📥 Export CSV</button>
             <button id="wizFullReport" class="btn primary" type="button" disabled>📋 Full Report</button>
-            <button id="wizCopyReportLink" class="btn subtle" type="button" disabled title="Copy shareable report link">🔗 Copy Link</button>
+            <button id="wizCopyReportLink" class="btn subtle" type="button" disabled title="Bookmark this report — reopens on this device/browser only">🔖 Bookmark Report</button>
           </div>
         </div>
 
@@ -740,7 +740,7 @@
         <div id="finalReportStatus" class="small" style="margin-top:12px;"></div>
         <div class="row" style="margin-top:14px;">
           <button id="viewReportBtn" class="btn primary" type="button" disabled>📋 View Report</button>
-          <button id="copyReportLinkBtn" class="btn subtle" type="button" disabled title="Copy shareable report link">🔗 Copy Link</button>
+          <button id="copyReportLinkBtn" class="btn subtle" type="button" disabled title="Bookmark this report — reopens on this device/browser only">🔖 Bookmark Report</button>
         </div>
       </div>
     </section>
@@ -749,6 +749,71 @@
     --><!-- /advancedModePanel — COMMENTED OUT FOR PERFORMANCE TESTING -->
 
   </aside>
+
+  <!-- Accessibility: SVG color-vision filters (hidden, referenced via CSS filter: url(#id)) -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <defs>
+      <!-- Protanopia (no red cones) -->
+      <filter id="cv-protanopia">
+        <feColorMatrix type="matrix" values="
+          0.567, 0.433, 0,     0, 0
+          0.558, 0.442, 0,     0, 0
+          0,     0.242, 0.758, 0, 0
+          0,     0,     0,     1, 0" />
+      </filter>
+      <!-- Deuteranopia (no green cones) -->
+      <filter id="cv-deuteranopia">
+        <feColorMatrix type="matrix" values="
+          0.625, 0.375, 0,   0, 0
+          0.7,   0.3,   0,   0, 0
+          0,     0.3,   0.7, 0, 0
+          0,     0,     0,   1, 0" />
+      </filter>
+      <!-- Tritanopia (no blue cones) -->
+      <filter id="cv-tritanopia">
+        <feColorMatrix type="matrix" values="
+          0.95, 0.05,  0,     0, 0
+          0,    0.433, 0.567, 0, 0
+          0,    0.475, 0.525, 0, 0
+          0,    0,     0,     1, 0" />
+      </filter>
+      <!-- Achromatopsia (total color blindness / grayscale) -->
+      <filter id="cv-achromatopsia">
+        <feColorMatrix type="matrix" values="
+          0.299, 0.587, 0.114, 0, 0
+          0.299, 0.587, 0.114, 0, 0
+          0.299, 0.587, 0.114, 0, 0
+          0,     0,     0,     1, 0" />
+      </filter>
+      <!-- High Contrast -->
+      <filter id="cv-highcontrast">
+        <feComponentTransfer>
+          <feFuncR type="linear" slope="1.8" intercept="-0.35" />
+          <feFuncG type="linear" slope="1.8" intercept="-0.35" />
+          <feFuncB type="linear" slope="1.8" intercept="-0.35" />
+        </feComponentTransfer>
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- Accessibility floating menu -->
+  <div id="a11yWidget" class="a11y-widget" role="region" aria-label="Accessibility options">
+    <button id="a11yToggleBtn" class="a11y-toggle" aria-haspopup="true" aria-expanded="false" title="Accessibility options">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+        <circle cx="12" cy="4.5" r="2"/>
+        <path d="M12 7.5c-3.5 0-6 1-6 1v2s2.5-.5 5-.7V12l-3.5 7h2.2l2.3-5 2.3 5h2.2L13 12v-2.2c2.5.2 5 .7 5 .7v-2s-2.5-1-6-1z"/>
+      </svg>
+    </button>
+    <div id="a11yMenu" class="a11y-menu hidden" role="menu" aria-label="Color vision modes">
+      <div class="a11y-menu-header">Vision Assistance</div>
+      <button class="a11y-option" role="menuitem" data-cv="none">Normal Vision</button>
+      <button class="a11y-option" role="menuitem" data-cv="protanopia">Protanopia <small>(no red)</small></button>
+      <button class="a11y-option" role="menuitem" data-cv="deuteranopia">Deuteranopia <small>(no green)</small></button>
+      <button class="a11y-option" role="menuitem" data-cv="tritanopia">Tritanopia <small>(no blue)</small></button>
+      <button class="a11y-option" role="menuitem" data-cv="achromatopsia">Achromatopsia <small>(grayscale)</small></button>
+      <button class="a11y-option" role="menuitem" data-cv="highcontrast">High Contrast</button>
+    </div>
+  </div>
 
   <script src="./app.js"></script>
 </body>
