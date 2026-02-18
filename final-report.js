@@ -3060,6 +3060,32 @@ define([
             }
             .totals{ margin-top: 24px; }
             .totals .row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; }
+            .export-btn{
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--blm-green);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 18px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.2s;
+            }
+            .export-btn:hover{ background: var(--blm-green-light); }
+            .report-actions{
+                display: flex;
+                gap: 12px;
+                margin-top: 16px;
+                padding-top: 16px;
+                border-top: 1px solid rgba(255,255,255,0.2);
+            }
+            @media print {
+                .report-actions { display: none; }
+                .export-btn { display: none; }
+            }
         `;
     }
 
@@ -4140,11 +4166,14 @@ define([
             targetLayers = lastReportRowsByLayer;
         }
 
-        // Filter to layers with hits that can generate maps
+        // Filter to layers with coverage that can generate maps
+        // Feature counts are queried during report generation
         const mappableLayers = targetLayers
-            .filter(x => (x?.count || 0) > 0)
-            .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
+            .filter(x => x?.hasCoverage || (x?.count || 0) > 0) // Coverage from screening
+            .filter(x => x?.url || x?.__isImageService)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+
+        const { querySingleLayer } = queryEngine;
 
         const {
             updateAoiMask, hideAoiMask, ensureAoiOnTop,
@@ -4299,6 +4328,37 @@ define([
                         }
 
                         try {
+                            // === Query for actual feature count and data ===
+                            // This is where feature intersection is computed (deferred from screening)
+                            let queryResult = null;
+                            let featureCount = item.count || 0;
+                            let featureRows = item.rows || [];
+                            
+                            if (!item._exportQuery && item.url) {
+                                // Need to query for features
+                                onStep(`Querying features: ${layerTitle}`);
+                                try {
+                                    queryResult = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
+                                    featureCount = queryResult.count || 0;
+                                    featureRows = queryResult.features ? queryResult.features.map(f => f.attributes) : [];
+                                    // Update item with query results for potential later use
+                                    item.count = featureCount;
+                                    item.rows = featureRows;
+                                    item._layer = queryResult.layer;
+                                    item._exportQuery = queryResult.exportQuery;
+                                } catch (qe) {
+                                    console.warn(`Feature query failed for ${layerTitle}:`, qe);
+                                }
+                            }
+                            
+                            // Skip layers with no actual features
+                            if (featureCount === 0) {
+                                sectionsComplete++;
+                                continue;
+                            }
+                            
+                            onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
+                            
                             // Create temp layer for screenshot - use service's native renderer
                             const tempGeomType = await getLayerGeometryType(item.url);
 
@@ -4354,7 +4414,7 @@ define([
                                 if (stats && stats.acresCovered > 0) {
                                     coverageHtml = `
                                         <table class="metaTbl">
-                                            <tr><td>Features Found</td><td>${item.count || 0}</td></tr>
+                                            <tr><td>Features Found</td><td>${featureCount}</td></tr>
                                             <tr><td>Approx. Coverage</td><td>${formatNumber(stats.acresCovered, 2)} acres (${formatNumber(stats.pctAoiCovered, 1)}% of AOI)</td></tr>
                                         </table>
                                     `;
@@ -4369,7 +4429,7 @@ define([
                                 <div class="section">
                                     <h3>${escapeHtml(layerTitle)}</h3>
                                     ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : '<div class="sub">Map generation failed</div>'}
-                                    <div class="sub">${item.count || 0} feature${item.count !== 1 ? 's' : ''} intersecting AOI</div>
+                                    <div class="sub">${featureCount} feature${featureCount !== 1 ? 's' : ''} intersecting AOI</div>
                                     ${coverageHtml}
                                     ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
                                 </div>
@@ -4405,6 +4465,14 @@ define([
             // Build complete HTML document
             const createdAt = formatDateTimeForReport(new Date());
             const bucketLabel = bucketInfo?.label || null;
+            
+            // Prepare export data (layer title, count, and sample attribute rows)
+            const exportData = targetLayers.map(layer => ({
+                title: layer.title || "Unknown",
+                count: layer.count || 0,
+                rows: (layer.rows || []).slice(0, 100) // Limit to 100 rows per layer for embedding
+            }));
+            const exportDataJson = JSON.stringify(exportData).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 
             const fullHtml = `<!doctype html>
 <html lang="en">
@@ -4422,7 +4490,40 @@ define([
         <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
         <h1>${escapeHtml(reportTitle)}</h1>
         <p class="meta">Generated: ${escapeHtml(createdAt)}${bucketLabel ? ` &bull; Category: ${escapeHtml(bucketLabel)}` : ''}</p>
+        <div class="report-actions">
+            <button class="export-btn" onclick="exportReportCsv()">📥 Export CSV</button>
+            <button class="export-btn" onclick="window.print()">🖨️ Print Report</button>
+        </div>
     </header>
+    <script>
+        var _exportData = ${exportDataJson};
+        function exportReportCsv() {
+            var blocks = [];
+            _exportData.forEach(function(layer) {
+                if (!layer.rows || !layer.rows.length) return;
+                blocks.push('\\n"=== ' + layer.title.replace(/"/g, '""') + ' (' + layer.count + ' features) ==="');
+                var keys = Object.keys(layer.rows[0]);
+                blocks.push(keys.map(function(k){ return '"' + String(k).replace(/"/g, '""') + '"'; }).join(','));
+                layer.rows.forEach(function(row) {
+                    blocks.push(keys.map(function(k){ 
+                        var v = row[k]; 
+                        if (v == null) return '';
+                        return '"' + String(v).replace(/"/g, '""') + '"';
+                    }).join(','));
+                });
+            });
+            var csv = blocks.join('\\n');
+            var blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'report_data.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
     <main class="wrap">
         ${contentParts.join('\n')}
     </main>

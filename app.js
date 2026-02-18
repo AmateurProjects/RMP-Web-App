@@ -125,7 +125,6 @@ require([
     const wizBackToStep1 = document.getElementById("wizBackToStep1");
     const wizNewScreening = document.getElementById("wizNewScreening");
     const wizFullReport = document.getElementById("wizFullReport");
-    const wizExportAll = document.getElementById("wizExportAll");
     const wizStopDrawBtn = document.getElementById("wizStopDrawBtn");
     const wizTownshipBtn = document.getElementById("wizTownshipBtn");
     const wizSectionBtn = document.getElementById("wizSectionBtn");
@@ -135,20 +134,10 @@ require([
     const wizLocationResults = document.getElementById("wizLocationResults");
     const tierLayerCountEl = document.getElementById("tierLayerCount");
 
-    /* ── Tier selection helper ── */
-    function getSelectedTier() {
-      const sel = document.querySelector('input[name="analysisTier"]:checked');
-      return sel ? parseInt(sel.value, 10) : 1;
+    /* ── Layer count helper (all layers, no tier filtering) ── */
+    function getTotalLayerCount() {
+      return (config.reportLayers || []).length;
     }
-    function updateTierLayerCount() {
-      const tier = getSelectedTier();
-      const count = (config.reportLayers || []).filter(l => (l.tier || 1) <= tier).length;
-      if (tierLayerCountEl) tierLayerCountEl.textContent = count + " layer" + (count !== 1 ? "s" : "") + " will be screened";
-    }
-    // wire up radio change events
-    document.querySelectorAll('input[name="analysisTier"]').forEach(r => {
-      r.addEventListener("change", updateTierLayerCount);
-    });
 
     function setStatus(msg) {
         const text = "Status: " + msg;
@@ -748,7 +737,6 @@ function setActiveTab(tabName) {
         aoiGraphic = null;
         if (runBtn) runBtn.disabled = true;
         if (wizFullReport) wizFullReport.disabled = true;
-        if (wizExportAll) wizExportAll.disabled = true;
         const dbp = document.getElementById("drawBufferPanel");
         if (dbp) dbp.classList.add("hidden");
         setStatus("");
@@ -913,17 +901,17 @@ function setActiveTab(tabName) {
     function populatePermitBuckets() {
         const buckets = categorizeIntoBuckets(lastReportRowsByLayer);
 
-        // Update tab badges
+        // Update tab badges (show layer count with coverage)
         document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {
             const bKey = tab.dataset.bucket;
             if (!bKey || bKey === "overview" || bKey === "all-data") return;
             const items = buckets[bKey] || [];
-            const hitCount = items.reduce((s, it) => s + (it.count || 0), 0);
+            const layersWithCoverage = items.filter(it => it.hasCoverage).length;
             const existing = tab.querySelector(".bucket-badge");
             if (existing) existing.remove();
             const badge = document.createElement("span");
-            badge.className = "bucket-badge" + (hitCount === 0 ? " zero" : "");
-            badge.textContent = String(hitCount);
+            badge.className = "bucket-badge" + (layersWithCoverage === 0 ? " zero" : "");
+            badge.textContent = String(layersWithCoverage);
             tab.appendChild(badge);
         });
 
@@ -931,25 +919,25 @@ function setActiveTab(tabName) {
         const overviewEl = document.getElementById("bucketOverview");
         if (overviewEl) {
             const tl = lastReportRowsByLayer.length;
-            const th = lastReportRowsByLayer.reduce((s, x) => s + (x.count || 0), 0);
-            const lwh = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
+            const lwh = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
             let oh = '<div class="overview-dash">';
 
             // ── Summary stats row ──
             oh += '<div class="permit-summary-grid">';
             oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + tl + '</div><div class="permit-summary-stat-label">Datasets Checked</div></div>';
-            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + lwh + '</div><div class="permit-summary-stat-label">With Findings</div></div>';
-            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + th + '</div><div class="permit-summary-stat-label">Total Features</div></div>';
+            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + lwh + '</div><div class="permit-summary-stat-label">With Coverage</div></div>';
             oh += '</div>';
 
             // ── Category status rows (traffic-light dashboard) ──
             oh += '<div class="overview-category-grid">';
             for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
                 const items = buckets[bk] || [];
-                const hc = items.reduce((s, it) => s + (it.count || 0), 0);
-                const lhc = items.filter(it => (it.count || 0) > 0).length;
-                const statusClass = hc > 0 ? 'findings' : 'clear';
-                const statusLabel = hc > 0 ? (hc + ' feature' + (hc !== 1 ? 's' : '') + ' in ' + lhc + ' layer' + (lhc !== 1 ? 's' : '')) : 'Clear';
+                const layersWithCoverage = items.filter(it => it.hasCoverage).length;
+                const totalLayers = items.length;
+                const statusClass = layersWithCoverage > 0 ? 'findings' : 'clear';
+                const statusLabel = layersWithCoverage > 0 
+                    ? (layersWithCoverage + ' of ' + totalLayers + ' layer' + (totalLayers !== 1 ? 's' : '') + ' with coverage') 
+                    : 'No coverage';
                 oh += '<button class="overview-cat-row ' + statusClass + '" type="button" data-goto-bucket="' + bk + '">';
                 oh += '<span class="overview-cat-indicator"></span>';
                 oh += '<span class="overview-cat-icon">' + bd.icon + '</span>';
@@ -961,7 +949,7 @@ function setActiveTab(tabName) {
             oh += '</div>';
 
             // ── Disclaimer ──
-            oh += '<div class="overview-disclaimer"><strong>Important:</strong> These results are based on available GIS data and may not reflect all conditions on the ground. Additional site-specific review may be required during the permitting process. Contact your local BLM field office for authoritative guidance.</div>';
+            oh += '<div class="overview-disclaimer"><strong>Important:</strong> These results show which datasets have geographic coverage in your project area. Generate a report to see detailed feature intersections. Contact your local BLM field office for authoritative guidance.</div>';
             oh += '</div>';
             overviewEl.innerHTML = oh;
 
@@ -974,9 +962,8 @@ function setActiveTab(tabName) {
         // Summary in header card
         const summaryEl = document.getElementById("permitResultsSummary");
         if (summaryEl) {
-            const t2 = lastReportRowsByLayer.reduce((s, x) => s + (x.count || 0), 0);
-            const l2 = lastReportRowsByLayer.filter(x => (x.count || 0) > 0).length;
-            summaryEl.innerHTML = '<div class="small"><strong>' + l2 + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> datasets have findings &mdash; <strong>' + t2 + '</strong> total features intersect your project area.</div>';
+            const lwc = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
+            summaryEl.innerHTML = '<div class="small"><strong>' + lwc + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> datasets have coverage in your project area. Generate a report to see feature details.</div>';
         }
 
         // Individual bucket panels
@@ -986,17 +973,17 @@ function setActiveTab(tabName) {
             if (!pe) continue;
             const items = buckets[bk] || [];
             let h = '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + bd.icon + ' ' + escapeHtml(bd.label) + '</div>';
-            const tc = items.reduce((s, it) => s + (it.count || 0), 0);
-            h += '<div class="bucket-card-count' + (tc === 0 ? ' zero' : '') + '">' + tc + ' feature' + (tc !== 1 ? 's' : '') + '</div></div>';
+            const layersWithCoverage = items.filter(it => it.hasCoverage).length;
+            h += '<div class="bucket-card-count' + (layersWithCoverage === 0 ? ' zero' : '') + '">' + layersWithCoverage + ' layer' + (layersWithCoverage !== 1 ? 's' : '') + ' with coverage</div></div>';
             h += '<div class="bucket-card-desc">' + escapeHtml(bd.description) + '</div><ul class="bucket-layer-list">';
             for (const it of items) {
-                const c = it.count || 0;
+                const hasCov = it.hasCoverage;
                 h += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
-                h += '<span class="bucket-layer-count' + (c > 0 ? ' has-hits' : '') + '">' + c + ' feature' + (c !== 1 ? 's' : '') + '</span></li>';
+                h += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : '') + '">' + (hasCov ? '✓ coverage' : '—') + '</span></li>';
             }
             if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this category</li>';
             h += '</ul>';
-            if (tc === 0) h += '<div class="hint" style="margin-top:8px;">No intersecting features were found. This does not guarantee the absence of relevant considerations not captured in available GIS data.</div>';
+            if (layersWithCoverage === 0) h += '<div class="hint" style="margin-top:8px;">No datasets in this category cover your project area.</div>';
             // ── Add Generate Report button for this bucket ──
             h += '<div class="bucket-report-actions" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-light);">';
             h += '<button class="btn primary bucket-report-btn" type="button" data-bucket="' + bk + '">';
@@ -1323,7 +1310,6 @@ function clearAll() {
 
     // Reset wizard-specific UI state
     if (wizFullReport) wizFullReport.disabled = true;
-    if (wizExportAll) wizExportAll.disabled = true;
     setWizPlssActive(null);
 
     // Clear wizard location search
@@ -1961,10 +1947,9 @@ async function runAnalysis() {
     // ✅ Show analysis modal
     analysisModal.show();
     analysisModal.setProgress(0);
-    analysisModal.setStep("Starting analysis...");
-    const tier = getSelectedTier();
-    const tierLabel = tier === 1 ? "Essential" : tier === 2 ? "Comprehensive" : "Complete";
-    analysisModal.addLog("Analysis started — Tier " + tier + " (" + tierLabel + ")");
+    analysisModal.setStep("Starting screening...");
+    const totalLayers = getTotalLayerCount();
+    analysisModal.addLog(`Screening ${totalLayers} datasets for coverage`);
 
     setBusy(true);
 
@@ -1995,9 +1980,9 @@ async function runAnalysis() {
         analysisModal.addLog("Service check complete", "success");
         analysisModal.setProgress(25);
 
-        // Step 2: Query all layers (25% → 100% progress)
-        analysisModal.setStep("Step 2/2: Querying layers...");
-        analysisModal.addLog("Starting layer queries");
+        // Step 2: Query all layers for coverage (25% → 100% progress)
+        analysisModal.setStep("Step 2/2: Checking layer coverage...");
+        analysisModal.addLog("Checking which datasets cover your project area");
 
         if (aoiIsLarge) {
             const gridSize = config.report?.aoiChunkGridSize ?? 4;
@@ -2016,27 +2001,25 @@ async function runAnalysis() {
 
         // Update stats from query results
         layersQueried = lastReportRowsByLayer.length;
-        featuresFound = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
-        analysisModal.updateStats(layersQueried, featuresFound, 0);
-        analysisModal.addLog(`Found ${featuresFound} features across ${layersQueried} layers`, "success");
+        const layersWithCoverage = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
+        analysisModal.updateStats(layersQueried, layersWithCoverage, 0);
+        analysisModal.addLog(`Found ${layersWithCoverage} datasets with coverage in your project area`, "success");
         analysisModal.setProgress(100);
 
         // ─────────────────────────────────────────────────────────────────
-        // REFACTORED: Analysis now stops after intersection queries.
-        // Map generation and final report building are triggered on-demand
-        // when the user clicks a bucket report button or Full Report.
+        // REFACTORED: Analysis checks layer coverage (extent intersection only).
+        // Feature counts are computed on-demand when generating reports.
         // ─────────────────────────────────────────────────────────────────
 
-        setStatus("Analysis complete!");
+        setStatus("Screening complete!");
         
-        // ✅ Show success animation (mapsGenerated = 0 since deferred)
-        analysisModal.showSuccess(layersQueried, featuresFound, 0, Date.now() - analysisStartTime);
+        // ✅ Show success animation
+        analysisModal.showSuccess(layersQueried, layersWithCoverage, 0, Date.now() - analysisStartTime);
 
         // Permitting mode: populate bucket results with report buttons
         if (currentAppMode === "permit") {
             populatePermitBuckets();
             if (wizFullReport) wizFullReport.disabled = false;
-            if (wizExportAll) wizExportAll.disabled = false;
         }
 
         // Enable "View Report" button (for Advanced mode, if ever re-enabled)
@@ -2058,16 +2041,15 @@ async function runAnalysis() {
 }
 
 
-// Extracted query logic (was: runReport)
+// Extracted query logic - checks layer coverage (extent intersection only)
 async function queryAllLayers(reportGeom, myOp, modal = null) {
     if (resultsEl) resultsEl.innerHTML = "";
     if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
 
-    const selectedTier = getSelectedTier();
-
+    // Use ALL layers (no tier filtering)
     const combinedCfgs = [
-        ...(config.reportLayers || []).filter(l => (l.tier || 1) <= selectedTier)
+        ...(config.reportLayers || [])
     ];
 
     if (plssStateLayerUrl) {
@@ -2244,7 +2226,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 reportEntry: {
                     title: t.title,
                     url: t.url,
-                    count: 1,
+                    hasCoverage: true, // ImageServer layers assumed to have coverage
+                    count: 0,
                     rows: [],
                     _layer: null,
                     _exportQuery: null,
@@ -2261,31 +2244,22 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             const f = t.__pinnedAoiFeature;
             const feats = f ? [f] : [];
             const rows = flattenAttributes(feats);
-            const tableHtml = feats.length
-                ? makeTable(feats, maxFields, feats.length)
-                : `<div class="small">No sample rows.</div>`;
 
             return {
                 card: `
           <div class="result-card">
             <div class="result-head">
               <div class="result-title">${escapeHtml(t.title)}</div>
-              <div class="badge">count: <b>${feats.length}</b></div>
+              <div class="badge has-hits">AOI source</div>
             </div>
             <div class="small mono">
               <a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">Service URL</a>
-            </div>
-            <div style="margin-top:8px;">
-              ${tableHtml}
-              ${(feats.length > 0) ? `
-              <div class="row" style="margin-top:8px;">
-                <button class="btn subtle" data-export="${escapeHtml(t.title)}">Export CSV</button>
-              </div>` : ``}
             </div>
           </div>`,
                 reportEntry: {
                     title: t.title,
                     url: t.url,
+                    hasCoverage: true,
                     count: feats.length,
                     rows,
                     _layer: null,
@@ -2295,75 +2269,50 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             };
         }
 
-        // 4. Regular feature layer query
-        const plss = isPlssLayerTitleOrUrl(t.title, t.url);
-        const targetIsPlssIntersected = isPlssIntersectedLayerTitle(t.title);
-        const spatialRel =
-            (targetIsPlssIntersected && (aoiSourcePlssTool === "township" || aoiSourcePlssTool === "section"))
-                ? "within" : "intersects";
-
-        // Use chunked query for large AOIs to improve reliability
-        const chunkThreshold = config.report?.aoiChunkThresholdAcres ?? 250000;
-        const useChunking = aoiIsLarge && aoiCurrentAcres > chunkThreshold;
-
-        const r = useChunking
-            ? await querySingleLayerChunked(t.url, t.title, reportGeom, spatialRel)
-            : await querySingleLayer(t.url, t.title, reportGeom, spatialRel);
-        const rows = flattenAttributes(r.features);
+        // 4. Regular feature layer — check coverage (extent intersection only)
+        // Full feature queries are deferred to report generation
+        let hasCoverage = false;
+        let layerRef = null;
+        
+        try {
+            layerRef = getCachedLayer(t.url);
+            await layerRef.load();
+            
+            if (layerRef.fullExtent && reportGeom?.extent) {
+                hasCoverage = geometryEngine.intersects(layerRef.fullExtent, reportGeom.extent);
+            } else {
+                // If we can't determine extent, assume coverage exists
+                hasCoverage = true;
+            }
+        } catch (e) {
+            console.warn(`Coverage check failed for ${t.title}:`, e.message);
+            // On error, assume coverage to be safe
+            hasCoverage = true;
+        }
 
         const reportEntry = {
-            title: r.title,
-            url: r.url,
-            count: r.count,
-            rows,
-            _layer: r.layer,
-            _exportQuery: r.exportQuery,
+            title: t.title,
+            url: t.url,
+            hasCoverage: hasCoverage,
+            count: 0, // Feature count computed during report generation
+            rows: [],
+            _layer: layerRef,
+            _exportQuery: null,
             fullRows: null
         };
 
-        // Pre-fetch full rows for State Boundaries & Parcel (needed for Final Report)
-        const isStateBoundaries = r.title && r.title.toLowerCase().includes("state boundaries");
-        const isParcel = r.title && (r.title.toLowerCase().includes("parcel") || r.title.toLowerCase().includes("intersected"));
-
-        if ((isStateBoundaries || isParcel) && r.count > 0 && r.layer && r.exportQuery) {
-            try {
-                const pageSize = config.report?.pageSize ?? 1000;
-                const maxExport = config.report?.maxExportFeatures ?? 50000;
-                const fullFeatures = await queryAllFeaturesPaged(
-                    r.layer, r.exportQuery, pageSize, Math.min(maxExport, 100)
-                );
-                reportEntry.fullRows = flattenAttributes(fullFeatures);
-            } catch (e) {
-                console.warn(`Failed to pre-fetch full rows for ${r.title}:`, e);
-            }
-        }
-
-        const tableHtml = (r.features && r.features.length)
-            ? makeTable(r.features, maxFields, r.count)
-            : `<div class="small">No sample rows.</div>`;
+        const statusBadge = hasCoverage ? 'coverage' : 'no coverage';
+        const statusClass = hasCoverage ? 'has-hits' : '';
 
         return {
             card: `
           <div class="result-card">
             <div class="result-head">
-              <div class="result-title">${escapeHtml(r.title)}</div>
-              <div class="badge">
-                count: <b>${r.count}</b>
-                ${(config.report?.maxExportFeatures && r.count > config.report.maxExportFeatures)
-                    ? `<span class="small" style="margin-left:8px; opacity:.85;">(FULL export capped at ${config.report.maxExportFeatures})</span>`
-                    : ``
-                }
-              </div>
+              <div class="result-title">${escapeHtml(t.title)}</div>
+              <div class="badge ${statusClass}">${statusBadge}</div>
             </div>
             <div class="small mono">
-              <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Service URL</a>
-            </div>
-            <div style="margin-top:8px;">
-              ${tableHtml}
-              ${(r.count > 0) ? `
-              <div class="row" style="margin-top:8px;">
-                <button class="btn subtle" data-export="${escapeHtml(r.title)}">Export CSV</button>
-              </div>` : ``}
+              <a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">Service URL</a>
             </div>
           </div>`,
             reportEntry
@@ -2385,11 +2334,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         const bEnd = Math.min(bStart + BATCH_SIZE, expandedTargets.length);
 
         if (modal) {
-            const progress = 25 + (35 * (bStart / expandedTargets.length));
+            const progress = 25 + (70 * (bStart / expandedTargets.length));
             modal.setProgress(progress);
-            modal.setStep(`Step 2/4: Querying layers ${bStart + 1}-${bEnd} of ${expandedTargets.length}...`);
+            modal.setStep(`Step 2/2: Checking datasets ${bStart + 1}-${bEnd} of ${expandedTargets.length}...`);
             for (let k = bStart; k < bEnd; k++) {
-                modal.addLog(`Querying: ${expandedTargets[k].title}`);
+                modal.addLog(`Checking: ${expandedTargets[k].title}`);
             }
         }
 
@@ -2434,7 +2383,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
 
 
-    // ── Shared export-all helper (used by both exportAllBtn and wizExportAll) ──
+    // ── Shared export-all helper (used by exportAllBtn in Advanced mode) ──
     async function doExportAll(callerBtn) {
         if (!lastReportRowsByLayer.length) return;
         if (callerBtn) callerBtn.disabled = true;
@@ -3603,7 +3552,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
                 // Reset wizard UI
                 if (wizFullReport) wizFullReport.disabled = true;
-                if (wizExportAll) wizExportAll.disabled = true;
 
                 setStatus("draw canceled");
             });
@@ -3730,10 +3678,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         }
 
         if (wizFullReport) wizFullReport.addEventListener("click", generateFullProgressiveReport);
-
-        if (wizExportAll) {
-            wizExportAll.addEventListener("click", () => doExportAll(wizExportAll));
-        }
 
         // Bucket tabs
         document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {

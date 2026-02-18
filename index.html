@@ -89,7 +89,7 @@
 <div id="analysisModal" class="analysis-modal hidden">
     <div class="analysis-modal-content">
         <div class="analysis-header">
-            <h2>Running Analysis</h2>
+            <h2>Screening Project Area</h2>
             <div class="analysis-progress-bar">
                 <div id="analysisProgressFill" class="analysis-progress-fill"></div>
             </div>
@@ -125,7 +125,7 @@
             </div>
             <div class="analysis-stat">
                 <div class="analysis-stat-value" id="analysisFeaturesFound">0</div>
-                <div class="analysis-stat-label">Features Found</div>
+                <div class="analysis-stat-label">Layers with Coverage</div>
             </div>
             <!-- Maps stat hidden - generation now happens on-demand in reports -->
             <div class="analysis-stat" style="display:none;">
@@ -146,10 +146,10 @@
                     <path class="checkmark-check" d="M20 40 L35 55 L60 25" />
                 </svg>
             </div>
-            <h2>Analysis Complete!</h2>
+            <h2>Screening Complete!</h2>
             <div class="analysis-success-summary">
                 <div><strong id="successLayersQueried">0</strong> layers queried</div>
-                <div><strong id="successFeaturesFound">0</strong> features found</div>
+                <div><strong id="successFeaturesFound">0</strong> layers with coverage</div>
                 <div id="successMapsGenerated" style="display:none;">0 maps</div>
                 <div id="successDuration" style="margin-top:6px;font-size:13px;color:var(--text-muted);"></div>
                 <div style="margin-top:12px;font-size:13px;color:var(--text-muted);font-style:italic;">
@@ -554,45 +554,13 @@
           </div>
           <!-- Large AOI warning (populated dynamically) -->
           <div id="aoiSizeWarning" class="aoi-size-warning hidden"></div>
-          <!-- Tier Selection -->
-          <div class="tier-selector" id="tierSelector">
-            <div class="tier-selector-label">Analysis Depth</div>
-            <div class="tier-options">
-              <label class="tier-option" data-tier="1">
-                <input type="radio" name="analysisTier" value="1" checked />
-                <div class="tier-card">
-                  <span class="tier-badge tier-1">Tier 1</span>
-                  <span class="tier-name">Essential</span>
-                  <span class="tier-desc">Core regulatory layers — fastest screening</span>
-                </div>
-              </label>
-              <label class="tier-option" data-tier="2">
-                <input type="radio" name="analysisTier" value="2" />
-                <div class="tier-card">
-                  <span class="tier-badge tier-2">Tier 2</span>
-                  <span class="tier-name">Comprehensive</span>
-                  <span class="tier-desc">Adds environmental, planning, and recreation layers</span>
-                </div>
-              </label>
-              <label class="tier-option" data-tier="3">
-                <input type="radio" name="analysisTier" value="3" />
-                <div class="tier-card">
-                  <span class="tier-badge tier-3">Tier 3</span>
-                  <span class="tier-name">Complete</span>
-                  <span class="tier-desc">All available layers — most thorough, takes longest</span>
-                </div>
-              </label>
-            </div>
-            <div class="tier-layer-count" id="tierLayerCount"></div>
-          </div>
 
           <div class="row" style="margin-top:14px;">
             <button id="wizBackToStep1" class="btn subtle" type="button">← Change Area</button>
-            <button id="wizScreenBtn" class="btn primary" type="button">Screen for Considerations</button>
+            <button id="wizScreenBtn" class="btn primary" type="button">🔍 Screen Project Area</button>
           </div>
           <div class="hint">
-            Screening checks your area against federal land records, environmental designations, and existing authorizations.
-            Time depends on the tier selected and your connection speed.
+            Screening identifies which federal datasets cover your project area. You can then generate detailed reports for specific categories of interest.
           </div>
         </div>
       </section>
@@ -604,7 +572,6 @@
           <div class="permit-results-summary" id="permitResultsSummary"></div>
           <div class="row" style="margin-top:10px; flex-wrap:wrap;">
             <button id="wizNewScreening" class="btn subtle" type="button">← New Screening</button>
-            <button id="wizExportAll" class="btn subtle" type="button" disabled>📥 Export CSV</button>
             <button id="wizFullReport" class="btn primary" type="button" disabled>📋 Full Report</button>
           </div>
         </div>
