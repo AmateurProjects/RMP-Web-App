@@ -403,7 +403,11 @@ function setBusy(isBusy) {
         getAoiSummaryForReport, buildDataSourcesSection,
         generateAoiMapsWithCircles, buildFinalReportHtml, viewFinalReport,
         getCachedFinalReportHtml, setCachedFinalReportHtml,
-        getLastReportId, getReportShareUrl, loadReportFromDb, cleanupExpiredReports
+        getLastReportId, getReportShareUrl, loadReportFromDb, cleanupExpiredReports,
+        // Progressive report builder
+        openProgressiveReport, buildProgressiveReport,
+        categorizeLayersIntoBuckets: categorizeFinalReportBuckets,
+        REPORT_BUCKETS: FINAL_REPORT_BUCKETS
     } = finalReport;
 
     // ── Initialize visual-report module with shared state + deps ──
@@ -903,9 +907,22 @@ function setActiveTab(tabName) {
             if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this category</li>';
             h += '</ul>';
             if (tc === 0) h += '<div class="hint" style="margin-top:8px;">No intersecting features were found. This does not guarantee the absence of relevant considerations not captured in available GIS data.</div>';
+            // ── Add Generate Report button for this bucket ──
+            h += '<div class="bucket-report-actions" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-light);">';
+            h += '<button class="btn primary bucket-report-btn" type="button" data-bucket="' + bk + '">';
+            h += '📋 Generate ' + escapeHtml(bd.label) + ' Report</button>';
+            h += '</div>';
             h += '</div>';
             pe.innerHTML = h;
         }
+
+        // Wire up bucket report buttons
+        document.querySelectorAll('.bucket-report-btn[data-bucket]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const bucketKey = btn.dataset.bucket;
+                generateBucketReport(bucketKey);
+            });
+        });
 
         // All Data bucket
         const adEl = document.getElementById("bucketAllData");
@@ -934,6 +951,67 @@ function setActiveTab(tabName) {
             if (p) p.classList.toggle("active", key === bucketKey);
         }
     }
+
+    /**
+     * Generate a progressive report for a specific bucket
+     * Opens a new tab immediately and streams content as it's generated
+     */
+    async function generateBucketReport(bucketKey) {
+        if (!selectionGeom) {
+            setStatus("No AOI selected — cannot generate report");
+            return;
+        }
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            setStatus("Run analysis first before generating reports");
+            return;
+        }
+
+        setStatus(`Generating ${PERMIT_BUCKETS[bucketKey]?.label || bucketKey} report...`);
+
+        try {
+            await buildProgressiveReport({
+                bucketKey: bucketKey,
+                onProgress: (msg, pct) => {
+                    setStatus(`Report: ${msg} (${Math.round(pct)}%)`);
+                }
+            });
+            setStatus("Report generated in new tab");
+        } catch (e) {
+            console.error("Bucket report error:", e);
+            setStatus("Report generation failed — see console");
+        }
+    }
+
+    /**
+     * Generate the full progressive report (all buckets)
+     * Opens a new tab immediately and streams content as it's generated
+     */
+    async function generateFullProgressiveReport() {
+        if (!selectionGeom) {
+            setStatus("No AOI selected — cannot generate report");
+            return;
+        }
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            setStatus("Run analysis first before generating reports");
+            return;
+        }
+
+        setStatus("Generating full report...");
+
+        try {
+            await buildProgressiveReport({
+                bucketKey: null, // null = full report
+                onProgress: (msg, pct) => {
+                    setStatus(`Report: ${msg} (${Math.round(pct)}%)`);
+                }
+            });
+            setStatus("Full report generated in new tab");
+        } catch (e) {
+            console.error("Full report error:", e);
+            setStatus("Report generation failed — see console");
+        }
+    }
+
     // ── END PERMITTING MODE FUNCTIONS ──
 
     function setPlssToolActive(which) {
@@ -1722,7 +1800,7 @@ async function runAnalysis() {
 
     try {
         // Step 1: Data Check (10% progress)
-        analysisModal.setStep("Step 1/4: Checking services...");
+        analysisModal.setStep("Step 1/2: Checking services...");
         analysisModal.setProgress(10);
         analysisModal.addLog("Checking service availability");
         
@@ -1743,8 +1821,8 @@ async function runAnalysis() {
         analysisModal.addLog("Service check complete", "success");
         analysisModal.setProgress(25);
 
-        // Step 2: Query all layers (25% → 60% progress)
-        analysisModal.setStep("Step 2/4: Querying layers...");
+        // Step 2: Query all layers (25% → 100% progress)
+        analysisModal.setStep("Step 2/2: Querying layers...");
         analysisModal.addLog("Starting layer queries");
 
         if (aoiIsLarge) {
@@ -1767,50 +1845,28 @@ async function runAnalysis() {
         featuresFound = lastReportRowsByLayer.reduce((sum, x) => sum + (x.count || 0), 0);
         analysisModal.updateStats(layersQueried, featuresFound, 0);
         analysisModal.addLog(`Found ${featuresFound} features across ${layersQueried} layers`, "success");
-        analysisModal.setProgress(60);
-
-        // Step 3: Generate map screenshots (60% → 85% progress)
-        analysisModal.setStep("Step 3/4: Generating maps...");
-        analysisModal.addLog("Starting map generation");
-        
-        await generateVisualReportData(myOp, analysisModal);
-
-        if (isReportCanceled(myOp)) {
-            analysisModal.addLog("Analysis canceled by user", "error");
-            analysisModal.hide();
-            setStatus("canceled");
-            return;
-        }
-
-        // Count maps generated
-        mapsGenerated = lastReportRowsByLayer.filter(x => (x?.count || 0) > 0 && x?._layer && x?._exportQuery).length;
-        analysisModal.updateStats(layersQueried, featuresFound, mapsGenerated);
-        analysisModal.addLog(`Generated ${mapsGenerated} maps`, "success");
-        analysisModal.setProgress(85);
-
-        // Step 4: Build final report HTML (85% → 100% progress)
-        analysisModal.setStep("Step 4/4: Building final report...");
-        analysisModal.addLog("Compiling final report");
-        
-        await buildFinalReportHtml();
-
-        analysisModal.addLog("Final report ready", "success");
         analysisModal.setProgress(100);
 
-        // Enable "View Report" button
-        if (viewReportBtn) viewReportBtn.disabled = false;
+        // ─────────────────────────────────────────────────────────────────
+        // REFACTORED: Analysis now stops after intersection queries.
+        // Map generation and final report building are triggered on-demand
+        // when the user clicks a bucket report button or Full Report.
+        // ─────────────────────────────────────────────────────────────────
 
         setStatus("Analysis complete!");
         
-        // ✅ Show success animation
-        analysisModal.showSuccess(layersQueried, featuresFound, mapsGenerated, Date.now() - analysisStartTime);
+        // ✅ Show success animation (mapsGenerated = 0 since deferred)
+        analysisModal.showSuccess(layersQueried, featuresFound, 0, Date.now() - analysisStartTime);
 
-        // Permitting mode: populate bucket results
+        // Permitting mode: populate bucket results with report buttons
         if (currentAppMode === "permit") {
             populatePermitBuckets();
             if (wizFullReport) wizFullReport.disabled = false;
             if (wizExportAll) wizExportAll.disabled = false;
         }
+
+        // Enable "View Report" button (for Advanced mode, if ever re-enabled)
+        if (viewReportBtn) viewReportBtn.disabled = false;
 
     } catch (e) {
         console.error(e);
@@ -2925,7 +2981,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         });
 
         if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
-        if (viewReportBtn) viewReportBtn.addEventListener("click", viewFinalReport);
+        if (viewReportBtn) viewReportBtn.addEventListener("click", generateFullProgressiveReport);
 
         // UI wiring
         if (modeSelect) {
@@ -3492,7 +3548,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             });
         }
 
-        if (wizFullReport) wizFullReport.addEventListener("click", viewFinalReport);
+        if (wizFullReport) wizFullReport.addEventListener("click", generateFullProgressiveReport);
 
         if (wizExportAll) {
             wizExportAll.addEventListener("click", () => doExportAll(wizExportAll));

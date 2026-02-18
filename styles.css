@@ -3096,6 +3096,24 @@ th{
     font-weight: 700;
 }
 
+/* Bucket report actions */
+.bucket-report-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.bucket-report-btn {
+    font-size: 13px;
+    padding: 8px 14px;
+    white-space: nowrap;
+}
+
+.bucket-report-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* ============================================
    PERMIT RESULTS SUMMARY (Step 3 header)
    ============================================ */

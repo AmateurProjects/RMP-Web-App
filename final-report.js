@@ -2851,6 +2851,688 @@ define([
         return maps.join("");
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Progressive Report Builder
+    // Opens a new tab immediately with a shell HTML, streams content
+    // as it's generated so users see progress in real-time.
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Get the CSS styles for the progressive report (shared with regular report)
+     */
+    function getReportStyles() {
+        return `
+            :root{
+                --blm-green: #1a472a;
+                --blm-green-light: #2d5a3d;
+                --blm-tan: #f5f0e6;
+                --blm-gold: #c5a43e;
+                --blm-brown: #5c4827;
+                --fg: #2c2c2c;
+                --muted: #5a5a5a;
+                --border: #d4cfc4;
+                --bg: #fdfcfa;
+                --white: #ffffff;
+            }
+            html,body{ 
+                margin:0; 
+                padding:0; 
+                background: var(--blm-tan); 
+                color:var(--fg); 
+                font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            .report-header{
+                background: linear-gradient(135deg, var(--blm-green) 0%, var(--blm-green-light) 100%);
+                color: var(--white);
+                padding: 28px 32px;
+                margin-bottom: 0;
+            }
+            .report-header .agency-name{
+                font-family: 'Merriweather', Georgia, serif;
+                font-size: 13px;
+                font-weight: 400;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+                opacity: 0.9;
+                margin-bottom: 8px;
+            }
+            .report-header h1{
+                font-family: 'Merriweather', Georgia, serif;
+                font-size: 28px;
+                font-weight: 700;
+                margin: 0 0 6px 0;
+                letter-spacing: 0.5px;
+            }
+            .report-header .meta{
+                font-size: 13px;
+                opacity: 0.85;
+                margin: 0;
+            }
+            .wrap{ 
+                max-width: 900px; 
+                margin: 0 auto; 
+                padding: 32px 40px 60px; 
+                background: var(--bg);
+                box-shadow: 0 0 40px rgba(0,0,0,0.08);
+                min-height: 100vh;
+            }
+            h2{ 
+                font-family: 'Merriweather', Georgia, serif;
+                font-size: 20px; 
+                font-weight: 700;
+                color: var(--blm-green);
+                margin: 36px 0 18px; 
+                padding-bottom: 10px;
+                border-bottom: 3px solid var(--blm-gold); 
+            }
+            h3{
+                font-family: 'Source Sans Pro', sans-serif;
+                font-size: 16px;
+                font-weight: 700;
+                color: var(--blm-brown);
+                margin: 24px 0 12px;
+            }
+            .progress-banner {
+                background: linear-gradient(90deg, var(--blm-green) 0%, var(--blm-green-light) 100%);
+                color: white;
+                padding: 16px 24px;
+                border-radius: 8px;
+                margin-bottom: 24px;
+                display: flex;
+                align-items: center;
+                gap: 16px;
+            }
+            .progress-banner.hidden { display: none; }
+            .progress-spinner {
+                width: 24px;
+                height: 24px;
+                border: 3px solid rgba(255,255,255,0.3);
+                border-top-color: white;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            .progress-text { flex: 1; font-weight: 500; }
+            .progress-status { font-size: 13px; opacity: 0.85; }
+            .section{ 
+                margin-top: 32px; 
+                padding: 24px;
+                background: var(--white);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            }
+            .section h3{
+                margin-top: 0;
+                padding-bottom: 8px;
+                border-bottom: 1px solid var(--border);
+            }
+            .section .sub{ 
+                font-size: 12px; 
+                color: var(--muted); 
+                margin-bottom: 14px;
+                font-style: italic;
+            }
+            .map{ 
+                width:100%; 
+                border: 1px solid var(--border); 
+                border-radius: 6px; 
+                overflow:hidden; 
+                background: var(--white); 
+                margin: 16px 0;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            }
+            .map img{ display:block; width:100%; height:auto; }
+            .map-placeholder {
+                background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+                padding: 60px 24px;
+                text-align: center;
+                color: var(--muted);
+                font-style: italic;
+                border-radius: 6px;
+                margin: 16px 0;
+            }
+            .map-placeholder .spinner-small {
+                width: 32px;
+                height: 32px;
+                border: 3px solid #ccc;
+                border-top-color: var(--blm-green);
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 12px;
+            }
+            .aoi-map{ 
+                margin: 18px 0; 
+                border: 2px solid var(--border); 
+                border-radius: 8px; 
+                overflow:hidden; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }
+            .aoi-map img{ display:block; width:100%; height:auto; }
+            .aoi-details{ margin-top: 20px; }
+            .aoi-field{ margin: 10px 0; font-size: 14px; }
+            .aoi-label{ 
+                font-weight: 600; 
+                color: var(--blm-green);
+                display: inline-block;
+                min-width: 160px;
+            }
+            table.metaTbl{ 
+                width:100%; 
+                border-collapse: collapse; 
+                margin-top: 16px; 
+                font-size: 13px;
+                background: var(--blm-tan);
+                border-radius: 6px;
+                overflow: hidden;
+            }
+            table.metaTbl td{ 
+                padding: 10px 14px; 
+                border-bottom: 1px solid var(--border); 
+            }
+            table.metaTbl tr:last-child td{
+                border-bottom: none;
+            }
+            table.metaTbl td:first-child{ 
+                color: var(--blm-green); 
+                font-weight: 600;
+                width: 200px;
+                background: rgba(26,71,42,0.05);
+            }
+            .report-footer{
+                margin-top: 48px;
+                padding-top: 24px;
+                border-top: 2px solid var(--border);
+                font-size: 12px;
+                color: var(--muted);
+                text-align: center;
+            }
+            .pill{ 
+                border: 1px solid var(--border); 
+                border-radius: 6px; 
+                padding: 10px 16px; 
+                font-size: 13px; 
+                font-weight: 600;
+                background: var(--white);
+                box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            }
+            .totals{ margin-top: 24px; }
+            .totals .row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; }
+        `;
+    }
+
+    /**
+     * Open a progressive report window and return an interface for streaming content
+     */
+    function openProgressiveReport(options = {}) {
+        const title = options.title || "Report";
+        const bucketLabel = options.bucketLabel || null;
+        const createdAt = formatDateTimeForReport(new Date());
+
+        // Create initial shell HTML
+        const shellHtml = `<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>${escapeHtml(title)}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>${getReportStyles()}</style>
+</head>
+<body>
+    <header class="report-header">
+        <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
+        <h1>${escapeHtml(title)}</h1>
+        <p class="meta">Generated: ${escapeHtml(createdAt)}${bucketLabel ? ` &bull; Category: ${escapeHtml(bucketLabel)}` : ''}</p>
+    </header>
+    <main class="wrap">
+        <div class="progress-banner" id="progressBanner">
+            <div class="progress-spinner"></div>
+            <div class="progress-text">
+                <div id="progressTitle">Building report...</div>
+                <div class="progress-status" id="progressStatus">Initializing...</div>
+            </div>
+        </div>
+        <div id="reportContent">
+            <!-- Content will be streamed here -->
+        </div>
+    </main>
+    <script>
+        // Helper to smoothly scroll to bottom as content is added
+        let autoScroll = true;
+        document.addEventListener('click', () => { autoScroll = false; });
+        window.scrollToBottom = function() {
+            if (autoScroll) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        };
+        window.hideProgress = function() {
+            const banner = document.getElementById('progressBanner');
+            if (banner) banner.classList.add('hidden');
+        };
+        window.updateProgress = function(title, status) {
+            const titleEl = document.getElementById('progressTitle');
+            const statusEl = document.getElementById('progressStatus');
+            if (titleEl) titleEl.textContent = title;
+            if (statusEl) statusEl.textContent = status;
+        };
+    </script>
+</body>
+</html>`;
+
+        // Open the window
+        const blob = new Blob([shellHtml], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, "_blank", "noopener");
+        
+        // Clean up blob URL after a delay
+        window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+        if (!win) {
+            console.error("Failed to open report window - popup blocked?");
+            return null;
+        }
+
+        // Return interface for streaming content
+        return {
+            win,
+            
+            /**
+             * Append HTML content to the report
+             */
+            appendContent(html) {
+                try {
+                    const container = win.document.getElementById('reportContent');
+                    if (container) {
+                        container.insertAdjacentHTML('beforeend', html);
+                        win.scrollToBottom?.();
+                    }
+                } catch (e) {
+                    console.warn("Failed to append content to report:", e);
+                }
+            },
+
+            /**
+             * Update progress banner
+             */
+            updateProgress(title, status) {
+                try {
+                    win.updateProgress?.(title, status);
+                } catch (e) {
+                    // Window may be closed
+                }
+            },
+
+            /**
+             * Hide progress banner (report complete)
+             */
+            hideProgress() {
+                try {
+                    win.hideProgress?.();
+                } catch (e) {
+                    // Window may be closed
+                }
+            },
+
+            /**
+             * Check if window is still open
+             */
+            isOpen() {
+                try {
+                    return win && !win.closed;
+                } catch (e) {
+                    return false;
+                }
+            },
+
+            /**
+             * Add a section with a map placeholder that will be replaced
+             */
+            addMapPlaceholder(layerTitle, placeholderId) {
+                const html = `
+                    <div class="section" id="section-${escapeHtml(placeholderId)}">
+                        <h3>${escapeHtml(layerTitle)}</h3>
+                        <div class="map-placeholder" id="placeholder-${escapeHtml(placeholderId)}">
+                            <div class="spinner-small"></div>
+                            <div>Generating map...</div>
+                        </div>
+                    </div>
+                `;
+                this.appendContent(html);
+            },
+
+            /**
+             * Replace a map placeholder with actual content
+             */
+            replaceMapPlaceholder(placeholderId, html) {
+                try {
+                    const placeholder = win.document.getElementById(`placeholder-${placeholderId}`);
+                    if (placeholder) {
+                        placeholder.outerHTML = html;
+                    }
+                } catch (e) {
+                    console.warn("Failed to replace placeholder:", e);
+                }
+            },
+
+            /**
+             * Update a section's content by ID
+             */
+            updateSection(sectionId, html) {
+                try {
+                    const section = win.document.getElementById(sectionId);
+                    if (section) {
+                        section.innerHTML = html;
+                    }
+                } catch (e) {
+                    console.warn("Failed to update section:", e);
+                }
+            },
+
+            /**
+             * Add footer when report is complete
+             */
+            addFooter() {
+                const footerHtml = `
+                    <footer class="report-footer">
+                        <p>This report is for informational purposes only and does not constitute a formal BLM determination.</p>
+                        <p>Generated by the BLM Permit Screening Tool &bull; ${formatDateTimeForReport(new Date())}</p>
+                    </footer>
+                `;
+                this.appendContent(footerHtml);
+            }
+        };
+    }
+
+    /**
+     * Build a progressive report for a specific bucket or all buckets
+     * @param {Object} options
+     * @param {string} options.bucketKey - e.g., "land-status", "environmental", or null for full report
+     * @param {Function} options.onProgress - callback for progress updates
+     */
+    async function buildProgressiveReport(options = {}) {
+        const bucketKey = options.bucketKey || null;
+        const onProgress = options.onProgress || (() => {});
+
+        const view = S.view;
+        const selectionGeom = S.selectionGeom;
+        const config = S.config;
+        const lastReportRowsByLayer = S.lastReportRowsByLayer;
+        const aoiLayer = S.aoiLayer;
+        const aoiMaskLayer = S.aoiMaskLayer;
+        const alwaysVisibleLayers = S.alwaysVisibleLayers;
+
+        if (!view || !selectionGeom) {
+            console.error("Cannot build report: no AOI selected");
+            return;
+        }
+
+        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
+            console.error("Cannot build report: no analysis data available");
+            return;
+        }
+
+        // Get bucket info
+        const bucketInfo = bucketKey ? REPORT_BUCKETS[bucketKey] : null;
+        const reportTitle = bucketInfo 
+            ? `${bucketInfo.icon} ${bucketInfo.label} Report`
+            : "Land & Resource Intersection Analysis Report";
+
+        // Filter layers to this bucket (or all for full report)
+        let targetLayers;
+        if (bucketKey) {
+            const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
+            targetLayers = buckets[bucketKey] || [];
+        } else {
+            targetLayers = lastReportRowsByLayer;
+        }
+
+        // Filter to layers with hits that can generate maps
+        const mappableLayers = targetLayers
+            .filter(x => (x?.count || 0) > 0)
+            .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
+            .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+
+        // Open the progressive report window
+        const report = openProgressiveReport({
+            title: reportTitle,
+            bucketLabel: bucketInfo?.label || null
+        });
+
+        if (!report) {
+            alert("Could not open report window. Please allow popups for this site.");
+            return;
+        }
+
+        const {
+            updateAoiMask, hideAoiMask, ensureAoiOnTop,
+            waitForViewStationary, waitForLayerReadyToCapture,
+            captureScreenshotWithWait, waitForTabVisible,
+            acquireWakeLock, releaseWakeLock,
+            getLayerGeometryType, makeRendererOpaque, getPresetRenderer
+        } = mapUtils;
+
+        const {
+            queryAllFeaturesPaged, computeLayerCoverageStats, SQM_PER_ACRE
+        } = queryEngine;
+
+        try {
+            await acquireWakeLock();
+
+            // === STEP 1: AOI Summary Section ===
+            report.updateProgress("Building report...", "Generating AOI overview maps");
+            onProgress("Generating AOI maps...", 10);
+
+            // Calculate AOI info
+            let aoiAcres = 0;
+            try {
+                const aoiSqm = Math.max(0, geometryEngine.geodesicArea(selectionGeom, "square-meters"));
+                aoiAcres = aoiSqm / SQM_PER_ACRE;
+            } catch (e) {
+                aoiAcres = 0;
+            }
+
+            let aoiMethod = "Manually Drawn";
+            if (S.aoiSource === "select") {
+                const tool = plssToolLabel(S.aoiSourcePlssTool);
+                aoiMethod = `Selected ${tool}`;
+            } else if (S.aoiSource === "upload") {
+                aoiMethod = `Uploaded File: ${S.aoiSourceLayerTitle || "unknown"}`;
+            }
+
+            // Generate AOI maps
+            const aoiMapsHtml = await generateAoiMapsWithCircles();
+
+            // Build AOI section
+            const aoiSectionHtml = `
+                <h2>Area of Interest</h2>
+                <p style="color: var(--muted); font-style: italic;">The geographic boundary used for this analysis.</p>
+                ${aoiMapsHtml}
+                <div class="aoi-details">
+                    <div class="aoi-field"><span class="aoi-label">Area:</span> ${formatNumber(aoiAcres, 2)} acres</div>
+                    <div class="aoi-field"><span class="aoi-label">Method:</span> ${escapeHtml(aoiMethod)}</div>
+                </div>
+            `;
+            report.appendContent(aoiSectionHtml);
+
+            if (!report.isOpen()) return; // User closed window
+
+            // === STEP 2: Summary stats ===
+            const totalLayers = targetLayers.length;
+            const layersWithHits = targetLayers.filter(x => (x.count || 0) > 0).length;
+            const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
+
+            const summaryHtml = `
+                <h2>Summary</h2>
+                <div class="totals">
+                    <div class="row">
+                        <div class="pill">${totalLayers} Layers Queried</div>
+                        <div class="pill">${layersWithHits} With Findings</div>
+                        <div class="pill">${totalFeatures} Total Features</div>
+                    </div>
+                </div>
+            `;
+            report.appendContent(summaryHtml);
+
+            if (!report.isOpen()) return;
+
+            // === STEP 3: Generate maps for each layer progressively ===
+            if (mappableLayers.length === 0) {
+                report.appendContent(`
+                    <h2>Layer Details</h2>
+                    <p style="color: var(--muted); font-style: italic;">No intersecting features found in the ${bucketInfo?.label || 'screened'} datasets.</p>
+                `);
+            } else {
+                report.appendContent(`<h2>Layer Details</h2>`);
+
+                const paddingFactor = config?.visualReport?.paddingFactor ?? 1.12;
+                const width = config?.visualReport?.screenshotWidth ?? 1400;
+
+                let fixedExtent = null;
+                const ext = selectionGeom?.extent;
+                if (ext && ext.expand) fixedExtent = ext.expand(paddingFactor);
+
+                // Snapshot layer visibility
+                const allLayers = view.map.layers.toArray();
+                const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
+                const originalBasemap = view.map.basemap;
+                const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
+
+                function setVisibilityForScreenshot(tempLayer) {
+                    for (const l of allLayers) {
+                        if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
+                        if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
+                        if (l?.type === "tile") { l.visible = true; continue; }
+                        if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
+                        l.visible = false;
+                    }
+                    if (tempLayer) tempLayer.visible = true;
+                    updateAoiMask(true);
+                    ensureAoiOnTop();
+                }
+
+                function restoreVisibility() {
+                    visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) {} });
+                    hideAoiMask();
+                    ensureAoiOnTop();
+                }
+
+                try {
+                    // Switch to imagery basemap
+                    view.map.basemap = imageryBasemapId;
+                    await new Promise(r => setTimeout(r, 1500));
+                    await waitForViewStationary(2500);
+
+                    if (fixedExtent) {
+                        await view.goTo(fixedExtent, { animate: false });
+                        await waitForViewStationary(1500);
+                    }
+
+                    // Process each layer
+                    for (let i = 0; i < mappableLayers.length; i++) {
+                        if (!report.isOpen()) break;
+
+                        const item = mappableLayers[i];
+                        const layerTitle = item.title || "Unknown Layer";
+                        const layerId = `layer-${i}`;
+
+                        report.updateProgress("Building report...", `Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
+                        onProgress(`Map ${i + 1}/${mappableLayers.length}`, 20 + (70 * i / mappableLayers.length));
+
+                        // Add placeholder for this layer
+                        report.addMapPlaceholder(layerTitle, layerId);
+
+                        // Skip ImageServer layers for now (complex handling)
+                        if (item.__isImageService) {
+                            const noMapHtml = `<div class="sub">Imagery layer — coverage statistics not available</div>`;
+                            report.replaceMapPlaceholder(layerId, noMapHtml);
+                            continue;
+                        }
+
+                        try {
+                            // Create temp layer for screenshot
+                            const renderer = getPresetRenderer("report", item, await getLayerGeometryType(item.url));
+                            const tempRenderer = renderer ? makeRendererOpaque(renderer) : null;
+
+                            const tempLayer = new FeatureLayer({
+                                url: item.url,
+                                outFields: ["*"],
+                                renderer: tempRenderer,
+                                visible: false
+                            });
+                            view.map.add(tempLayer);
+                            tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
+
+                            setVisibilityForScreenshot(tempLayer);
+
+                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                            await waitForTabVisible();
+
+                            const ss = await captureScreenshotWithWait({ width });
+                            const dataUrl = ss?.dataUrl || null;
+
+                            // Clean up temp layer
+                            view.map.remove(tempLayer);
+
+                            // Calculate coverage stats
+                            let coverageHtml = "";
+                            try {
+                                const stats = await computeLayerCoverageStats(item);
+                                if (stats && stats.acresCovered > 0) {
+                                    coverageHtml = `
+                                        <table class="metaTbl">
+                                            <tr><td>Features Found</td><td>${item.count || 0}</td></tr>
+                                            <tr><td>Approx. Coverage</td><td>${formatNumber(stats.acresCovered, 2)} acres (${formatNumber(stats.pctAoiCovered, 1)}% of AOI)</td></tr>
+                                        </table>
+                                    `;
+                                }
+                            } catch (e) {
+                                // Stats failed, skip
+                            }
+
+                            // Build section HTML
+                            const sectionHtml = `
+                                ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : '<div class="sub">Map generation failed</div>'}
+                                <div class="sub">${item.count || 0} feature${item.count !== 1 ? 's' : ''} intersecting AOI</div>
+                                ${coverageHtml}
+                                ${generateLayerAttributeSummary(item) ? `<table class="metaTbl">${generateLayerAttributeSummary(item)}</table>` : ''}
+                            `;
+
+                            report.replaceMapPlaceholder(layerId, sectionHtml);
+
+                        } catch (e) {
+                            console.warn(`Failed to generate map for ${layerTitle}:`, e);
+                            report.replaceMapPlaceholder(layerId, `<div class="sub" style="color: #c62828;">Map generation failed: ${escapeHtml(e.message)}</div>`);
+                        }
+                    }
+
+                } finally {
+                    // Restore original state
+                    try {
+                        view.map.basemap = originalBasemap;
+                    } catch (e) {}
+                    restoreVisibility();
+                }
+            }
+
+            // === STEP 4: Add footer and finalize ===
+            report.hideProgress();
+            report.addFooter();
+            onProgress("Complete", 100);
+
+        } catch (e) {
+            console.error("Progressive report error:", e);
+            report.appendContent(`<div style="color: #c62828; padding: 24px;">Error generating report: ${escapeHtml(e.message)}</div>`);
+            report.hideProgress();
+        } finally {
+            await releaseWakeLock();
+        }
+
+        return report;
+    }
+
     // ────────────────────────────────────────────
     // buildFinalReportHtml – main orchestrator
     // ────────────────────────────────────────────
@@ -3391,6 +4073,11 @@ define([
             generateAoiMapsWithCircles,
             buildFinalReportHtml,
             viewFinalReport,
+            // Progressive report builder (new)
+            openProgressiveReport,
+            buildProgressiveReport,
+            categorizeLayersIntoBuckets,
+            REPORT_BUCKETS,
             // Accessors for cachedFinalReportHtml
             getCachedFinalReportHtml: () => cachedFinalReportHtml,
             setCachedFinalReportHtml: (v) => { cachedFinalReportHtml = v; },
