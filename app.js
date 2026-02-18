@@ -1656,7 +1656,15 @@ async function runAnalysis() {
     const myOp = startReportOp();
 
     const reportGeom = getReportGeometry();
-    if (!reportGeom) { endReportOp(myOp); return; }
+    if (!reportGeom) {
+        endReportOp(myOp);
+        // Show the modal briefly with an error so the user gets feedback
+        analysisModal.show();
+        analysisModal.setStep("No Area of Interest");
+        analysisModal.addLog("Cannot run analysis — no AOI geometry found. Please draw, search, or upload an Area of Interest first.", "error");
+        setTimeout(() => analysisModal.hide(), 4000);
+        return;
+    }
 
     const analysisStartTime = Date.now();
 
