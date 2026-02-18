@@ -108,6 +108,7 @@ require([
 
     // Final report DOM
     const viewReportBtn = document.getElementById("viewReportBtn");
+    const copyReportLinkBtn = document.getElementById("copyReportLinkBtn");
     const finalReportStatus = document.getElementById("finalReportStatus");
 
     const servicesListEl = document.getElementById("servicesList");
@@ -125,6 +126,7 @@ require([
     const wizBackToStep1 = document.getElementById("wizBackToStep1");
     const wizNewScreening = document.getElementById("wizNewScreening");
     const wizFullReport = document.getElementById("wizFullReport");
+    const wizCopyReportLink = document.getElementById("wizCopyReportLink");
     const wizExportAll = document.getElementById("wizExportAll");
     const wizStopDrawBtn = document.getElementById("wizStopDrawBtn");
     const wizTownshipBtn = document.getElementById("wizTownshipBtn");
@@ -388,7 +390,8 @@ function setBusy(isBusy) {
         openHtmlInNewTab, formatDateTimeForReport, buildFinalReportHtmlDoc,
         getAoiSummaryForReport, buildDataSourcesSection,
         generateAoiMapsWithCircles, buildFinalReportHtml, viewFinalReport,
-        getCachedFinalReportHtml, setCachedFinalReportHtml
+        getCachedFinalReportHtml, setCachedFinalReportHtml,
+        getLastReportId, getReportShareUrl, loadReportFromDb, cleanupExpiredReports
     } = finalReport;
 
     // ── Initialize visual-report module with shared state + deps ──
@@ -625,6 +628,25 @@ function setActiveTab(tabName) {
     }
 
     function showAoiMethod(method) {
+        // Reset any existing AOI process before switching methods
+        if (sketch) sketch.cancel();
+        currentInteractionMode = "select";
+        selectionGeom = null;
+        aoiSource = null;
+        aoiSourceLayerTitle = null;
+        aoiSourceLayerUrl = null;
+        aoiSourceObjectId = null;
+        aoiSourceObjectIdField = null;
+        aoiSourceFeature = null;
+        if (aoiLayer) aoiLayer.removeAll();
+        aoiGraphic = null;
+        if (runBtn) runBtn.disabled = true;
+        if (wizFullReport) wizFullReport.disabled = true;
+        if (wizExportAll) wizExportAll.disabled = true;
+        const dbp = document.getElementById("drawBufferPanel");
+        if (dbp) dbp.classList.add("hidden");
+        setStatus("");
+
         currentAoiMethod = method;
         const methodsEl = document.getElementById("aoiMethods");
         if (methodsEl) methodsEl.classList.add("hidden");
@@ -1022,6 +1044,7 @@ function clearAll() {
     // Clear final report
     setCachedFinalReportHtml(null);
     if (viewReportBtn) viewReportBtn.disabled = true;
+    if (copyReportLinkBtn) copyReportLinkBtn.disabled = true;
 
     if (aoiLayer) aoiLayer.removeAll();
     aoiGraphic = null;
@@ -1033,6 +1056,7 @@ function clearAll() {
 
     // Reset wizard-specific UI state
     if (wizFullReport) wizFullReport.disabled = true;
+    if (wizCopyReportLink) wizCopyReportLink.disabled = true;
     if (wizExportAll) wizExportAll.disabled = true;
     setWizPlssActive(null);
 
@@ -1727,6 +1751,7 @@ async function runAnalysis() {
 
         // Enable "View Report" button
         if (viewReportBtn) viewReportBtn.disabled = false;
+        if (copyReportLinkBtn) copyReportLinkBtn.disabled = false;
 
         setStatus("Analysis complete!");
         
@@ -1737,6 +1762,7 @@ async function runAnalysis() {
         if (currentAppMode === "permit") {
             populatePermitBuckets();
             if (wizFullReport) wizFullReport.disabled = false;
+            if (wizCopyReportLink) wizCopyReportLink.disabled = false;
             if (wizExportAll) wizExportAll.disabled = false;
         }
 
@@ -2828,6 +2854,27 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
         if (viewReportBtn) viewReportBtn.addEventListener("click", viewFinalReport);
 
+        // Copy Report Link buttons
+        async function copyReportLink(btn) {
+            const reportId = getLastReportId();
+            if (!reportId) {
+                alert("Run analysis first to generate the report.");
+                return;
+            }
+            const url = getReportShareUrl(reportId);
+            try {
+                await navigator.clipboard.writeText(url);
+                const origText = btn.textContent;
+                btn.textContent = "✅ Copied!";
+                setTimeout(() => { btn.textContent = origText; }, 2000);
+            } catch (e) {
+                // Fallback: select from a prompt
+                window.prompt("Copy this link:", url);
+            }
+        }
+        if (copyReportLinkBtn) copyReportLinkBtn.addEventListener("click", () => copyReportLink(copyReportLinkBtn));
+        if (wizCopyReportLink) wizCopyReportLink.addEventListener("click", () => copyReportLink(wizCopyReportLink));
+
 
         // UI wiring
         if (modeSelect) {
@@ -2892,11 +2939,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const method = card.dataset.method;
                 if (method) showAoiMethod(method);
             });
-        });
-
-        // AOI back buttons
-        document.querySelectorAll(".aoi-back-btn").forEach(btn => {
-            btn.addEventListener("click", hideAoiMethodPanels);
         });
 
         // ── File Upload AOI wiring ──
@@ -3425,6 +3467,29 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         // Brief delay so the bar visually reaches 100% before fading
         await new Promise(r => setTimeout(r, 350));
         hideLoadingOverlay();
+
+        // Check for ?report=<id> in URL and open the saved report
+        (async function checkSharedReport() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const reportId = params.get("report");
+                if (!reportId) return;
+                const html = await loadReportFromDb(reportId);
+                if (html) {
+                    openHtmlInNewTab(html);
+                } else {
+                    alert("This report link has expired or is not available on this device.\n\nReport links are valid for 7 days and can only be opened on the device where the analysis was run.");
+                }
+                // Clean the URL so a refresh doesn't re-open
+                const cleanUrl = window.location.origin + window.location.pathname;
+                window.history.replaceState(null, "", cleanUrl);
+            } catch (e) {
+                console.warn("Failed to load shared report:", e);
+            }
+        })();
+
+        // Cleanup expired reports from IndexedDB
+        cleanupExpiredReports();
 
         // Initialize analysis modal
         analysisModal.init();

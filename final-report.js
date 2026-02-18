@@ -31,10 +31,104 @@ define([
 
     // Cached final report HTML (module-private)
     let cachedFinalReportHtml = null;
+    let _lastReportId = null;
     // Reference to DOM element
     let finalReportStatus = null;
     // External helpers injected from app.js
     let _setStatus = () => {};
+
+    // ────────────────────────────────────────────
+    // IndexedDB report storage (persist reports for sharing via URL)
+    // ────────────────────────────────────────────
+    const REPORT_DB_NAME = "RmpReports";
+    const REPORT_STORE   = "reports";
+    const REPORT_STATE_STORE = "reportState";
+    const REPORT_DB_VER  = 2;
+    const REPORT_TTL_DAYS = 7;
+
+    function _openReportDb() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(REPORT_DB_NAME, REPORT_DB_VER);
+            req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(REPORT_STORE)) {
+                    const store = db.createObjectStore(REPORT_STORE, { keyPath: "id" });
+                    store.createIndex("expiresAt", "expiresAt", { unique: false });
+                }
+                if (!db.objectStoreNames.contains(REPORT_STATE_STORE)) {
+                    db.createObjectStore(REPORT_STATE_STORE, { keyPath: "reportId" });
+                }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror   = () => reject(req.error);
+        });
+    }
+
+    function _generateReportId() {
+        // Short URL-friendly ID (8 chars)
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let id = "";
+        const arr = crypto.getRandomValues(new Uint8Array(8));
+        for (let i = 0; i < 8; i++) id += chars[arr[i] % chars.length];
+        return id;
+    }
+
+    async function saveReportToDb(html, existingId) {
+        const db = await _openReportDb();
+        const id = existingId || _generateReportId();
+        const record = {
+            id,
+            html,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + REPORT_TTL_DAYS * 86400000
+        };
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(REPORT_STORE, "readwrite");
+            tx.objectStore(REPORT_STORE).put(record);
+            tx.oncomplete = () => { db.close(); resolve(id); };
+            tx.onerror    = () => { db.close(); reject(tx.error); };
+        });
+    }
+
+    async function loadReportFromDb(id) {
+        const db = await _openReportDb();
+        return new Promise((resolve, reject) => {
+            const tx  = db.transaction(REPORT_STORE, "readonly");
+            const req = tx.objectStore(REPORT_STORE).get(id);
+            req.onsuccess = () => {
+                db.close();
+                const rec = req.result;
+                if (!rec) return resolve(null);
+                if (rec.expiresAt < Date.now()) return resolve(null); // expired
+                resolve(rec.html);
+            };
+            req.onerror = () => { db.close(); reject(req.error); };
+        });
+    }
+
+    async function cleanupExpiredReports() {
+        try {
+            const db = await _openReportDb();
+            const tx = db.transaction(REPORT_STORE, "readwrite");
+            const store = tx.objectStore(REPORT_STORE);
+            const idx = store.index("expiresAt");
+            const range = IDBKeyRange.upperBound(Date.now());
+            const req = idx.openCursor(range);
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (cursor) { cursor.delete(); cursor.continue(); }
+            };
+            tx.oncomplete = () => db.close();
+            tx.onerror    = () => db.close();
+        } catch (e) {
+            console.warn("Report cleanup failed:", e);
+        }
+    }
+
+    function getReportShareUrl(reportId) {
+        const base = window.location.origin + window.location.pathname;
+        return base + "?report=" + reportId;
+    }
 
     // ────────────────────────────────────────────
     // Pure helpers (zero external deps beyond configHelpers)
@@ -911,8 +1005,9 @@ define([
     // ────────────────────────────────────────────
     // buildFinalReportHtmlDoc – HTML template
     // ────────────────────────────────────────────
-    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, findingsSummaryHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml }) {
+    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, findingsSummaryHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml, reportId }) {
         const safeTitle = escapeHtml(title || "Final Report");
+        const reportIdMeta = reportId ? `<meta name="report-id" content="${escapeHtml(reportId)}" />` : '';
 
         return `<!doctype html>
             <html lang="en">
@@ -920,6 +1015,7 @@ define([
             <meta charset="utf-8"/>
             <meta name="viewport" content="width=device-width,initial-scale=1"/>
             <title>${safeTitle}</title>
+            ${reportIdMeta}
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
             <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
@@ -1554,6 +1650,108 @@ define([
                 </div>
             </div>
             <script>
+            // ── Report state persistence (IndexedDB) ──
+            var _REPORT_ID = (function() {
+                var m = document.querySelector('meta[name="report-id"]');
+                return m ? m.getAttribute('content') : null;
+            })();
+            var _STATE_DB_NAME = 'RmpReports';
+            var _STATE_STORE = 'reportState';
+            var _STATE_DB_VER = 2;
+            var _saveTimer = null;
+
+            function _openStateDb() {
+                return new Promise(function(resolve, reject) {
+                    var req = indexedDB.open(_STATE_DB_NAME, _STATE_DB_VER);
+                    req.onupgradeneeded = function() {
+                        var db = req.result;
+                        if (!db.objectStoreNames.contains('reports')) {
+                            var store = db.createObjectStore('reports', { keyPath: 'id' });
+                            store.createIndex('expiresAt', 'expiresAt', { unique: false });
+                        }
+                        if (!db.objectStoreNames.contains(_STATE_STORE)) {
+                            db.createObjectStore(_STATE_STORE, { keyPath: 'reportId' });
+                        }
+                    };
+                    req.onsuccess = function() { resolve(req.result); };
+                    req.onerror = function() { reject(req.error); };
+                });
+            }
+
+            function _captureState() {
+                var state = { hiddenSections: [], hiddenColumns: {} };
+                var sections = document.querySelectorAll('#layerSectionsContainer > .section');
+                for (var i = 0; i < sections.length; i++) {
+                    if (sections[i].classList.contains('section-hidden')) state.hiddenSections.push(i);
+                }
+                var wrappers = document.querySelectorAll('.interactive-table-wrapper');
+                for (var w = 0; w < wrappers.length; w++) {
+                    var wId = wrappers[w].id;
+                    if (!wId) continue;
+                    var pills = wrappers[w].querySelectorAll('.hidden-col-pill[data-col]');
+                    if (pills.length > 0) {
+                        state.hiddenColumns[wId] = [];
+                        for (var p = 0; p < pills.length; p++) {
+                            state.hiddenColumns[wId].push(parseInt(pills[p].getAttribute('data-col')));
+                        }
+                    }
+                }
+                return state;
+            }
+
+            function _saveState() {
+                if (!_REPORT_ID) return;
+                if (_saveTimer) clearTimeout(_saveTimer);
+                _saveTimer = setTimeout(function() {
+                    _openStateDb().then(function(db) {
+                        var tx = db.transaction(_STATE_STORE, 'readwrite');
+                        tx.objectStore(_STATE_STORE).put({ reportId: _REPORT_ID, state: _captureState(), updatedAt: Date.now() });
+                        tx.oncomplete = function() { db.close(); };
+                        tx.onerror = function() { db.close(); };
+                    }).catch(function() {});
+                }, 500);
+            }
+
+            function _restoreState() {
+                if (!_REPORT_ID) return Promise.resolve(false);
+                return _openStateDb().then(function(db) {
+                    return new Promise(function(resolve) {
+                        var tx = db.transaction(_STATE_STORE, 'readonly');
+                        var req = tx.objectStore(_STATE_STORE).get(_REPORT_ID);
+                        req.onsuccess = function() {
+                            db.close();
+                            var rec = req.result;
+                            if (!rec || !rec.state) return resolve(false);
+                            var s = rec.state;
+                            // Restore hidden sections
+                            if (s.hiddenSections && s.hiddenSections.length) {
+                                var sections = document.querySelectorAll('#layerSectionsContainer > .section');
+                                for (var i = 0; i < s.hiddenSections.length; i++) {
+                                    var idx = s.hiddenSections[i];
+                                    if (sections[idx]) {
+                                        sections[idx].classList.add('section-hidden');
+                                        var btn = sections[idx].querySelector('.section-hide-btn');
+                                        if (btn) btn.innerHTML = '&#x2713; Show';
+                                    }
+                                }
+                                updateHiddenCount();
+                            }
+                            // Restore hidden columns
+                            if (s.hiddenColumns) {
+                                for (var wId in s.hiddenColumns) {
+                                    var cols = s.hiddenColumns[wId];
+                                    for (var c = 0; c < cols.length; c++) {
+                                        hideColumn(wId, cols[c]);
+                                    }
+                                }
+                            }
+                            resolve(true);
+                        };
+                        req.onerror = function() { db.close(); resolve(false); };
+                    });
+                }).catch(function() { return false; });
+            }
+
             // Toggle individual layer section visibility
             function toggleSection(btn) {
                 var section = btn.closest('.section');
@@ -1561,6 +1759,7 @@ define([
                 var isHidden = section.classList.toggle('section-hidden');
                 btn.innerHTML = isHidden ? '&#x2713; Show' : '&#x2715; Hide';
                 updateHiddenCount();
+                _saveState();
             }
             function toggleAllSections(show) {
                 var sections = document.querySelectorAll('#layerSectionsContainer > .section');
@@ -1575,6 +1774,7 @@ define([
                     }
                 }
                 updateHiddenCount();
+                _saveState();
             }
             function updateHiddenCount() {
                 var el = document.getElementById('hiddenLayerCount');
@@ -1646,6 +1846,7 @@ define([
                 pill.onclick = function() { showColumn(wrapperId, colIdx); };
                 bar.appendChild(pill);
                 bar.style.display = 'flex';
+                _saveState();
             }
             // Interactive table: restore a hidden column via pill click
             function showColumn(wrapperId, colIdx) {
@@ -1663,10 +1864,14 @@ define([
                     // Hide bar if empty
                     if (!bar.querySelector('.hidden-col-pill')) bar.style.display = 'none';
                 }
+                _saveState();
             }
 
             // Auto-hide columns that are entirely null/empty on page load
-            (function autoHideNullColumns() {
+            // (only runs if no saved state was restored)
+            _restoreState().then(function(restored) {
+                if (restored) return; // State was restored — skip auto-hide
+                (function autoHideNullColumns() {
                 var wrappers = document.querySelectorAll('.interactive-table-wrapper');
                 for (var wi = 0; wi < wrappers.length; wi++) {
                     var wrapper = wrappers[wi];
@@ -1689,7 +1894,8 @@ define([
                         }
                     }
                 }
-            })();
+                })();
+            });
 
             // ── Map zoom / pan controls ──
             (function() {
@@ -2547,7 +2753,27 @@ define([
 
             cachedFinalReportHtml = htmlDoc;
 
-            if (finalReportStatus) finalReportStatus.textContent = "Report ready.";
+            // Persist report to IndexedDB for shareable URL
+            try {
+                const reportId = await saveReportToDb(htmlDoc);
+                _lastReportId = reportId;
+
+                // Inject reportId into the cached HTML so the report can persist its own UI state
+                cachedFinalReportHtml = htmlDoc.replace(
+                    '</title>',
+                    `</title>\n            <meta name="report-id" content="${reportId}" />`
+                );
+                // Update the stored HTML with the reportId too
+                await saveReportToDb(cachedFinalReportHtml, reportId);
+
+                if (finalReportStatus) {
+                    finalReportStatus.textContent = "Report ready.";
+                }
+            } catch (dbErr) {
+                console.warn("Could not save report to IndexedDB:", dbErr);
+                _lastReportId = null;
+                if (finalReportStatus) finalReportStatus.textContent = "Report ready.";
+            }
 
         } catch (e) {
             console.error(e);

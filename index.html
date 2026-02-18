@@ -277,7 +277,6 @@
           <!-- Search by Location sub-panel -->
           <div id="aoiMethodSearch" class="aoi-method-panel hidden">
             <div class="aoi-method-panel-head">
-              <button class="aoi-back-btn" data-back="search" type="button">← Back</button>
               <span>Search by Location</span>
             </div>
             <div class="aoi-method-panel-body">
@@ -290,7 +289,6 @@
           <!-- Find Existing Permit sub-panel -->
           <div id="aoiMethodPermit" class="aoi-method-panel hidden">
             <div class="aoi-method-panel-head">
-              <button class="aoi-back-btn" data-back="permit" type="button">← Back</button>
               <span>Find Existing Permit or Lease</span>
             </div>
             <div class="aoi-method-panel-body">
@@ -368,7 +366,6 @@
           <!-- Select from Map sub-panel -->
           <div id="aoiMethodSelect" class="aoi-method-panel hidden">
             <div class="aoi-method-panel-head">
-              <button class="aoi-back-btn" data-back="select" type="button">← Back</button>
               <span>Select from Map</span>
             </div>
             <div class="aoi-method-panel-body">
@@ -391,7 +388,6 @@
           <!-- Upload File sub-panel -->
           <div id="aoiMethodUpload" class="aoi-method-panel hidden">
             <div class="aoi-method-panel-head">
-              <button class="aoi-back-btn" data-back="upload" type="button">← Back</button>
               <span>Upload Spatial File</span>
             </div>
             <div class="aoi-method-panel-body">
@@ -437,7 +433,6 @@
           <!-- Draw Custom Area sub-panel -->
           <div id="aoiMethodDraw" class="aoi-method-panel hidden">
             <div class="aoi-method-panel-head">
-              <button class="aoi-back-btn" data-back="draw" type="button">← Back</button>
               <span>Draw Custom Area</span>
             </div>
             <div class="aoi-method-panel-body">
@@ -559,6 +554,7 @@
             <button id="wizNewScreening" class="btn subtle" type="button">← New Screening</button>
             <button id="wizExportAll" class="btn subtle" type="button" disabled>📥 Export CSV</button>
             <button id="wizFullReport" class="btn primary" type="button" disabled>📋 Full Report</button>
+            <button id="wizCopyReportLink" class="btn subtle" type="button" disabled title="Copy shareable report link">🔗 Copy Link</button>
           </div>
         </div>
 
@@ -743,6 +739,7 @@
         <div id="finalReportStatus" class="small" style="margin-top:12px;"></div>
         <div class="row" style="margin-top:14px;">
           <button id="viewReportBtn" class="btn primary" type="button" disabled>📋 View Report</button>
+          <button id="copyReportLinkBtn" class="btn subtle" type="button" disabled title="Copy shareable report link">🔗 Copy Link</button>
         </div>
       </div>
     </section>

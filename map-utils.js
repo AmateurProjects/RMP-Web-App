@@ -172,7 +172,29 @@ define([
         if (!geom) return;
 
         const aoiRenderer = getPresetRenderer("aoi", null);
-        const aoiSymbol = aoiRenderer?.symbol;
+        let aoiSymbol = aoiRenderer?.symbol;
+
+        // The default AOI symbol is a polygon fill — pick an appropriate
+        // symbol when the geometry is a point or polyline so it's visible.
+        const gt = geom.type;
+        if (gt === "point" || gt === "multipoint") {
+            const outlineColor = aoiSymbol?.outline?.color || [230, 57, 70, 1];
+            aoiSymbol = {
+                type: "simple-marker",
+                style: "circle",
+                color: outlineColor,
+                size: 12,
+                outline: { color: [255, 255, 255, 1], width: 2 }
+            };
+        } else if (gt === "polyline") {
+            const outlineColor = aoiSymbol?.outline?.color || [230, 57, 70, 1];
+            aoiSymbol = {
+                type: "simple-line",
+                color: outlineColor,
+                width: 3,
+                style: "solid"
+            };
+        }
 
         S.aoiGraphic = new Graphic({
             geometry: geom,

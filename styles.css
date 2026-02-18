@@ -1663,9 +1663,32 @@ th{
 .analysis-progress-fill {
     height: 100%;
     background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    background-size: 200% 100%;
     width: 0%;
-    transition: width 0.3s ease;
+    transition: width 0.4s ease;
     border-radius: 999px;
+    position: relative;
+    overflow: hidden;
+}
+
+.analysis-progress-fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(255,255,255,0.15) 0px,
+        rgba(255,255,255,0.15) 10px,
+        transparent 10px,
+        transparent 20px
+    );
+    background-size: 28.28px 100%; /* 20*sqrt(2) for 45° alignment */
+    animation: analysisBarStripes 0.8s linear infinite;
+}
+
+@keyframes analysisBarStripes {
+    0%   { background-position: 0 0; }
+    100% { background-position: 28.28px 0; }
 }
 
 /* Stay-in-tab notice */
@@ -2494,21 +2517,6 @@ th{
     font-weight: 600;
     font-size: 13px;
     color: var(--text-primary);
-}
-
-.aoi-back-btn {
-    background: none;
-    border: none;
-    color: var(--blm-green);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    padding: 4px 0;
-    font-family: inherit;
-}
-
-.aoi-back-btn:hover {
-    text-decoration: underline;
 }
 
 .input-field {
