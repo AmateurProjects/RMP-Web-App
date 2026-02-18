@@ -3634,10 +3634,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     applyMode(saved);
 
     // Toggle menu open/close
-    toggleBtn.addEventListener("click", () => {
-        const open = menu.classList.toggle("hidden");
-        toggleBtn.setAttribute("aria-expanded", !open ? "true" : "false");
-        if (!open) {
+    toggleBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent document click handler from immediately closing
+        const isHidden = menu.classList.toggle("hidden");
+        toggleBtn.setAttribute("aria-expanded", isHidden ? "false" : "true");
+        if (!isHidden) {
             // Focus first menu item for keyboard navigation
             const first = menu.querySelector(".a11y-option");
             if (first) first.focus();
@@ -3646,7 +3647,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
     // Menu item clicks
     options.forEach(btn => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
             applyMode(btn.dataset.cv);
         });
     });
@@ -3668,9 +3670,10 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         }
     });
 
-    // Close if user clicks outside
+    // Close if user clicks outside the widget
     document.addEventListener("click", (e) => {
-        if (!menu.classList.contains("hidden") && !menu.contains(e.target) && e.target !== toggleBtn) {
+        const widget = document.getElementById("a11yWidget");
+        if (!menu.classList.contains("hidden") && widget && !widget.contains(e.target)) {
             menu.classList.add("hidden");
             toggleBtn.setAttribute("aria-expanded", "false");
         }
