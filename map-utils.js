@@ -553,7 +553,14 @@ define([
                         if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                         const lyr = new FeatureLayer(layerOpts);
                         return withTimeout(lyr.load(), LOAD_TIMEOUT_MS, sl.title)
-                            .then(() => ({ lyr, sl, ok: true }))
+                            .then(() => {
+                                // Skip layers without query capability (avoids featurelayerview:query-not-supported)
+                                if (!lyr.capabilities?.query?.supportsSqlExpression) {
+                                    console.warn(`[buildReportDisplayLayers] Skipping sublayer "${sl.title}": no query capability`);
+                                    return { lyr: null, sl, ok: false };
+                                }
+                                return { lyr, sl, ok: true };
+                            })
                             .catch(e => {
                                 console.warn(`[buildReportDisplayLayers] Skipping sublayer "${sl.title}":`, e.message || e);
                                 return { lyr: null, sl, ok: false };
@@ -594,7 +601,13 @@ define([
                         if (cfg.maxScale !== undefined) layerOpts.maxScale = cfg.maxScale;
                         const lyr = new FeatureLayer(layerOpts);
                         return withTimeout(lyr.load(), LOAD_TIMEOUT_MS, sl.title)
-                            .then(() => ({ lyr, sl, ok: true }))
+                            .then(() => {
+                                if (!lyr.capabilities?.query?.supportsSqlExpression) {
+                                    console.warn(`[buildReportDisplayLayers] Skipping sublayer "${sl.title}": no query capability`);
+                                    return { lyr: null, sl, ok: false };
+                                }
+                                return { lyr, sl, ok: true };
+                            })
                             .catch(e => {
                                 console.warn(`[buildReportDisplayLayers] Skipping sublayer "${sl.title}":`, e.message || e);
                                 return { lyr: null, sl, ok: false };

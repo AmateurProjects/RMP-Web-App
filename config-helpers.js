@@ -209,9 +209,16 @@ define([], function () {
         // Parallel geometry type checks for polygon filtering
         const checks = await Promise.allSettled(
             layers.map(async l => {
+                // Skip Annotation sublayers early — FeatureLayer cannot render them
+                const parentType = String(l.type || l.subLayerType || "").toLowerCase();
+                if (parentType.includes("annotation")) return null;
+
                 const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
                 try {
                     const lpjson = await fetchJson(layerUrl + "?f=pjson");
+                    // Also check sublayer type from its own metadata
+                    const slType = String(lpjson?.type || "").toLowerCase();
+                    if (slType.includes("annotation")) return null;
                     const g = String(lpjson?.geometryType || "");
                     if (!g.toLowerCase().includes("polygon")) return null;
                     let title = String(l.name || "");
@@ -255,8 +262,14 @@ define([], function () {
                 const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
                 try {
                     const lpjson = await fetchJson(layerUrl + "?f=pjson");
+                    // Skip annotation sublayers
+                    const slType = String(lpjson?.type || "").toLowerCase();
+                    if (slType.includes("annotation")) return null;
                     const g = String(lpjson?.geometryType || "").toLowerCase();
                     if (!g.includes("polygon")) return null;
+                    // Skip layers without query capability
+                    const caps = String(lpjson?.capabilities || "").toLowerCase();
+                    if (caps && !caps.includes("query")) return null;
                     let title = l?.name ? String(l.name) : `Layer ${l.id}`;
                     title = title.replace(/intersected/ig, "Parcel");
                     return { title, url: layerUrl };

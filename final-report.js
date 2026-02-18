@@ -2820,7 +2820,12 @@ define([
             viewFinalReport,
             // Accessors for cachedFinalReportHtml
             getCachedFinalReportHtml: () => cachedFinalReportHtml,
-            setCachedFinalReportHtml: (v) => { cachedFinalReportHtml = v; }
+            setCachedFinalReportHtml: (v) => { cachedFinalReportHtml = v; },
+            // IndexedDB report management
+            getLastReportId: () => _lastReportId,
+            getReportShareUrl,
+            loadReportFromDb,
+            cleanupExpiredReports
         };
     }
 
