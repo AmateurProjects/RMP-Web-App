@@ -46,6 +46,65 @@ define([
     const REPORT_DB_VER  = 2;
     const REPORT_TTL_DAYS = 7;
 
+    // ────────────────────────────────────────────
+    // Report Layer Buckets (same as Permit Screening UI)
+    // ────────────────────────────────────────────
+    const REPORT_BUCKETS = {
+        "land-status": {
+            label: "Land Status & Authority", icon: "🏛️",
+            description: "Federal land ownership, administrative boundaries, tribal lands, and jurisdictional authority.",
+            patterns: [/federal lands/i, /admin.*unit/i, /state boundar/i, /usfws.*region/i, /aoi source/i,
+                        /bia.*aian/i, /indian/i, /alaska.*native/i, /tribal/i, /surface.*ownership/i,
+                        /land use planning bound/i]
+        },
+        "land-use": {
+            label: "Land Use Plans & Allocations", icon: "📑",
+            description: "Resource Management Plans, timber and mineral allocations.",
+            patterns: [/land use plan/i, /revision.*development/i, /timber/i, /locatable.*mineral/i,
+                        /taylor grazing/i, /tga/i]
+        },
+        "special": {
+            label: "Special Designations", icon: "⭐",
+            description: "ACECs, wilderness, conservation lands, wild & scenic rivers, and other special designations.",
+            patterns: [/acec/i, /critical environmental/i, /nlcs/i, /conservation area/i, /national monument/i,
+                        /wilderness/i, /wsa/i, /recreation site/i, /lwcf/i, /conservation fund/i, /visual resource/i,
+                        /wild.*scenic.*river/i, /roadless/i, /national forest bound/i, /national wildlife refuge/i, /nwr/i]
+        },
+        "environmental": {
+            label: "Environmental & ESA", icon: "🌿",
+            description: "Critical habitat, wetlands, hydrology, wildlife corridors, flood hazards, and fire history.",
+            patterns: [/critical habitat/i, /ungulate/i, /migration/i, /wild horse/i, /burro/i, /elevation/i, /fire perim/i,
+                        /wetland/i, /nwi/i, /riparian/i, /nhd/i, /hydrography/i, /watershed/i, /wbd/i,
+                        /flood/i, /nfhl/i, /fema/i, /sagebrush/i, /fiat/i, /danl/i, /disturbance/i,
+                        /at.risk.*species/i, /t\&e/i, /threatened/i]
+        },
+        "authorizations": {
+            label: "Existing Authorizations", icon: "📝",
+            description: "Active permits, leases, rights-of-way, mining claims, and other authorizations.",
+            patterns: [/grazing allot/i, /grazing pasture/i, /oil.*gas/i, /mlrs.*row/i, /lua.*row/i, /eplanning/i, /plss.*parcel/i,
+                        /mining claim/i, /lua.*lease/i, /lua.*permit/i, /lua.*easem/i, /geothermal/i, /coal case/i,
+                        /oil shale/i, /non.energy/i, /mineral material/i, /locatable notice/i, /locatable plan/i,
+                        /participating area/i, /agreement/i, /gtlf/i, /road.*trail/i]
+        }
+    };
+
+    const BUCKET_ORDER = ["land-status", "land-use", "special", "environmental", "authorizations", "uncategorized"];
+
+    function categorizeLayersIntoBuckets(items) {
+        const buckets = {};
+        for (const key of Object.keys(REPORT_BUCKETS)) buckets[key] = [];
+        buckets["uncategorized"] = [];
+        for (const item of (items || [])) {
+            const title = (item.title || "");
+            let placed = false;
+            for (const [bk, bd] of Object.entries(REPORT_BUCKETS)) {
+                if (bd.patterns.some(p => p.test(title))) { buckets[bk].push(item); placed = true; break; }
+            }
+            if (!placed) buckets["uncategorized"].push(item);
+        }
+        return buckets;
+    }
+
     function _openReportDb() {
         return new Promise((resolve, reject) => {
             const req = indexedDB.open(REPORT_DB_NAME, REPORT_DB_VER);
@@ -1409,6 +1468,38 @@ define([
                     background: #c8e6c9;
                 }
                 .section-hidden + .pagebreak { display: none; }
+                /* Bucket category headers */
+                .bucket-header {
+                    background: linear-gradient(135deg, var(--blm-green) 0%, #2d5a3d 100%);
+                    color: white;
+                    padding: 24px 32px;
+                    margin: 32px 0 20px 0;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                .bucket-header h2 {
+                    margin: 0 0 8px 0;
+                    font-size: 22px;
+                    font-weight: 700;
+                    border: none;
+                    padding: 0;
+                    color: white;
+                }
+                .bucket-header .bucket-description {
+                    margin: 0;
+                    font-size: 14px;
+                    opacity: 0.9;
+                    line-height: 1.5;
+                }
+                @media print {
+                    .bucket-header {
+                        background: var(--blm-green) !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                        break-after: avoid;
+                        page-break-after: avoid;
+                    }
+                }
                 .layer-maps-toolbar {
                     display: flex;
                     align-items: center;
@@ -1644,6 +1735,19 @@ define([
                     color: var(--blm-gold);
                     text-decoration: underline;
                 }
+                .toc-sublist {
+                    margin: 6px 0 4px 0;
+                    padding-left: 20px;
+                    list-style: none;
+                }
+                .toc-sublist li {
+                    margin: 3px 0;
+                    font-size: 13px;
+                    font-weight: 400;
+                }
+                .toc-sublist a {
+                    font-weight: 400;
+                }
                 /* Findings sub-headings */
                 .findings-subhead {
                     margin: 20px 0 6px 0;
@@ -1762,7 +1866,7 @@ define([
                     display: none;
                     position: fixed;
                     bottom: 28px;
-                    right: 28px;
+                    right: 80px;
                     width: 48px;
                     height: 48px;
                     border-radius: 50%;
@@ -1822,7 +1926,15 @@ define([
                         <li><a href="#section-summary">Report Summary</a></li>
                         <li><a href="#section-findings">Regulatory Screening &amp; Findings Summary</a></li>
                         <li><a href="#section-aoi">Area of Interest</a></li>
-                        <li><a href="#section-layers">Layer Analysis Maps</a></li>
+                        <li><a href="#section-layers">Layer Analysis Maps</a>
+                            <ul class="toc-sublist">
+                                <li><a href="#bucket-land-status">\ud83c\udfdb\ufe0f Land Status &amp; Authority</a></li>
+                                <li><a href="#bucket-land-use">\ud83d\udcd1 Land Use Plans &amp; Allocations</a></li>
+                                <li><a href="#bucket-special">\u2b50 Special Designations</a></li>
+                                <li><a href="#bucket-environmental">\ud83c\udf3f Environmental &amp; ESA</a></li>
+                                <li><a href="#bucket-authorizations">\ud83d\udcdd Existing Authorizations</a></li>
+                            </ul>
+                        </li>
                         <li><a href="#section-sources">Data Sources</a></li>
                     </ol>
                 </nav>
@@ -2197,7 +2309,7 @@ define([
                     try {
                         navigator.clipboard.writeText(url).then(function() {
                             var orig = btn.textContent;
-                            btn.textContent = '\u2705 Bookmarked!';
+                            btn.textContent = '\u2705 Saved to Clipboard';
                             setTimeout(function() { btn.textContent = orig; }, 2000);
                         });
                     } catch(e) {
@@ -2207,7 +2319,8 @@ define([
             })();
 
             // ── Accessibility Color-Vision Widget ──
-            (function() {
+            // Wait for DOM to be ready since widget HTML comes after this script
+            document.addEventListener('DOMContentLoaded', function() {
                 var STORAGE_KEY = 'a11y-cv-mode';
                 var toggleBtn = document.getElementById('a11yToggleBtnReport');
                 var menu = document.getElementById('a11yMenuReport');
@@ -2248,7 +2361,7 @@ define([
                         toggleBtn.setAttribute('aria-expanded','false');
                     }
                 });
-            })();
+            });
             </script>
 
             <!-- Accessibility: SVG color-vision filters -->
@@ -2482,7 +2595,7 @@ define([
         const aoiMaskLayer = S.aoiMaskLayer;
         const alwaysVisibleLayers = S.alwaysVisibleLayers;
 
-        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait, waitForTabVisible } = mapUtils;
+        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait, waitForTabVisible, waitForLayerReadyToCapture } = mapUtils;
 
         const width  = config?.visualReport?.screenshotWidth ?? 1400;
         const height = Math.round(width * 0.5625);
@@ -2559,6 +2672,11 @@ define([
         async function compositeWithOverview(mainDataUrl, mainExtent, scale) {
             const overviewScale = scale * overviewZoomFactor;
             await view.goTo({ target: selectionGeom.extent, scale: overviewScale }, { animate: false });
+
+            // Wait for boundary layers to finish rendering at the new scale
+            await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
+            await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
+
             const ovSs = await captureScreenshotWithWait({ width });
             if (!ovSs) return mainDataUrl;
 
@@ -2692,8 +2810,17 @@ define([
         try {
             setVisibilityForAoi();
 
+            // Wait for state/county boundary layers to fully load and render
+            await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 8000 });
+            await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 8000 });
+
             const ext1 = selectionGeom.extent;
             await view.goTo({ target: ext1, scale: 900000 }, { animate: false });
+
+            // Wait for boundary layers at new scale
+            await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
+            await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
+
             const ss1 = await captureScreenshotWithWait({ width });
             const mainExtent1 = view.extent.clone();
 
@@ -2704,6 +2831,11 @@ define([
 
             const ext2 = selectionGeom.extent;
             await view.goTo({ target: ext2, scale: 200000 }, { animate: false });
+
+            // Wait for boundary layers at new scale
+            await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
+            await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
+
             const ss2 = await captureScreenshotWithWait({ width });
             const mainExtent2 = view.extent.clone();
 
@@ -2860,14 +2992,11 @@ define([
                 .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
                 .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 
-            // Sort so BLM Administrative Units comes first
-            targets.sort((a, b) => {
-                const aAdmin = a.title && a.title.toLowerCase().includes("administrative unit") ? 0 : 1;
-                const bAdmin = b.title && b.title.toLowerCase().includes("administrative unit") ? 0 : 1;
-                return aAdmin - bAdmin;
-            });
+            // Categorize targets into buckets for grouped output
+            const bucketedTargets = categorizeLayersIntoBuckets(targets);
 
             let sectionsHtml = "";
+            let globalLayerIndex = 0;
 
             if (!targets.length) {
                 sectionsHtml = `
@@ -2918,9 +3047,27 @@ define([
                     console.warn("Failed to switch to imagery basemap:", e);
                 }
 
-                for (let i = 0; i < targets.length; i++) {
-                    const item = targets[i];
-                    _setStatus(`building final report\u2026 (${i + 1}/${targets.length})`);
+                // Iterate through buckets in order
+                for (const bucketKey of BUCKET_ORDER) {
+                    const bucketItems = bucketedTargets[bucketKey] || [];
+                    if (!bucketItems.length) continue;
+
+                    // Get bucket metadata
+                    const bucketMeta = REPORT_BUCKETS[bucketKey] || { label: "Other Layers", icon: "📋", description: "" };
+                    
+                    // Add bucket section header
+                    sectionsHtml += `
+                    <div class="bucket-header" id="bucket-${bucketKey}">
+                        <h2>${bucketMeta.icon} ${escapeHtml(bucketMeta.label)}</h2>
+                        <p class="bucket-description">${escapeHtml(bucketMeta.description)}</p>
+                    </div>
+                    `;
+
+                    // Process each layer in this bucket
+                    for (let bi = 0; bi < bucketItems.length; bi++) {
+                        const item = bucketItems[bi];
+                        globalLayerIndex++;
+                        _setStatus(`building final report\u2026 (${globalLayerIndex}/${targets.length})`);
 
                     // ImageServer layers
                     if (item.__isImageService) {
@@ -3061,16 +3208,11 @@ define([
 
                         const layerAttrSummary = generateLayerAttributeSummary(item);
                         const perFeatureTableHtml = (item.count > 0)
-                            ? await buildPerFeatureTable(item, selectionGeom, i)
+                            ? await buildPerFeatureTable(item, selectionGeom, globalLayerIndex)
                             : "";
 
                         // Only flag low-coverage for polygon layers (not points or lines)
                         const isSingleFeatureLowCoverage = isPolygonLayer && (item.count === 1 && pctCovered < 3);
-                        const lowCoverageWarningHtml = isSingleFeatureLowCoverage
-                            ? `<div style="margin-top:12px; padding:12px 16px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:6px; font-size:14px; line-height:1.5;">
-                                <span style="color:#856404;">\u26A0\uFE0F <b>Low Coverage Warning:</b> This feature covers less than 3% of the AOI. This may indicate a polygon sliver or boundary artifact rather than meaningful overlap.</span>
-                               </div>`
-                            : "";
 
                         // Coverage rows only for polygon layers
                         const coverageRowsHtml = isPolygonLayer
@@ -3105,7 +3247,6 @@ define([
                                 </tr></tbody>
                             </table>
                             ${layerAttrSummary ? `<table class="metaTbl">${layerAttrSummary}</table>` : ''}
-                            ${lowCoverageWarningHtml}
                             ${perFeatureTableHtml}
                             </div></div>
                         </div>
@@ -3115,7 +3256,8 @@ define([
                         try { view.map.remove(temp); } catch (e) { }
                         restoreVisibility();
                     }
-                }
+                    } // end layer loop
+                } // end bucket loop
 
                 // Restore original basemap
                 try {

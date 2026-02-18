@@ -399,11 +399,6 @@ define([
 
                     var isPolygonLayer = d.tempGeomType && String(d.tempGeomType).toLowerCase().indexOf('polygon') !== -1;
                     var isSingleFeatureLowCoverage = isPolygonLayer && (d.item.count === 1 && pctCovered < 3);
-                    var lowCoverageWarningHtml = isSingleFeatureLowCoverage
-                        ? '<div style="margin-top:8px; padding:6px; background-color:#fff3cd; border:1px solid #ffc107; border-radius:4px; font-size:11px;">' +
-                            '<span style="color:#856404;">\u26a0\ufe0f Low coverage (&lt;3%) \u2014 possible sliver or boundary artifact</span>' +
-                          '</div>'
-                        : "";
 
                     outCards[d.cardIndex] =
                         '<div class="visual-output-card">' +
@@ -418,7 +413,6 @@ define([
                                   (isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver">\u26a0\ufe0f</span>' : '') +
                               '</td></tr>' +
                             '</table>' +
-                            lowCoverageWarningHtml +
                           '</div>' +
                         '</div>';
                 }
