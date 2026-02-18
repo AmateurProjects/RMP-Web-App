@@ -2054,6 +2054,76 @@ define([
         `;
     }
 
+    // ── Cached state/county boundary layers for AOI maps ──
+    let _stateBoundaryLayer = null;
+    let _countyBoundaryLayer = null;
+
+    function _getStateBoundaryLayer() {
+        if (!_stateBoundaryLayer) {
+            _stateBoundaryLayer = new FeatureLayer({
+                url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0",
+                title: "__reportStateBoundaries",
+                outFields: [],
+                labelsVisible: true,
+                labelingInfo: [{
+                    labelExpressionInfo: { expression: "$feature.STATE_ABBR" },
+                    symbol: {
+                        type: "text",
+                        color: [60, 60, 60, 0.9],
+                        haloColor: [255, 255, 255, 0.85],
+                        haloSize: 1.5,
+                        font: { size: 11, weight: "bold", family: "Noto Sans" }
+                    },
+                    minScale: 25000000,
+                    maxScale: 0
+                }],
+                renderer: {
+                    type: "simple",
+                    symbol: {
+                        type: "simple-fill",
+                        color: [0, 0, 0, 0],
+                        outline: { color: [80, 80, 80, 0.7], width: 1.5 }
+                    }
+                },
+                visible: false
+            });
+        }
+        return _stateBoundaryLayer;
+    }
+
+    function _getCountyBoundaryLayer() {
+        if (!_countyBoundaryLayer) {
+            _countyBoundaryLayer = new FeatureLayer({
+                url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Counties_Generalized_Boundaries/FeatureServer/0",
+                title: "__reportCountyBoundaries",
+                outFields: [],
+                labelsVisible: true,
+                labelingInfo: [{
+                    labelExpressionInfo: { expression: "$feature.NAME" },
+                    symbol: {
+                        type: "text",
+                        color: [90, 90, 90, 0.85],
+                        haloColor: [255, 255, 255, 0.8],
+                        haloSize: 1,
+                        font: { size: 9, weight: "normal", family: "Noto Sans" }
+                    },
+                    minScale: 3000000,
+                    maxScale: 0
+                }],
+                renderer: {
+                    type: "simple",
+                    symbol: {
+                        type: "simple-fill",
+                        color: [0, 0, 0, 0],
+                        outline: { color: [140, 140, 140, 0.5], width: 0.75 }
+                    }
+                },
+                visible: false
+            });
+        }
+        return _countyBoundaryLayer;
+    }
+
     // ────────────────────────────────────────────
     // generateAoiMapsWithCircles
     // ────────────────────────────────────────────
@@ -2078,6 +2148,16 @@ define([
         const insetH = Math.round(height * insetFrac);
         const insetMargin = 12;
         const overviewZoomFactor = 8;
+
+        // Add state/county boundary layers to map if not already present
+        const stateLayer  = _getStateBoundaryLayer();
+        const countyLayer = _getCountyBoundaryLayer();
+        if (!view.map.layers.includes(stateLayer))  view.map.layers.add(stateLayer);
+        if (!view.map.layers.includes(countyLayer)) view.map.layers.add(countyLayer);
+
+        // Load them (no-op if already loaded)
+        try { await stateLayer.load(); }  catch (_) { }
+        try { await countyLayer.load(); } catch (_) { }
 
         const allLayers   = view.map.layers.toArray();
         const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
@@ -2110,9 +2190,11 @@ define([
                 if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
                 if (l?.type === "tile") { l.visible = true; continue; }
                 if (plssTownshipLayer && l === plssTownshipLayer) { l.visible = true; continue; }
+                if (l === stateLayer || l === countyLayer) { l.visible = true; continue; }
                 if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
                 l.visible = false;
             }
+            // Ensure boundary layers draw below AOI
             ensureAoiOnTop();
         }
 
@@ -2121,6 +2203,9 @@ define([
             if (plssTownshipLayer && plssTownshipOrigRenderer !== null) {
                 try { plssTownshipLayer.renderer = plssTownshipOrigRenderer; } catch (e) { }
             }
+            // Hide boundary layers (they are only for report screenshots)
+            try { stateLayer.visible = false; }  catch (_) { }
+            try { countyLayer.visible = false; } catch (_) { }
             visSnapshot.forEach(s => { try { s.layer.visible = s.visible; } catch (e) { } });
             hideAoiMask();
             ensureAoiOnTop();

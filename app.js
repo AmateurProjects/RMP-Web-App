@@ -2537,9 +2537,38 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // Overview map: fixed extent/zoom (contiguous US), red rectangle shows main map extent
         const overviewExtentLayer = new GraphicsLayer();
+
+        // State boundaries on the overview minimap for geographic context
+        const overviewStateBoundaries = new FeatureLayer({
+            url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0",
+            title: "__overviewStates",
+            outFields: [],
+            labelsVisible: true,
+            labelingInfo: [{
+                labelExpressionInfo: { expression: "$feature.STATE_ABBR" },
+                symbol: {
+                    type: "text",
+                    color: [230, 230, 230, 0.9],
+                    haloColor: [0, 0, 0, 0.6],
+                    haloSize: 1,
+                    font: { size: 8, weight: "bold", family: "Noto Sans" }
+                },
+                minScale: 0,
+                maxScale: 0
+            }],
+            renderer: {
+                type: "simple",
+                symbol: {
+                    type: "simple-fill",
+                    color: [0, 0, 0, 0],
+                    outline: { color: [200, 200, 200, 0.7], width: 1 }
+                }
+            }
+        });
+
         let overviewMap = new EsriMap({
             basemap: imageryBasemapId,
-            layers: [overviewExtentLayer]
+            layers: [overviewStateBoundaries, overviewExtentLayer]
         });
         const overviewView = new MapView({
             container: "overviewMapView",
