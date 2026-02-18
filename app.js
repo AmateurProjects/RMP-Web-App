@@ -640,6 +640,14 @@ function setActiveTab(tabName) {
             if (modeSelect) modeSelect.value = "select";
             setMode("select");
         }
+
+        // Scroll the opened panel into view so the user sees the options
+        const targetPanel = document.getElementById(panels[method]);
+        if (targetPanel) {
+            requestAnimationFrame(() => {
+                targetPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+        }
     }
 
     function hideAoiMethodPanels() {
@@ -2585,14 +2593,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 if (drawBufPanel) {
                     const typeLabel = gType === "polyline" ? "line" : gType;
                     if (needsBuffer) {
-                        if (drawBufMsg) drawBufMsg.innerHTML = "Your drawn <strong>" + typeLabel + "</strong> requires a buffer to create a polygon AOI.";
-                        if (drawBufInput) drawBufInput.value = gType === "point" ? "1" : "0.5";
-                        if (drawBufSkip) drawBufSkip.classList.add("hidden");
+                        if (drawBufMsg) drawBufMsg.innerHTML = "Optionally add a buffer around your drawn <strong>" + typeLabel + "</strong>.";
+                        if (drawBufInput) drawBufInput.value = "";
                     } else {
                         if (drawBufMsg) drawBufMsg.innerHTML = "Optionally add a buffer around your drawn <strong>polygon</strong>.";
                         if (drawBufInput) drawBufInput.value = "";
-                        if (drawBufSkip) drawBufSkip.classList.remove("hidden");
                     }
+                    if (drawBufSkip) drawBufSkip.classList.remove("hidden");
 
                     // Store drawn geometry for buffer apply
                     drawBufPanel._drawnGeom = geom;
@@ -3276,11 +3283,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     setStatus("Buffer operation failed.");
                     return;
                 }
-            } else if (geom.type === "polygon") {
-                finalGeom = geom;
             } else {
-                setStatus("A buffer is required for point/line features.");
-                return;
+                finalGeom = geom;
             }
 
             setAoiGeometry(finalGeom);
@@ -3313,11 +3317,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 if (!geom) return;
 
                 if (isNaN(val) || val <= 0) {
-                    if (geom.type === "polygon") {
-                        finalizeDrawAoi(geom, 0);
-                        return;
-                    }
-                    setStatus("Please enter a buffer distance greater than 0.");
+                    finalizeDrawAoi(geom, 0);
                     return;
                 }
                 if (val > 50) {

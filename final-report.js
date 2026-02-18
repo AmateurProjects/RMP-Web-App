@@ -1265,8 +1265,21 @@ define([
                     color: #c62828;
                     border-color: #ef9a9a;
                 }
-                .section.section-hidden > *:not(h3) {
-                    display: none !important;
+                .section {
+                    transition: opacity 0.35s ease, padding 0.35s ease, background 0.35s ease;
+                }
+                .section .section-collapse-wrap {
+                    display: grid;
+                    grid-template-rows: 1fr;
+                    transition: grid-template-rows 0.35s ease;
+                    overflow: hidden;
+                }
+                .section.section-hidden .section-collapse-wrap {
+                    grid-template-rows: 0fr;
+                }
+                .section .section-collapse-inner {
+                    min-height: 0;
+                    overflow: hidden;
                 }
                 .section.section-hidden {
                     opacity: 0.5;
@@ -1651,6 +1664,32 @@ define([
                     if (!bar.querySelector('.hidden-col-pill')) bar.style.display = 'none';
                 }
             }
+
+            // Auto-hide columns that are entirely null/empty on page load
+            (function autoHideNullColumns() {
+                var wrappers = document.querySelectorAll('.interactive-table-wrapper');
+                for (var wi = 0; wi < wrappers.length; wi++) {
+                    var wrapper = wrappers[wi];
+                    var wId = wrapper.id;
+                    if (!wId) continue;
+                    var ths = wrapper.querySelectorAll('thead th[data-col]');
+                    for (var ti = 0; ti < ths.length; ti++) {
+                        var colIdx = ths[ti].getAttribute('data-col');
+                        var tds = wrapper.querySelectorAll('tbody td[data-col="' + colIdx + '"]');
+                        var allEmpty = true;
+                        for (var di = 0; di < tds.length; di++) {
+                            var val = (tds[di].getAttribute('data-sort-val') || tds[di].textContent || '').trim();
+                            if (val !== '' && val !== 'null' && val !== 'Null' && val !== 'NULL' && val !== 'undefined') {
+                                allEmpty = false;
+                                break;
+                            }
+                        }
+                        if (allEmpty && tds.length > 0) {
+                            hideColumn(wId, parseInt(colIdx));
+                        }
+                    }
+                }
+            })();
 
             // ── Map zoom / pan controls ──
             (function() {
@@ -2224,6 +2263,7 @@ define([
                             sectionsHtml += `
                               <div class="section layer-section page-break">
                                 <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
+                                <div class="section-collapse-wrap"><div class="section-collapse-inner">
                                 <div class="map">
                                   <div class="map-zoom-controls">
                                       <button class="zoom-in" title="Zoom in">+</button>
@@ -2238,6 +2278,7 @@ define([
                                   ${elevStatsHtml}
                                   ${meta.copyright ? `<tr><td>Source</td><td>${escapeHtml(meta.copyright)}</td></tr>` : ''}
                                 </table>
+                                </div></div>
                               </div>
                             `;
                         } finally {
@@ -2263,6 +2304,36 @@ define([
                     temp.maxScale = 0;
 
                     view.map.add(temp);
+
+                    // Wait for the layer to load so its service renderer is available
+                    try { await temp.when(); } catch (e) { /* continue even if load fails */ }
+
+                    // Thicken polygon outlines while preserving the service's original symbology
+                    if (tempGeomType && String(tempGeomType).toLowerCase().includes('polygon') && temp.renderer) {
+                        try {
+                            const r = temp.renderer.clone();
+                            const MIN_OUTLINE = 3;
+
+                            function thickenOutline(sym) {
+                                if (!sym) return;
+                                if (sym.outline) {
+                                    sym.outline.width = Math.max(sym.outline.width || 0, MIN_OUTLINE);
+                                } else {
+                                    sym.outline = { color: [0, 0, 0, 0.8], width: MIN_OUTLINE };
+                                }
+                            }
+
+                            if (r.symbol) thickenOutline(r.symbol);
+                            if (r.defaultSymbol) thickenOutline(r.defaultSymbol);
+                            if (r.uniqueValueInfos) r.uniqueValueInfos.forEach(uv => thickenOutline(uv.symbol));
+                            if (r.classBreakInfos) r.classBreakInfos.forEach(cb => thickenOutline(cb.symbol));
+
+                            temp.renderer = r;
+                        } catch (e) {
+                            console.warn("Could not thicken outline for", item.title, e);
+                        }
+                    }
+
                     try {
                         setVisibilityForScreenshot(temp);
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
@@ -2311,6 +2382,7 @@ define([
                         sectionsHtml += `
                         <div class="section">
                             <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
+                            <div class="section-collapse-wrap"><div class="section-collapse-inner">
                             <div class="map">
                                 <div class="map-zoom-controls">
                                     <button class="zoom-in" title="Zoom in">+</button>
@@ -2334,6 +2406,7 @@ define([
                             ${layerAttrSummary ? `<table class="metaTbl">${layerAttrSummary}</table>` : ''}
                             ${lowCoverageWarningHtml}
                             ${perFeatureTableHtml}
+                            </div></div>
                         </div>
                         <div class="pagebreak"></div>
                         `;
