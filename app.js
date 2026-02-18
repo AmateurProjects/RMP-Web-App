@@ -108,7 +108,6 @@ require([
 
     // Final report DOM
     const viewReportBtn = document.getElementById("viewReportBtn");
-    const copyReportLinkBtn = document.getElementById("copyReportLinkBtn");
     const finalReportStatus = document.getElementById("finalReportStatus");
 
     const servicesListEl = document.getElementById("servicesList");
@@ -126,7 +125,6 @@ require([
     const wizBackToStep1 = document.getElementById("wizBackToStep1");
     const wizNewScreening = document.getElementById("wizNewScreening");
     const wizFullReport = document.getElementById("wizFullReport");
-    const wizCopyReportLink = document.getElementById("wizCopyReportLink");
     const wizExportAll = document.getElementById("wizExportAll");
     const wizStopDrawBtn = document.getElementById("wizStopDrawBtn");
     const wizTownshipBtn = document.getElementById("wizTownshipBtn");
@@ -1062,7 +1060,6 @@ function clearAll() {
     // Clear final report
     setCachedFinalReportHtml(null);
     if (viewReportBtn) viewReportBtn.disabled = true;
-    if (copyReportLinkBtn) copyReportLinkBtn.disabled = true;
 
     if (aoiLayer) aoiLayer.removeAll();
     aoiGraphic = null;
@@ -1074,7 +1071,6 @@ function clearAll() {
 
     // Reset wizard-specific UI state
     if (wizFullReport) wizFullReport.disabled = true;
-    if (wizCopyReportLink) wizCopyReportLink.disabled = true;
     if (wizExportAll) wizExportAll.disabled = true;
     setWizPlssActive(null);
 
@@ -1803,7 +1799,6 @@ async function runAnalysis() {
 
         // Enable "View Report" button
         if (viewReportBtn) viewReportBtn.disabled = false;
-        if (copyReportLinkBtn) copyReportLinkBtn.disabled = false;
 
         setStatus("Analysis complete!");
         
@@ -1814,7 +1809,6 @@ async function runAnalysis() {
         if (currentAppMode === "permit") {
             populatePermitBuckets();
             if (wizFullReport) wizFullReport.disabled = false;
-            if (wizCopyReportLink) wizCopyReportLink.disabled = false;
             if (wizExportAll) wizExportAll.disabled = false;
         }
 
@@ -2543,19 +2537,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0",
             title: "__overviewStates",
             outFields: [],
-            labelsVisible: true,
-            labelingInfo: [{
-                labelExpressionInfo: { expression: "$feature.STATE_ABBR" },
-                symbol: {
-                    type: "text",
-                    color: [230, 230, 230, 0.9],
-                    haloColor: [0, 0, 0, 0.6],
-                    haloSize: 1,
-                    font: { size: 8, weight: "bold", family: "Noto Sans" }
-                },
-                minScale: 0,
-                maxScale: 0
-            }],
+            labelsVisible: false,
             renderer: {
                 type: "simple",
                 symbol: {
@@ -2944,28 +2926,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         if (refreshServicesBtn) refreshServicesBtn.addEventListener("click", refreshServicesTab);
         if (viewReportBtn) viewReportBtn.addEventListener("click", viewFinalReport);
-
-        // Bookmark Report buttons (saves link to reopen on this device/browser)
-        async function copyReportLink(btn) {
-            const reportId = getLastReportId();
-            if (!reportId) {
-                alert("Run analysis first to generate the report.");
-                return;
-            }
-            const url = getReportShareUrl(reportId);
-            try {
-                await navigator.clipboard.writeText(url);
-                const origText = btn.textContent;
-                btn.textContent = "✅ Bookmarked!";
-                setTimeout(() => { btn.textContent = origText; }, 2000);
-            } catch (e) {
-                // Fallback: select from a prompt
-                window.prompt("Copy this bookmark URL (works on this device only):", url);
-            }
-        }
-        if (copyReportLinkBtn) copyReportLinkBtn.addEventListener("click", () => copyReportLink(copyReportLinkBtn));
-        if (wizCopyReportLink) wizCopyReportLink.addEventListener("click", () => copyReportLink(wizCopyReportLink));
-
 
         // UI wiring
         if (modeSelect) {

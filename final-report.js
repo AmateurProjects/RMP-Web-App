@@ -911,18 +911,21 @@ define([
         paragraphs.push("<p>This screening analysis examined <strong>" + totalLayers + " geospatial datasets</strong> to identify land management considerations that may be relevant to permit applications, renewals, or challenges within the approximately <strong>" + escapeHtml(acresStr) + "-acre</strong> project area. Of the datasets reviewed, <strong>" + layersWithHits.length + "</strong> contained features intersecting the area of interest, identifying a total of <strong>" + totalHits + " overlapping features</strong>.</p>");
 
         // Regulatory framework overview
+        paragraphs.push('<h4 class="findings-subhead">Regulatory Framework</h4>');
         paragraphs.push('<p>The Bureau of Land Management administers public lands under the <strong>Federal Land Policy and Management Act of 1976 (FLPMA)</strong> (43 U.S.C. &sect;1701 et seq.), which establishes a multiple-use and sustained yield mandate for the management of public lands and their resources. All authorized uses must conform to the governing <strong>Resource Management Plan (RMP)</strong> prepared pursuant to 43 CFR Part 1600, and discretionary actions are subject to environmental review under the <strong>National Environmental Policy Act (NEPA)</strong> (42 U.S.C. &sect;4321 et seq.). The findings below identify regulatory and resource considerations applicable to the project area based on available geospatial data.</p>');
 
         // Land status
         if (landStatus.length > 0) {
             var lsNames = landStatus.map(function (f) { return f.name; }).join(", ");
-            paragraphs.push("<p><strong>Jurisdictional Context.</strong> The project area has been identified within federal land boundaries based on the following datasets: " + escapeHtml(lsNames) + ". Under FLPMA Section 302 (43 U.S.C. &sect;1732), the BLM has authority to manage these public lands through leases, permits, and easements. Applications for use of these lands must be filed with the BLM field office having jurisdiction (43 CFR &sect;2804.11 for rights-of-way; 43 CFR &sect;2920.5-1 for leases and permits). Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications, including pre-application meetings recommended under 43 CFR &sect;2804.10.</p>");
+            paragraphs.push('<h4 class="findings-subhead">Jurisdictional Context</h4>');
+            paragraphs.push("<p>The project area has been identified within federal land boundaries based on the following datasets: " + escapeHtml(lsNames) + ". Under FLPMA Section 302 (43 U.S.C. &sect;1732), the BLM has authority to manage these public lands through leases, permits, and easements. Applications for use of these lands must be filed with the BLM field office having jurisdiction (43 CFR &sect;2804.11 for rights-of-way; 43 CFR &sect;2920.5-1 for leases and permits). Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications, including pre-application meetings recommended under 43 CFR &sect;2804.10.</p>");
         }
 
         // Special designations (high priority for permitting)
         if (specialDesignations.length > 0) {
             var sdNames = specialDesignations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
-            var sdText = "<p><strong>Special Designations.</strong> The following special designations overlap the project area: " + sdNames + ". ";
+            paragraphs.push('<h4 class="findings-subhead">Special Designations</h4>');
+            var sdText = "<p>The following special designations overlap the project area: " + sdNames + ". ";
             sdText += "Under FLPMA and BLM planning regulations (43 CFR Part 1600), special designations are established through the land use planning process and impose specific management prescriptions. ";
             sdText += "<strong>Areas of Critical Environmental Concern (ACECs)</strong> are designated to protect important historical, cultural, scenic, fish and wildlife, or other natural resource values, or to address natural hazards &mdash; they can only be designated or modified through the RMP process. ";
             sdText += "<strong>Wilderness Study Areas (WSAs)</strong> are managed under FLPMA Section 603 to preserve their suitability for possible Congressional designation as Wilderness; activities that would impair wilderness character are generally prohibited. ";
@@ -941,7 +944,8 @@ define([
             var hasWildHorse = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("wild horse") || f.name.toLowerCase().includes("burro"); });
             var hasFire = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("fire"); });
 
-            var ecText = "<p><strong>Environmental and Ecological Considerations.</strong> The following environmental factors were identified: " + ecNames + ". ";
+            paragraphs.push('<h4 class="findings-subhead">Environmental &amp; Ecological Considerations</h4>');
+            var ecText = "<p>The following environmental factors were identified: " + ecNames + ". ";
             if (hasCriticalHabitat) {
                 ecText += "The presence of federally designated Critical Habitat triggers mandatory <strong>Section 7 consultation</strong> under the Endangered Species Act (ESA, 16 U.S.C. &sect;1536). The BLM, as the action agency, must consult with the U.S. Fish and Wildlife Service (USFWS) to ensure that the proposed action is not likely to jeopardize the continued existence of listed species or destroy/adversely modify designated critical habitat. This consultation results in a Biological Opinion that may include incidental take statements, reasonable and prudent measures, and conservation recommendations, and can significantly extend review timelines. ";
             }
@@ -961,13 +965,15 @@ define([
         // Land use plans
         if (landUsePlans.length > 0) {
             var lupNames = landUsePlans.map(function (f) { return escapeHtml(f.name); }).join(", ");
-            paragraphs.push("<p><strong>Land Use Plans and Resource Allocations.</strong> The project area falls within the scope of the following BLM land use plan datasets: " + lupNames + ". Under FLPMA Section 302 and the BLM planning regulations at 43 CFR Part 1600, <strong>all proposed uses must conform to the governing Resource Management Plan (RMP)</strong>. RMPs allocate public land resources for specific uses &mdash; including minerals, timber, grazing, recreation, and conservation &mdash; and establish management prescriptions, allowable uses, and resource-specific stipulations. A proposed use that is inconsistent with the approved RMP may be denied under 43 CFR &sect;2804.26(a)(1) for rights-of-way or 43 CFR &sect;2920.2-5(b)(4) for leases and permits. An RMP amendment (43 CFR &sect;1610.5-5) may be required to accommodate non-conforming uses, which involves additional public participation and NEPA review. Applicants should review the applicable plan documents, available through the BLM <a href='https://eplanning.blm.gov/' target='_blank' rel='noopener'>ePlanning portal</a>, for relevant management direction.</p>");
+            paragraphs.push('<h4 class="findings-subhead">Land Use Plans &amp; Resource Allocations</h4>');
+            paragraphs.push("<p>The project area falls within the scope of the following BLM land use plan datasets: " + lupNames + ". Under FLPMA Section 302 and the BLM planning regulations at 43 CFR Part 1600, <strong>all proposed uses must conform to the governing Resource Management Plan (RMP)</strong>. RMPs allocate public land resources for specific uses &mdash; including minerals, timber, grazing, recreation, and conservation &mdash; and establish management prescriptions, allowable uses, and resource-specific stipulations. A proposed use that is inconsistent with the approved RMP may be denied under 43 CFR &sect;2804.26(a)(1) for rights-of-way or 43 CFR &sect;2920.2-5(b)(4) for leases and permits. An RMP amendment (43 CFR &sect;1610.5-5) may be required to accommodate non-conforming uses, which involves additional public participation and NEPA review. Applicants should review the applicable plan documents, available through the BLM <a href='https://eplanning.blm.gov/' target='_blank' rel='noopener'>ePlanning portal</a>, for relevant management direction.</p>");
         }
 
         // Existing authorizations
         if (existingAuthorizations.length > 0) {
             var eaNames = existingAuthorizations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
-            var eaText = "<p><strong>Existing Authorizations and Land Uses.</strong> The project area overlaps with the following existing authorizations: " + eaNames + ". ";
+            paragraphs.push('<h4 class="findings-subhead">Existing Authorizations &amp; Land Uses</h4>');
+            var eaText = "<p>The project area overlaps with the following existing authorizations: " + eaNames + ". ";
             eaText += "Under FLPMA, the BLM must consider existing valid rights when evaluating new applications. ";
 
             var hasGrazingAuth = existingAuthorizations.some(function (f) { return f.name.toLowerCase().includes('grazing'); });
@@ -994,10 +1000,12 @@ define([
         }
 
         // Application guidance
-        paragraphs.push('<p><strong>Application Guidance.</strong> Right-of-way applications are filed on Standard Form 299 (SF-299) per 43 CFR &sect;2804.12 and must include a project description, construction schedule, capability statement, and maps with GIS data. Other land use authorizations (leases, permits, easements) are governed by 43 CFR Part 2920. All applicants are subject to cost recovery fees (43 CFR &sect;2804.14) categorized by estimated federal processing hours, and must post performance and reclamation bonds before ground-disturbing activities may commence (43 CFR &sect;2805.20). A pre-application meeting with BLM staff (43 CFR &sect;2804.10) is strongly recommended to identify potential routing constraints, environmental issues, and financial obligations before formal filing.</p>');
+        paragraphs.push('<h4 class="findings-subhead">Application Guidance</h4>');
+        paragraphs.push('<p>Right-of-way applications are filed on Standard Form 299 (SF-299) per 43 CFR &sect;2804.12 and must include a project description, construction schedule, capability statement, and maps with GIS data. Other land use authorizations (leases, permits, easements) are governed by 43 CFR Part 2920. All applicants are subject to cost recovery fees (43 CFR &sect;2804.14) categorized by estimated federal processing hours, and must post performance and reclamation bonds before ground-disturbing activities may commence (43 CFR &sect;2805.20). A pre-application meeting with BLM staff (43 CFR &sect;2804.10) is strongly recommended to identify potential routing constraints, environmental issues, and financial obligations before formal filing.</p>');
 
         // Closing disclaimer
-        paragraphs.push('<p><em><strong>Disclaimer.</strong> This screening report is generated automatically from publicly available geospatial datasets and is provided for informational and preliminary planning purposes only. It does not constitute a formal determination by the Bureau of Land Management, a legal opinion, or a guarantee of any permit outcome. The analysis is limited to datasets available through BLM and partner agency web services and does not account for site-specific conditions including, but not limited to: on-the-ground cultural or archaeological resources protected under the National Historic Preservation Act (54 U.S.C. &sect;300101 et seq.) and the Archaeological Resources Protection Act (16 U.S.C. &sect;470aa et seq.); unlisted candidate or sensitive species; Tribal treaty rights and trust responsibilities; state and local permitting requirements; or recent changes to Resource Management Plans. All findings should be verified through field investigation and coordination with appropriate BLM resource specialists. This report does not establish any rights or obligations under FLPMA (43 U.S.C. &sect;1701 et seq.), NEPA (42 U.S.C. &sect;4321 et seq.), or any other federal, state, or local law. Applicants are strongly encouraged to contact their local BLM field office for authoritative guidance prior to submitting permit applications, renewals, or protests.</em></p>');
+        paragraphs.push('<h4 class="findings-subhead">Disclaimer</h4>');
+        paragraphs.push('<p><em>This screening report is generated automatically from publicly available geospatial datasets and is provided for informational and preliminary planning purposes only. It does not constitute a formal determination by the Bureau of Land Management, a legal opinion, or a guarantee of any permit outcome. The analysis is limited to datasets available through BLM and partner agency web services and does not account for site-specific conditions including, but not limited to: on-the-ground cultural or archaeological resources protected under the National Historic Preservation Act (54 U.S.C. &sect;300101 et seq.) and the Archaeological Resources Protection Act (16 U.S.C. &sect;470aa et seq.); unlisted candidate or sensitive species; Tribal treaty rights and trust responsibilities; state and local permitting requirements; or recent changes to Resource Management Plans. All findings should be verified through field investigation and coordination with appropriate BLM resource specialists. This report does not establish any rights or obligations under FLPMA (43 U.S.C. &sect;1701 et seq.), NEPA (42 U.S.C. &sect;4321 et seq.), or any other federal, state, or local law. Applicants are strongly encouraged to contact their local BLM field office for authoritative guidance prior to submitting permit applications, renewals, or protests.</em></p>');
 
         return paragraphs.join("\n");
     }
@@ -1573,7 +1581,7 @@ define([
                 }
                 /* Findings Summary */
                 .findings-summary {
-                    margin: 24px 0;
+                    margin: 0 0 24px 0;
                     padding: 20px 24px;
                     background: var(--white);
                     border: 1px solid var(--border);
@@ -1582,12 +1590,6 @@ define([
                     line-height: 1.65;
                     font-size: 14px;
                 }
-                .findings-summary h3 {
-                    margin-top: 0;
-                    margin-bottom: 12px;
-                    color: var(--blm-green);
-                    font-size: 17px;
-                }
                 .findings-summary p {
                     margin: 10px 0;
                 }
@@ -1595,7 +1597,198 @@ define([
                     font-size: 12px;
                     color: var(--muted);
                 }
+                /* Section numbering */
+                .section-num {
+                    color: var(--blm-gold);
+                    margin-right: 6px;
+                    font-weight: 700;
+                }
+                /* Section intro text */
+                .section-intro {
+                    font-size: 13px;
+                    color: var(--muted);
+                    margin: -4px 0 16px 0;
+                    line-height: 1.55;
+                    max-width: 700px;
+                }
+                /* Table of Contents */
+                .report-toc {
+                    margin: 20px 0 28px 0;
+                    padding: 16px 24px 16px 28px;
+                    background: var(--blm-tan);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                }
+                .toc-heading {
+                    margin: 0 0 10px 0;
+                    font-size: 16px;
+                    color: var(--blm-green);
+                    letter-spacing: 0.3px;
+                }
+                .toc-list {
+                    margin: 0;
+                    padding-left: 22px;
+                    list-style: decimal;
+                }
+                .toc-list li {
+                    margin: 4px 0;
+                    font-size: 14px;
+                }
+                .toc-list a {
+                    color: var(--blm-green);
+                    text-decoration: none;
+                    font-weight: 500;
+                    transition: color 0.15s;
+                }
+                .toc-list a:hover {
+                    color: var(--blm-gold);
+                    text-decoration: underline;
+                }
+                /* Findings sub-headings */
+                .findings-subhead {
+                    margin: 20px 0 6px 0;
+                    font-size: 15px;
+                    color: var(--blm-brown);
+                    border-bottom: 1px solid var(--border);
+                    padding-bottom: 4px;
+                    letter-spacing: 0.2px;
+                }
+                .findings-summary .findings-subhead:first-child {
+                    margin-top: 8px;
+                }
+                /* Bookmark button variant */
+                .btn-bookmark {
+                    background: #5c4827;
+                }
+                .btn-bookmark:hover {
+                    background: #7a6235;
+                }
+                /* Accessibility Widget (report-embedded) */
+                .a11y-widget {
+                    position: fixed;
+                    bottom: 16px;
+                    right: 16px;
+                    z-index: 50000;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                }
+                .a11y-toggle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 50%;
+                    border: 2px solid #1a73e8;
+                    background: #fff;
+                    color: #1a73e8;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+                    transition: background 0.2s, color 0.2s, transform 0.15s;
+                }
+                .a11y-toggle:hover,
+                .a11y-toggle:focus-visible {
+                    background: #1a73e8;
+                    color: #fff;
+                    transform: scale(1.08);
+                    outline: 2px solid #fff;
+                    outline-offset: 2px;
+                }
+                .a11y-toggle[aria-expanded="true"] {
+                    background: #1a73e8;
+                    color: #fff;
+                }
+                .a11y-menu {
+                    position: absolute;
+                    bottom: 52px;
+                    right: 0;
+                    min-width: 220px;
+                    background: #fff;
+                    border: 1px solid #d0d0d0;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+                    padding: 6px 0;
+                    animation: a11yFadeIn 0.15s ease;
+                }
+                .a11y-menu.hidden { display: none; }
+                @keyframes a11yFadeIn {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to   { opacity: 1; transform: translateY(0); }
+                }
+                .a11y-menu-header {
+                    padding: 8px 14px 6px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    color: #666;
+                    border-bottom: 1px solid #eee;
+                    margin-bottom: 4px;
+                }
+                .a11y-option {
+                    display: block;
+                    width: 100%;
+                    text-align: left;
+                    padding: 8px 14px;
+                    border: none;
+                    background: none;
+                    font-size: 13px;
+                    color: #333;
+                    cursor: pointer;
+                    transition: background 0.12s;
+                }
+                .a11y-option:hover,
+                .a11y-option:focus-visible {
+                    background: #e8f0fe;
+                    outline: none;
+                }
+                .a11y-option[aria-checked="true"] {
+                    font-weight: 700;
+                    color: #1a73e8;
+                    background: #e8f0fe;
+                }
+                .a11y-option[aria-checked="true"]::before {
+                    content: '\u2713 ';
+                }
+                .a11y-option small { color: #888; font-weight: 400; }
+                /* Color-vision filter classes */
+                html.cv-protanopia    { filter: url(#cv-protanopia); }
+                html.cv-deuteranopia  { filter: url(#cv-deuteranopia); }
+                html.cv-tritanopia    { filter: url(#cv-tritanopia); }
+                html.cv-achromatopsia { filter: url(#cv-achromatopsia); }
+                html.cv-highcontrast  { filter: url(#cv-highcontrast); }
+                html[class*="cv-"] body { isolation: auto; }
+                /* Back-to-top button */
+                .back-to-top {
+                    display: none;
+                    position: fixed;
+                    bottom: 28px;
+                    right: 28px;
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 50%;
+                    background: var(--blm-green);
+                    color: var(--white);
+                    font-size: 16px;
+                    font-weight: 700;
+                    text-decoration: none;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+                    z-index: 900;
+                    transition: background 0.2s, transform 0.15s;
+                }
+                .back-to-top:hover {
+                    background: var(--blm-brown);
+                    transform: scale(1.08);
+                }
+                /* Scroll-margin for anchor targets */
+                h2[id] {
+                    scroll-margin-top: 16px;
+                }
                 @media print {
+                    .report-toc { break-inside: avoid; }
+                    .back-to-top { display: none !important; }
+                    .a11y-widget { display: none !important; }
                     .interactive-table-wrapper .table-toolbar { display: none !important; }
                     .hidden-cols-bar { display: none !important; }
                     .col-hide-btn { display: none !important; }
@@ -1618,19 +1811,34 @@ define([
             <div class="wrap">
                 <div class="actions">
                     <a class="btn" href="javascript:window.print()">&#128424; Print / Save as PDF</a>
+                    <button class="btn btn-bookmark" id="bookmarkReportBtn" title="Bookmark this report — reopens on this device/browser only">&#128278; Bookmark Report</button>
                 </div>
-                <div class="hint">Use your browser's print dialog and select &ldquo;Save as PDF&rdquo; to create a permanent copy of this report.</div>
+                <div class="hint">Use your browser's print dialog to save as PDF. The bookmark saves a link to reopen this report on this device/browser only (valid for 7 days).</div>
 
-                <h2>Report Summary</h2>
+                <!-- Table of Contents -->
+                <nav class="report-toc" aria-label="Report sections">
+                    <h2 class="toc-heading">Table of Contents</h2>
+                    <ol class="toc-list">
+                        <li><a href="#section-summary">Report Summary</a></li>
+                        <li><a href="#section-findings">Regulatory Screening &amp; Findings Summary</a></li>
+                        <li><a href="#section-aoi">Area of Interest</a></li>
+                        <li><a href="#section-layers">Layer Analysis Maps</a></li>
+                        <li><a href="#section-sources">Data Sources</a></li>
+                    </ol>
+                </nav>
+
+                <h2 id="section-summary"><span class="section-num">1.</span> Report Summary</h2>
+                <p class="section-intro">A high-level overview of the screening analysis, including the number of datasets examined and features identified within the project area.</p>
                 <div class="totals">
                 ${totalsHtml || ""}
                 </div>
 
-                ${findingsSummaryHtml ? '<div class="findings-summary"><h3>Regulatory Screening &amp; Findings Summary</h3>' + findingsSummaryHtml + '</div>' : ''}
+                ${findingsSummaryHtml ? '<h2 id="section-findings"><span class="section-num">2.</span> Regulatory Screening &amp; Findings Summary</h2><p class="section-intro">A narrative summary of the regulatory framework, special designations, environmental factors, land use plans, and existing authorizations identified within the project area. Sub-sections below are shown only when relevant datasets intersect the area of interest.</p><div class="findings-summary">' + findingsSummaryHtml + '</div>' : ''}
 
                 ${aoiSectionHtml || ""}
 
-                <h2>Layer Analysis Maps</h2>
+                <h2 id="section-layers"><span class="section-num">4.</span> Layer Analysis Maps</h2>
+                <p class="section-intro">Interactive maps and attribute tables for each geospatial layer that was queried. Use the show/hide controls to focus on layers of interest, and click column headers to sort attribute data.</p>
                 <div class="layer-maps-toolbar">
                     <button class="toolbar-btn" onclick="toggleAllSections(false)">Hide All</button>
                     <button class="toolbar-btn" onclick="toggleAllSections(true)">Show All</button>
@@ -1641,6 +1849,8 @@ define([
                 </div>
 
                 ${dataSourcesHtml || ""}
+
+                <a href="#" class="back-to-top" id="backToTop" title="Back to top" aria-label="Back to top">&#8679; Top</a>
                 
                 <div class="report-footer">
                     <div class="dept-name">Bureau of Land Management</div>
@@ -1949,7 +2159,142 @@ define([
                     });
                 });
             })();
+
+            // ── Back-to-top button show/hide ──
+            (function() {
+                var btn = document.getElementById('backToTop');
+                if (!btn) return;
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+                window.addEventListener('scroll', function() {
+                    btn.style.display = window.scrollY > 600 ? 'flex' : 'none';
+                }, { passive: true });
+            })();
+
+            // ── Smooth-scroll for TOC anchor links ──
+            (function() {
+                var links = document.querySelectorAll('.report-toc a[href^="#"]');
+                for (var i = 0; i < links.length; i++) {
+                    links[i].addEventListener('click', function(e) {
+                        e.preventDefault();
+                        var target = document.querySelector(this.getAttribute('href'));
+                        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                }
+            })();
+
+            // ── Bookmark Report button ──
+            (function() {
+                var btn = document.getElementById('bookmarkReportBtn');
+                if (!btn) return;
+                btn.addEventListener('click', function() {
+                    var meta = document.querySelector('meta[name="report-id"]');
+                    var reportId = meta ? meta.getAttribute('content') : null;
+                    if (!reportId) { alert('Report ID not found. Re-run the analysis.'); return; }
+                    var url = window.location.origin + window.location.pathname + '?report=' + reportId;
+                    try {
+                        navigator.clipboard.writeText(url).then(function() {
+                            var orig = btn.textContent;
+                            btn.textContent = '\u2705 Bookmarked!';
+                            setTimeout(function() { btn.textContent = orig; }, 2000);
+                        });
+                    } catch(e) {
+                        window.prompt('Copy this bookmark URL (works on this device only):', url);
+                    }
+                });
+            })();
+
+            // ── Accessibility Color-Vision Widget ──
+            (function() {
+                var STORAGE_KEY = 'a11y-cv-mode';
+                var toggleBtn = document.getElementById('a11yToggleBtnReport');
+                var menu = document.getElementById('a11yMenuReport');
+                if (!toggleBtn || !menu) return;
+                var options = menu.querySelectorAll('.a11y-option');
+                var CV_CLASSES = ['cv-protanopia','cv-deuteranopia','cv-tritanopia','cv-achromatopsia','cv-highcontrast'];
+
+                function applyMode(mode) {
+                    CV_CLASSES.forEach(function(c) { document.documentElement.classList.remove(c); });
+                    if (mode && mode !== 'none') document.documentElement.classList.add('cv-' + mode);
+                    options.forEach(function(b) { b.setAttribute('aria-checked', b.getAttribute('data-cv') === mode ? 'true' : 'false'); });
+                    try { localStorage.setItem(STORAGE_KEY, mode || 'none'); } catch(_) {}
+                }
+                var saved = 'none';
+                try { saved = localStorage.getItem(STORAGE_KEY) || 'none'; } catch(_) {}
+                applyMode(saved);
+
+                toggleBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var isHidden = menu.classList.toggle('hidden');
+                    toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+                    if (!isHidden) { var first = menu.querySelector('.a11y-option'); if (first) first.focus(); }
+                });
+                options.forEach(function(b) {
+                    b.addEventListener('click', function(e) { e.stopPropagation(); applyMode(b.getAttribute('data-cv')); });
+                });
+                menu.addEventListener('keydown', function(e) {
+                    var items = Array.prototype.slice.call(options);
+                    var idx = items.indexOf(document.activeElement);
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
+                    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
+                    else if (e.key === 'Escape') { menu.classList.add('hidden'); toggleBtn.setAttribute('aria-expanded','false'); toggleBtn.focus(); }
+                });
+                document.addEventListener('click', function(e) {
+                    var widget = document.getElementById('a11yWidgetReport');
+                    if (!menu.classList.contains('hidden') && widget && !widget.contains(e.target)) {
+                        menu.classList.add('hidden');
+                        toggleBtn.setAttribute('aria-expanded','false');
+                    }
+                });
+            })();
             </script>
+
+            <!-- Accessibility: SVG color-vision filters -->
+            <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+              <defs>
+                <filter id="cv-protanopia">
+                  <feColorMatrix type="matrix" values="0.567,0.433,0,0,0 0.558,0.442,0,0,0 0,0.242,0.758,0,0 0,0,0,1,0"/>
+                </filter>
+                <filter id="cv-deuteranopia">
+                  <feColorMatrix type="matrix" values="0.625,0.375,0,0,0 0.7,0.3,0,0,0 0,0.3,0.7,0,0 0,0,0,1,0"/>
+                </filter>
+                <filter id="cv-tritanopia">
+                  <feColorMatrix type="matrix" values="0.95,0.05,0,0,0 0,0.433,0.567,0,0 0,0.475,0.525,0,0 0,0,0,1,0"/>
+                </filter>
+                <filter id="cv-achromatopsia">
+                  <feColorMatrix type="matrix" values="0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0,0,0,1,0"/>
+                </filter>
+                <filter id="cv-highcontrast">
+                  <feComponentTransfer>
+                    <feFuncR type="linear" slope="1.8" intercept="-0.35"/>
+                    <feFuncG type="linear" slope="1.8" intercept="-0.35"/>
+                    <feFuncB type="linear" slope="1.8" intercept="-0.35"/>
+                  </feComponentTransfer>
+                </filter>
+              </defs>
+            </svg>
+
+            <!-- Accessibility floating menu -->
+            <div id="a11yWidgetReport" class="a11y-widget" role="region" aria-label="Accessibility options">
+              <button id="a11yToggleBtnReport" class="a11y-toggle" aria-haspopup="true" aria-expanded="false" title="Vision Assistance">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                  <circle cx="12" cy="4.5" r="2"/>
+                  <path d="M12 7.5c-3.5 0-6 1-6 1v2s2.5-.5 5-.7V12l-3.5 7h2.2l2.3-5 2.3 5h2.2L13 12v-2.2c2.5.2 5 .7 5 .7v-2s-2.5-1-6-1z"/>
+                </svg>
+              </button>
+              <div id="a11yMenuReport" class="a11y-menu hidden" role="menu" aria-label="Color vision modes">
+                <div class="a11y-menu-header">Vision Assistance</div>
+                <button class="a11y-option" role="menuitem" data-cv="none">Normal Vision</button>
+                <button class="a11y-option" role="menuitem" data-cv="protanopia">Protanopia <small>(no red)</small></button>
+                <button class="a11y-option" role="menuitem" data-cv="deuteranopia">Deuteranopia <small>(no green)</small></button>
+                <button class="a11y-option" role="menuitem" data-cv="tritanopia">Tritanopia <small>(no blue)</small></button>
+                <button class="a11y-option" role="menuitem" data-cv="achromatopsia">Achromatopsia <small>(grayscale)</small></button>
+                <button class="a11y-option" role="menuitem" data-cv="highcontrast">High Contrast</button>
+              </div>
+            </div>
+
             </body>
             </html>`;
     }
@@ -2033,7 +2378,7 @@ define([
 
         return `
             <div class="section" style="background: transparent; border: none; box-shadow: none; padding: 0;">
-                <h2>Data Sources</h2>
+                <h2 id="section-sources"><span class="section-num">5.</span> Data Sources</h2>
                 <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
                     The following geospatial web services were used to generate this report. Service availability was verified at the time of report generation.
                 </p>
@@ -2816,7 +3161,8 @@ define([
 
 
             const aoiSectionHtml = `
-                <h2>Area of Interest</h2>
+                <h2 id="section-aoi"><span class="section-num">3.</span> Area of Interest</h2>
+                <p class="section-intro">The geographic boundary used for this analysis, shown in overview and detail views with state and county reference boundaries.</p>
                 ${aoiMapsHtml}
                 <div class="aoi-details">
                     ${stateHtml}
