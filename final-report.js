@@ -3481,18 +3481,42 @@ define([
                         }
 
                         try {
-                            // Create temp layer for screenshot
-                            const renderer = getPresetRenderer("report", item, await getLayerGeometryType(item.url));
-                            const tempRenderer = renderer ? makeRendererOpaque(renderer) : null;
+                            // Create temp layer for screenshot - use service's native renderer
+                            const tempGeomType = await getLayerGeometryType(item.url);
 
                             const tempLayer = new FeatureLayer({
                                 url: item.url,
                                 outFields: ["*"],
-                                renderer: tempRenderer,
                                 visible: false
                             });
                             view.map.add(tempLayer);
                             tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
+                            
+                            // Wait for layer to load so service renderer is available
+                            try { await tempLayer.when(); } catch (e) { /* continue */ }
+                            
+                            // Thicken polygon outlines while preserving service's original symbology
+                            if (tempGeomType && String(tempGeomType).toLowerCase().includes('polygon') && tempLayer.renderer) {
+                                try {
+                                    const r = tempLayer.renderer.clone();
+                                    const MIN_OUTLINE = 3;
+                                    function thickenOutline(sym) {
+                                        if (!sym) return;
+                                        if (sym.outline) {
+                                            sym.outline.width = Math.max(sym.outline.width || 0, MIN_OUTLINE);
+                                        } else {
+                                            sym.outline = { color: [0, 0, 0, 0.8], width: MIN_OUTLINE };
+                                        }
+                                    }
+                                    if (r.symbol) thickenOutline(r.symbol);
+                                    if (r.defaultSymbol) thickenOutline(r.defaultSymbol);
+                                    if (r.uniqueValueInfos) r.uniqueValueInfos.forEach(uv => thickenOutline(uv.symbol));
+                                    if (r.classBreakInfos) r.classBreakInfos.forEach(cb => thickenOutline(cb.symbol));
+                                    tempLayer.renderer = r;
+                                } catch (e) {
+                                    console.warn("Could not thicken outline for", item.title, e);
+                                }
+                            }
 
                             setVisibilityForScreenshot(tempLayer);
 
@@ -4275,18 +4299,42 @@ define([
                         }
 
                         try {
-                            // Create temp layer for screenshot
-                            const renderer = getPresetRenderer("report", item, await getLayerGeometryType(item.url));
-                            const tempRenderer = renderer ? makeRendererOpaque(renderer) : null;
+                            // Create temp layer for screenshot - use service's native renderer
+                            const tempGeomType = await getLayerGeometryType(item.url);
 
                             const tempLayer = new FeatureLayer({
                                 url: item.url,
                                 outFields: ["*"],
-                                renderer: tempRenderer,
                                 visible: false
                             });
                             view.map.add(tempLayer);
                             tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
+                            
+                            // Wait for layer to load so service renderer is available
+                            try { await tempLayer.when(); } catch (e) { /* continue */ }
+                            
+                            // Thicken polygon outlines while preserving service's original symbology
+                            if (tempGeomType && String(tempGeomType).toLowerCase().includes('polygon') && tempLayer.renderer) {
+                                try {
+                                    const r = tempLayer.renderer.clone();
+                                    const MIN_OUTLINE = 3;
+                                    function thickenOutline(sym) {
+                                        if (!sym) return;
+                                        if (sym.outline) {
+                                            sym.outline.width = Math.max(sym.outline.width || 0, MIN_OUTLINE);
+                                        } else {
+                                            sym.outline = { color: [0, 0, 0, 0.8], width: MIN_OUTLINE };
+                                        }
+                                    }
+                                    if (r.symbol) thickenOutline(r.symbol);
+                                    if (r.defaultSymbol) thickenOutline(r.defaultSymbol);
+                                    if (r.uniqueValueInfos) r.uniqueValueInfos.forEach(uv => thickenOutline(uv.symbol));
+                                    if (r.classBreakInfos) r.classBreakInfos.forEach(cb => thickenOutline(cb.symbol));
+                                    tempLayer.renderer = r;
+                                } catch (e) {
+                                    console.warn("Could not thicken outline for", item.title, e);
+                                }
+                            }
 
                             setVisibilityForScreenshot(tempLayer);
 

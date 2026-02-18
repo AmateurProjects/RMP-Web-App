@@ -1119,7 +1119,7 @@ function setActiveTab(tabName) {
 
     /**
      * Generate the full report (all buckets)
-     * Shows modal during generation, opens in new tab when complete
+     * Shows modal during generation, then button changes to "View" state
      */
     async function generateFullProgressiveReport() {
         if (!selectionGeom) {
@@ -1128,6 +1128,15 @@ function setActiveTab(tabName) {
         }
         if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
             setStatus("Run analysis first before generating reports");
+            return;
+        }
+        
+        // Check if report is already ready to view
+        if (wizFullReport && wizFullReport.dataset.reportReady === 'true' && cachedBucketReports['__full__']) {
+            const opened = openCompletedReport(cachedBucketReports['__full__']);
+            if (!opened) {
+                alert("Could not open report. Please allow popups for this site.");
+            }
             return;
         }
 
@@ -1155,12 +1164,16 @@ function setActiveTab(tabName) {
             
             reportModal.hide();
             
-            // Open the completed report in a new tab
-            const opened = openCompletedReport(htmlContent);
-            if (!opened) {
-                alert("Could not open report. Please allow popups for this site.");
+            // Cache the report and update button to "View" state
+            cachedBucketReports['__full__'] = htmlContent;
+            
+            if (wizFullReport) {
+                wizFullReport.dataset.reportReady = 'true';
+                wizFullReport.innerHTML = '📄 View Full Report';
+                wizFullReport.classList.add('ready-to-view');
             }
-            setStatus("Full report opened in new tab");
+            
+            setStatus("Full report ready — click button to view");
             
         } catch (e) {
             reportModal.hide();

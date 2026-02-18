@@ -3331,15 +3331,33 @@ th{
     cursor: not-allowed;
 }
 
-.bucket-report-btn.ready-to-view {
-    background: var(--blm-green);
-    animation: pulse-ready 0.6s ease-out;
+.bucket-report-btn.ready-to-view,
+.btn.ready-to-view {
+    background: linear-gradient(135deg, var(--blm-green), #2d8a5f);
+    border-color: var(--blm-green);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(68, 157, 68, 0.5), 0 2px 8px rgba(0,0,0,0.15);
+    animation: pulse-ready 0.6s ease-out, glow-ready 2s ease-in-out infinite;
+    font-weight: 600;
+}
+
+.bucket-report-btn.ready-to-view:hover,
+.btn.ready-to-view:hover {
+    background: linear-gradient(135deg, #3ba73b, #248c4e);
+    box-shadow: 0 0 18px rgba(68, 157, 68, 0.7), 0 4px 12px rgba(0,0,0,0.2);
+    transform: translateY(-1px);
 }
 
 @keyframes pulse-ready {
     0% { transform: scale(1); }
     50% { transform: scale(1.05); }
     100% { transform: scale(1); }
+}
+
+@keyframes glow-ready {
+    0%, 100% { box-shadow: 0 0 12px rgba(68, 157, 68, 0.5), 0 2px 8px rgba(0,0,0,0.15); }
+    50% { box-shadow: 0 0 20px rgba(68, 157, 68, 0.8), 0 2px 8px rgba(0,0,0,0.15); }
+}
 }
 
 /* ============================================
