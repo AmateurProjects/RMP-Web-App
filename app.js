@@ -729,6 +729,11 @@ function setActiveTab(tabName) {
         const track = document.getElementById("aoiSwipeTrack");
         if (track) {
             track.style.transform = `translateX(-${slideIndex * 100}%)`;
+            // Mark the active slide for CSS height calculation
+            const slides = track.querySelectorAll(".aoi-swipe-slide");
+            slides.forEach((slide, i) => {
+                slide.classList.toggle("active", i === slideIndex);
+            });
         }
     }
 
@@ -2018,7 +2023,7 @@ async function runAnalysis() {
         setStatus("Screening complete!");
         
         // ✅ Show success animation
-        analysisModal.showSuccess(layersQueried, layersWithCoverage, 0, Date.now() - analysisStartTime);
+        analysisModal.showSuccess(layersQueried, layersWithFeatures, 0, Date.now() - analysisStartTime);
 
         // Permitting mode: populate bucket results with report buttons
         if (currentAppMode === "permit") {
@@ -2279,7 +2284,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         let layerRef = null;
         
         try {
-            layerRef = getCachedLayer(t.url);
+            layerRef = new FeatureLayer({ url: t.url });
             await layerRef.load();
             
             // Quick check: query for just 1 feature to see if any intersect

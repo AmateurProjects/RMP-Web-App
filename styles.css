@@ -2824,6 +2824,7 @@ th{
 
 .aoi-swipe-track {
     display: flex;
+    align-items: flex-start;
     transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     will-change: transform;
 }
@@ -2833,6 +2834,19 @@ th{
     min-width: 100%;
     box-sizing: border-box;
     padding-right: 2px; /* Prevent hover effects from being cut off */
+}
+
+/* Hide inactive slides to prevent height contribution */
+.aoi-swipe-slide:not(.active) {
+    visibility: hidden;
+    max-height: 0;
+    overflow: hidden;
+}
+
+.aoi-swipe-slide.active {
+    visibility: visible;
+    max-height: none;
+    overflow: visible;
 }
 
 /* Back button at top of each method slide */
