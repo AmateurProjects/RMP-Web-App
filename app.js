@@ -903,20 +903,6 @@ function setActiveTab(tabName) {
     function populatePermitBuckets() {
         const buckets = categorizeIntoBuckets(lastReportRowsByLayer);
 
-        // Update tab badges (show layer count with coverage)
-        document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {
-            const bKey = tab.dataset.bucket;
-            if (!bKey || bKey === "overview" || bKey === "all-data") return;
-            const items = buckets[bKey] || [];
-            const layersWithCoverage = items.filter(it => it.hasCoverage).length;
-            const existing = tab.querySelector(".bucket-badge");
-            if (existing) existing.remove();
-            const badge = document.createElement("span");
-            badge.className = "bucket-badge" + (layersWithCoverage === 0 ? " zero" : "");
-            badge.textContent = String(layersWithCoverage);
-            tab.appendChild(badge);
-        });
-
         // Overview bucket — compact dashboard
         const overviewEl = document.getElementById("bucketOverview");
         if (overviewEl) {
@@ -1358,7 +1344,6 @@ function clearAll() {
     bucketPanelIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ""; });
     const summaryEl = document.getElementById("permitResultsSummary");
     if (summaryEl) summaryEl.innerHTML = "";
-    document.querySelectorAll("#permitBucketTabs .permit-tab .bucket-badge").forEach(b => b.remove());
 
     // Clear upload status
     const uploadStatusEl = document.getElementById("uploadStatus");
@@ -3722,14 +3707,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         if (wizFullReport) wizFullReport.addEventListener("click", generateFullProgressiveReport);
 
-        // Bucket tabs
-        document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {
-            tab.addEventListener("click", () => {
-                const bk = tab.dataset.bucket;
-                if (bk) setActiveBucket(bk);
-            });
-        });
-
         // Initialize in permit mode
         setAppMode("permit");
         goToWizardStep(1);
@@ -3787,6 +3764,66 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     });
 
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Scroll-Fade Indicators
+// Watches scrollable containers and toggles .can-scroll-up / .can-scroll-down
+// ════════════════════════════════════════════════════════════════════════════
+(function initScrollFades() {
+    const THRESHOLD = 4; // px from edge before showing fade
+
+    function updateFade(el) {
+        const canUp   = el.scrollTop > THRESHOLD;
+        const canDown = el.scrollTop + el.clientHeight < el.scrollHeight - THRESHOLD;
+        el.classList.toggle("can-scroll-up", canUp);
+        el.classList.toggle("can-scroll-down", canDown);
+    }
+
+    function observe(el) {
+        if (!el || el.dataset.scrollFadeInit) return;
+        el.dataset.scrollFadeInit = "1";
+        el.classList.add("scroll-fade");
+        updateFade(el);
+        el.addEventListener("scroll", () => updateFade(el), { passive: true });
+
+        // Re-check after content changes (e.g. search results populating)
+        const ro = new ResizeObserver(() => updateFade(el));
+        ro.observe(el);
+    }
+
+    /**
+     * Observe a container that may not exist yet.
+     * Uses a MutationObserver on document.body to watch for it.
+     */
+    function observeWhenReady(selector, extraClasses) {
+        const el = document.querySelector(selector);
+        if (el) {
+            observe(el);
+            if (extraClasses) extraClasses.forEach(c => el.classList.add(c));
+            return;
+        }
+        // Container does not exist yet — watch for it
+        const mo = new MutationObserver(() => {
+            const found = document.querySelector(selector);
+            if (found) {
+                mo.disconnect();
+                observe(found);
+                if (extraClasses) extraClasses.forEach(c => found.classList.add(c));
+            }
+        });
+        mo.observe(document.body, { childList: true, subtree: true });
+    }
+
+    // Main panel — always in the DOM
+    observeWhenReady("#panel");
+
+    // Scrollable sub-containers (may appear dynamically)
+    observeWhenReady(".feature-search-results", ["scroll-fade-sm"]);
+    observeWhenReady(".feature-picker-list", ["scroll-fade-sm"]);
+    observeWhenReady(".wiz-location-results", ["scroll-fade-sm"]);
+    observeWhenReady(".layer-mgr-body", ["scroll-fade-dark"]);
+    observeWhenReady(".analysis-log", ["scroll-fade-sm"]);
+})();
 
 // ════════════════════════════════════════════════════════════════════════════
 // Accessibility Color-Vision Widget (independent of ArcGIS modules)
