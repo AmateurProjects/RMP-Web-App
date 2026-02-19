@@ -125,12 +125,7 @@
             </div>
             <div class="analysis-stat">
                 <div class="analysis-stat-value" id="analysisFeaturesFound">0</div>
-                <div class="analysis-stat-label">Layers with Coverage</div>
-            </div>
-            <!-- Maps stat hidden - generation now happens on-demand in reports -->
-            <div class="analysis-stat" style="display:none;">
-                <div class="analysis-stat-value" id="analysisMapsGenerated">0</div>
-                <div class="analysis-stat-label">Maps Generated</div>
+                <div class="analysis-stat-label">Layers with Features</div>
             </div>
         </div>
         
@@ -149,8 +144,7 @@
             <h2>Screening Complete!</h2>
             <div class="analysis-success-summary">
                 <div><strong id="successLayersQueried">0</strong> layers queried</div>
-                <div><strong id="successFeaturesFound">0</strong> layers with coverage</div>
-                <div id="successMapsGenerated" style="display:none;">0 maps</div>
+                <div><strong id="successFeaturesFound">0</strong> layers with features</div>
                 <div id="successDuration" style="margin-top:6px;font-size:13px;color:var(--text-muted);"></div>
                 <div style="margin-top:12px;font-size:13px;color:var(--text-muted);font-style:italic;">
                     Close to generate reports from the category tabs
@@ -461,7 +455,7 @@
                   <div class="draw-tool-group">
                     <span class="draw-tool-label">Draw type:</span>
                     <div class="draw-tool-btns">
-                      <button id="wizDrawPolygon" class="draw-tool-btn active" type="button" title="Draw polygon">
+                      <button id="wizDrawPolygon" class="draw-tool-btn" type="button" title="Draw polygon">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,3 22,15 12,21 2,15"/></svg>
                         <span>Polygon</span>
                       </button>

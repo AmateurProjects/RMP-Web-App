@@ -763,6 +763,11 @@ function setActiveTab(tabName) {
 
         if (method === "draw") {
             if (modeSelect) modeSelect.value = "draw";
+            // Reset draw tool button selection state
+            const drawToolBtns = document.querySelectorAll(".draw-tool-btn");
+            drawToolBtns.forEach(b => b.classList.remove("active"));
+            const drawHintEl = document.getElementById("drawHint");
+            if (drawHintEl) drawHintEl.textContent = "Select a draw type above to begin.";
             setMode("draw");
         } else if (method === "select" || method === "permit") {
             if (modeSelect) modeSelect.value = "select";
@@ -922,20 +927,20 @@ function setActiveTab(tabName) {
 
             // ── Summary stats row ──
             oh += '<div class="permit-summary-grid">';
-            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + tl + '</div><div class="permit-summary-stat-label">Datasets Checked</div></div>';
-            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + lwh + '</div><div class="permit-summary-stat-label">With Coverage</div></div>';
+            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + tl + '</div><div class="permit-summary-stat-label">Layers Checked</div></div>';
+            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + lwh + '</div><div class="permit-summary-stat-label">With Features</div></div>';
             oh += '</div>';
 
             // ── Category status rows (traffic-light dashboard) ──
             oh += '<div class="overview-category-grid">';
             for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
                 const items = buckets[bk] || [];
-                const layersWithCoverage = items.filter(it => it.hasCoverage).length;
+                const layersWithFeatures = items.filter(it => it.hasCoverage).length;
                 const totalLayers = items.length;
-                const statusClass = layersWithCoverage > 0 ? 'findings' : 'clear';
-                const statusLabel = layersWithCoverage > 0 
-                    ? (layersWithCoverage + ' of ' + totalLayers + ' layer' + (totalLayers !== 1 ? 's' : '') + ' with coverage') 
-                    : 'No coverage';
+                const statusClass = layersWithFeatures > 0 ? 'findings' : 'clear';
+                const statusLabel = layersWithFeatures > 0 
+                    ? (layersWithFeatures + ' of ' + totalLayers + ' layer' + (totalLayers !== 1 ? 's' : '')) 
+                    : 'No features';
                 oh += '<button class="overview-cat-row ' + statusClass + '" type="button" data-goto-bucket="' + bk + '">';
                 oh += '<span class="overview-cat-indicator"></span>';
                 oh += '<span class="overview-cat-icon">' + bd.icon + '</span>';
@@ -947,7 +952,7 @@ function setActiveTab(tabName) {
             oh += '</div>';
 
             // ── Disclaimer ──
-            oh += '<div class="overview-disclaimer"><strong>Important:</strong> These results show which datasets have geographic coverage in your project area. Generate a report to see detailed feature intersections. Contact your local BLM field office for authoritative guidance.</div>';
+            oh += '<div class="overview-disclaimer"><strong>Important:</strong> These results show which layers have features intersecting your project area. Generate a report to see detailed analysis. Contact your local BLM field office for authoritative guidance.</div>';
             oh += '</div>';
             overviewEl.innerHTML = oh;
 
@@ -961,7 +966,7 @@ function setActiveTab(tabName) {
         const summaryEl = document.getElementById("permitResultsSummary");
         if (summaryEl) {
             const lwc = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
-            summaryEl.innerHTML = '<div class="small"><strong>' + lwc + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> datasets have coverage in your project area. Generate a report to see feature details.</div>';
+            summaryEl.innerHTML = '<div class="small"><strong>' + lwc + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> layers have features in your project area. Generate a report for detailed analysis.</div>';
         }
 
         // Individual bucket panels
@@ -971,17 +976,17 @@ function setActiveTab(tabName) {
             if (!pe) continue;
             const items = buckets[bk] || [];
             let h = '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + bd.icon + ' ' + escapeHtml(bd.label) + '</div>';
-            const layersWithCoverage = items.filter(it => it.hasCoverage).length;
-            h += '<div class="bucket-card-count' + (layersWithCoverage === 0 ? ' zero' : '') + '">' + layersWithCoverage + ' layer' + (layersWithCoverage !== 1 ? 's' : '') + ' with coverage</div></div>';
+            const layersWithFeatures = items.filter(it => it.hasCoverage).length;
+            h += '<div class="bucket-card-count' + (layersWithFeatures === 0 ? ' zero' : '') + '">' + layersWithFeatures + ' of ' + items.length + ' layer' + (items.length !== 1 ? 's' : '') + '</div></div>';
             h += '<div class="bucket-card-desc">' + escapeHtml(bd.description) + '</div><ul class="bucket-layer-list">';
             for (const it of items) {
                 const hasCov = it.hasCoverage;
                 h += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
-                h += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : '') + '">' + (hasCov ? '✓ coverage' : '—') + '</span></li>';
+                h += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : '') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
             }
             if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this category</li>';
             h += '</ul>';
-            if (layersWithCoverage === 0) h += '<div class="hint" style="margin-top:8px;">No datasets in this category cover your project area.</div>';
+            if (layersWithFeatures === 0) h += '<div class="hint" style="margin-top:8px;">No features found in this category for your project area.</div>';
             // ── Add Generate Report button for this bucket ──
             h += '<div class="bucket-report-actions" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-light);">';
             h += '<button class="btn primary bucket-report-btn" type="button" data-bucket="' + bk + '">';
@@ -1012,14 +1017,14 @@ function setActiveTab(tabName) {
         // All Data bucket
         const adEl = document.getElementById("bucketAllData");
         if (adEl) {
-            const adT = lastReportRowsByLayer.reduce((s, x) => s + (x.count || 0), 0);
+            const layersWithFeatures = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
             let ad = '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">📊 All Queried Layers</div>';
-            ad += '<div class="bucket-card-count">' + adT + ' total</div></div><ul class="bucket-layer-list">';
-            const sorted = lastReportRowsByLayer.slice().sort((a, b) => (b.count || 0) - (a.count || 0));
+            ad += '<div class="bucket-card-count">' + layersWithFeatures + ' of ' + lastReportRowsByLayer.length + '</div></div><ul class="bucket-layer-list">';
+            const sorted = lastReportRowsByLayer.slice().sort((a, b) => (b.hasCoverage ? 1 : 0) - (a.hasCoverage ? 1 : 0));
             for (const it of sorted) {
-                const c = it.count || 0;
+                const hasCov = it.hasCoverage;
                 ad += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
-                ad += '<span class="bucket-layer-count' + (c > 0 ? ' has-hits' : ' zero') + '">' + c + '</span></li>';
+                ad += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : ' zero') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
             }
             ad += '</ul></div>';
             adEl.innerHTML = ad;
@@ -1360,7 +1365,8 @@ function clearAll() {
         } else {
             if (selectModeControls) selectModeControls.classList.add("hidden");
             if (drawModeControls) drawModeControls.classList.remove("hidden");
-            startDrawingNow(); // <-- auto start drawing immediately
+            // Don't auto-start drawing - wait for user to select a draw tool
+            setStatus("Select a draw type to begin");
         }
         // keep current selectionGeom if user switches modes intentionally
     }
@@ -1999,14 +2005,14 @@ async function runAnalysis() {
 
         // Update stats from query results
         layersQueried = lastReportRowsByLayer.length;
-        const layersWithCoverage = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
-        analysisModal.updateStats(layersQueried, layersWithCoverage, 0);
-        analysisModal.addLog(`Found ${layersWithCoverage} datasets with coverage in your project area`, "success");
+        const layersWithFeatures = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
+        analysisModal.updateStats(layersQueried, layersWithFeatures, 0);
+        analysisModal.addLog(`Found ${layersWithFeatures} of ${layersQueried} layers with features in your project area`, "success");
         analysisModal.setProgress(100);
 
         // ─────────────────────────────────────────────────────────────────
-        // REFACTORED: Analysis checks layer coverage (extent intersection only).
-        // Feature counts are computed on-demand when generating reports.
+        // Screening checks for layer coverage (at least 1 feature intersects).
+        // Full feature data is retrieved on-demand when generating reports.
         // ─────────────────────────────────────────────────────────────────
 
         setStatus("Screening complete!");
@@ -2267,7 +2273,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             };
         }
 
-        // 4. Regular feature layer — check coverage (extent intersection only)
+        // 4. Regular feature layer — quick check if any features intersect AOI
         // Full feature queries are deferred to report generation
         let hasCoverage = false;
         let layerRef = null;
@@ -2276,15 +2282,19 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             layerRef = getCachedLayer(t.url);
             await layerRef.load();
             
-            if (layerRef.fullExtent && reportGeom?.extent) {
-                hasCoverage = geometryEngine.intersects(layerRef.fullExtent, reportGeom.extent);
-            } else {
-                // If we can't determine extent, assume coverage exists
-                hasCoverage = true;
-            }
+            // Quick check: query for just 1 feature to see if any intersect
+            const checkQuery = layerRef.createQuery();
+            checkQuery.geometry = reportGeom;
+            checkQuery.spatialRelationship = "intersects";
+            checkQuery.returnGeometry = false;
+            checkQuery.num = 1; // Only need to find 1 feature to confirm coverage
+            checkQuery.outFields = [layerRef.objectIdField || "OBJECTID"];
+            
+            const result = await layerRef.queryFeatures(checkQuery);
+            hasCoverage = result.features && result.features.length > 0;
         } catch (e) {
             console.warn(`Coverage check failed for ${t.title}:`, e.message);
-            // On error, assume coverage to be safe
+            // On error, assume coverage to be safe so it appears in report generation
             hasCoverage = true;
         }
 
@@ -2299,7 +2309,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             fullRows: null
         };
 
-        const statusBadge = hasCoverage ? 'coverage' : 'no coverage';
+        const statusBadge = hasCoverage ? 'has features' : 'no features';
         const statusClass = hasCoverage ? 'has-hits' : '';
 
         return {

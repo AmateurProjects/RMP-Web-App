@@ -950,10 +950,10 @@ html[class*="cv-"] body {
 .small{ font-size: 12px; color: var(--text-secondary); }
 
 .hint{ 
-  font-size: 12px; 
+  font-size: 11px; 
   color: var(--text-muted); 
-  margin-top: 8px;
-  padding: 8px 12px;
+  margin-top: 6px;
+  padding: 6px 10px;
   background: var(--blm-tan);
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--blm-gold);
@@ -2741,8 +2741,8 @@ th{
 .wizard-subtext {
     font-size: 13px;
     color: var(--text-muted);
-    margin-bottom: 14px;
-    line-height: 1.5;
+    margin-bottom: 10px;
+    line-height: 1.4;
 }
 
 /* ============================================
@@ -2751,15 +2751,14 @@ th{
 .aoi-methods {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: 4px;
+    gap: 4px;
 }
 
 .aoi-method-card {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 12px;
+    gap: 10px;
+    padding: 10px 12px;
     background: var(--bg-white);
     border: 2px solid var(--border-light);
     border-radius: var(--radius-md);
@@ -2773,7 +2772,6 @@ th{
 .aoi-method-card:hover {
     border-color: var(--blm-green-light);
     background: var(--blm-green-pale);
-    transform: translateX(2px);
 }
 
 .aoi-method-card:focus-visible {
@@ -2782,8 +2780,8 @@ th{
 }
 
 .aoi-method-icon {
-    font-size: 22px;
-    min-width: 34px;
+    font-size: 20px;
+    min-width: 28px;
     text-align: center;
     line-height: 1;
 }
@@ -2794,19 +2792,19 @@ th{
 }
 
 .aoi-method-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .aoi-method-desc {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
     margin-top: 1px;
 }
 
 .aoi-method-arrow {
-    font-size: 22px;
+    font-size: 18px;
     color: var(--border-medium);
     font-weight: 300;
     line-height: 1;
@@ -2822,7 +2820,6 @@ th{
 .aoi-swipe-container {
     position: relative;
     overflow: hidden;
-    margin-top: 4px;
 }
 
 .aoi-swipe-track {
@@ -2835,6 +2832,7 @@ th{
     flex: 0 0 100%;
     min-width: 100%;
     box-sizing: border-box;
+    padding-right: 2px; /* Prevent hover effects from being cut off */
 }
 
 /* Back button at top of each method slide */
@@ -2842,8 +2840,8 @@ th{
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 8px 12px;
-    margin-bottom: 12px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
@@ -2865,21 +2863,21 @@ th{
 .aoi-slide-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
-    margin-bottom: 12px;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
     background: linear-gradient(135deg, var(--blm-green-pale) 0%, var(--bg-secondary) 100%);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
 }
 
 .aoi-slide-icon {
-    font-size: 24px;
+    font-size: 20px;
     line-height: 1;
 }
 
 .aoi-slide-title {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
 }

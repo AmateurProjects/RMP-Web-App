@@ -4183,7 +4183,7 @@ define([
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer
         } = mapUtils;
 
-        const { computeLayerCoverageStats, SQM_PER_ACRE } = queryEngine;
+        const { computeLayerCoverageStats, buildPerFeatureTable, SQM_PER_ACRE } = queryEngine;
 
         // Accumulate content sections
         const contentParts = [];
@@ -4408,31 +4408,62 @@ define([
                             mapsGenerated++;
 
                             // Calculate coverage stats
-                            let coverageHtml = "";
+                            const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            let pctCovered = 0;
                             try {
                                 const stats = await computeLayerCoverageStats(item);
-                                if (stats && stats.acresCovered > 0) {
-                                    coverageHtml = `
-                                        <table class="metaTbl">
-                                            <tr><td>Features Found</td><td>${featureCount}</td></tr>
-                                            <tr><td>Approx. Coverage</td><td>${formatNumber(stats.acresCovered, 2)} acres (${formatNumber(stats.pctAoiCovered, 1)}% of AOI)</td></tr>
-                                        </table>
-                                    `;
+                                if (stats) {
+                                    pctCovered = stats.pctAoiCovered || 0;
                                 }
                             } catch (e) {
                                 // Stats failed, skip
                             }
 
-                            // Build section HTML
+                            // Build per-feature table
+                            const perFeatureTableHtml = (featureCount > 0)
+                                ? await buildPerFeatureTable(item, selectionGeom, i)
+                                : "";
+
+                            // Only flag low-coverage for polygon layers
+                            const isSingleFeatureLowCoverage = isPolygonLayer && (featureCount === 1 && pctCovered < 3);
+
+                            // Coverage rows only for polygon layers
+                            const coverageRowsHtml = isPolygonLayer ? `<th>Percent of AOI</th>` : "";
+                            const coverageValHtml = isPolygonLayer
+                                ? `<td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage — possible sliver or boundary artifact">⚠️</span>' : ''}</td>`
+                                : "";
+
+                            // Build section HTML with hide button and zoom controls (matching old report)
                             const attrSummary = generateLayerAttributeSummary(item);
                             contentParts.push(`
                                 <div class="section">
-                                    <h3>${escapeHtml(layerTitle)}</h3>
-                                    ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : '<div class="sub">Map generation failed</div>'}
-                                    <div class="sub">${featureCount} feature${featureCount !== 1 ? 's' : ''} intersecting AOI</div>
-                                    ${coverageHtml}
+                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
+                                    <div class="section-collapse-wrap"><div class="section-collapse-inner">
+                                    <div class="map">
+                                        <div class="map-zoom-controls">
+                                            <button class="zoom-in" title="Zoom in">+</button>
+                                            <button class="zoom-out" title="Zoom out">&minus;</button>
+                                            <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
+                                        </div>
+                                        ${dataUrl ? `<img src="${dataUrl}" alt="AOI + ${escapeHtml(layerTitle)}"/>` : '<div class="sub">Map generation failed</div>'}
+                                    </div>
+                                    <table class="summary-stats-tbl">
+                                        <thead><tr>
+                                            <th>AOI Area</th>
+                                            <th>Intersecting Features</th>
+                                            ${coverageRowsHtml}
+                                        </tr></thead>
+                                        <tbody><tr>
+                                            <td><b>${formatNumber(aoiAcres, 2)}</b> acres</td>
+                                            <td><b>${escapeHtml(String(featureCount))}</b></td>
+                                            ${coverageValHtml}
+                                        </tr></tbody>
+                                    </table>
                                     ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
+                                    ${perFeatureTableHtml}
+                                    </div></div>
                                 </div>
+                                <div class="pagebreak"></div>
                             `);
                             sectionsComplete++;
 
@@ -4461,6 +4492,9 @@ define([
 
             onStep("Finalizing report...");
             onProgress(95, mapsGenerated, sectionsComplete);
+
+            // Generate regulatory/findings summary (uses updated feature counts from queries)
+            const findingsSummaryHtml = generateFindingsSummary(targetLayers, aoiAcres);
 
             // Build complete HTML document
             const createdAt = formatDateTimeForReport(new Date());
@@ -4523,7 +4557,137 @@ define([
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
+
+        // Toggle individual layer section visibility
+        function toggleSection(btn) {
+            var section = btn.closest('.section');
+            if (!section) return;
+            var isHidden = section.classList.toggle('section-hidden');
+            btn.innerHTML = isHidden ? '&#x2713; Show' : '&#x2715; Hide';
+        }
+
+        // Interactive table: column sorting
+        function sortInteractiveTable(th) {
+            var table = th.closest('table');
+            if (!table) return;
+            var colIdx = parseInt(th.getAttribute('data-col'));
+            var tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+            var currentSort = th.getAttribute('data-sort-dir') || 'none';
+            var newSort = currentSort === 'asc' ? 'desc' : 'asc';
+            var allTh = table.querySelectorAll('th');
+            for (var i = 0; i < allTh.length; i++) allTh[i].setAttribute('data-sort-dir', 'none');
+            th.setAttribute('data-sort-dir', newSort);
+            rows.sort(function(a, b) {
+                var aVal = (a.children[colIdx] || {}).textContent || '';
+                var bVal = (b.children[colIdx] || {}).textContent || '';
+                var aNum = parseFloat(aVal.replace(/[^\\d.-]/g, ''));
+                var bNum = parseFloat(bVal.replace(/[^\\d.-]/g, ''));
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return newSort === 'asc' ? aNum - bNum : bNum - aNum;
+                }
+                return newSort === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            });
+            rows.forEach(function(r) { tbody.appendChild(r); });
+        }
+
+        // Interactive table: hide a column
+        function hideColumn(wrapperId, colIdx) {
+            var wrapper = document.getElementById(wrapperId);
+            if (!wrapper) return;
+            var elements = wrapper.querySelectorAll('[data-col="' + colIdx + '"]');
+            for (var ei = 0; ei < elements.length; ei++) {
+                elements[ei].style.display = 'none';
+            }
+            var th = wrapper.querySelector('thead th[data-col="' + colIdx + '"]');
+            var label = th ? (th.getAttribute('data-label') || 'Column ' + colIdx) : 'Column ' + colIdx;
+            var bar = wrapper.querySelector('.hidden-cols-bar');
+            if (!bar) return;
+            var pill = document.createElement('span');
+            pill.className = 'hidden-col-pill';
+            pill.setAttribute('data-col', colIdx);
+            pill.innerHTML = label + ' <span class="pill-x">&#215;</span>';
+            pill.title = 'Click to show "' + label + '" column';
+            pill.onclick = function() { showColumn(wrapperId, colIdx); };
+            bar.appendChild(pill);
+            bar.style.display = 'flex';
+        }
+
+        // Interactive table: show a hidden column
+        function showColumn(wrapperId, colIdx) {
+            var wrapper = document.getElementById(wrapperId);
+            if (!wrapper) return;
+            var elements = wrapper.querySelectorAll('[data-col="' + colIdx + '"]');
+            for (var ei = 0; ei < elements.length; ei++) {
+                elements[ei].style.display = '';
+            }
+            var bar = wrapper.querySelector('.hidden-cols-bar');
+            if (bar) {
+                var pills = bar.querySelectorAll('.hidden-col-pill[data-col="' + colIdx + '"]');
+                for (var pi = 0; pi < pills.length; pi++) pills[pi].remove();
+                if (!bar.querySelector('.hidden-col-pill')) bar.style.display = 'none';
+            }
+        }
+
+        // Initialize zoom/pan controls for map images
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.map').forEach(function(container) {
+                var img = container.querySelector('img');
+                if (!img) return;
+                var scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
+                function applyTransform() {
+                    img.style.transform = 'scale(' + scale + ') translate(' + panX + 'px,' + panY + 'px)';
+                }
+                var zoomControls = container.querySelector('.map-zoom-controls');
+                if (!zoomControls) return;
+                var btnPlus = zoomControls.querySelector('.zoom-in');
+                var btnMinus = zoomControls.querySelector('.zoom-out');
+                var btnReset = zoomControls.querySelector('.zoom-reset');
+                if (btnPlus) btnPlus.addEventListener('click', function() {
+                    scale = Math.min(scale * 1.3, 8);
+                    applyTransform();
+                });
+                if (btnMinus) btnMinus.addEventListener('click', function() {
+                    scale = Math.max(scale / 1.3, 1);
+                    if (scale === 1) { panX = 0; panY = 0; }
+                    applyTransform();
+                });
+                if (btnReset) btnReset.addEventListener('click', function() {
+                    scale = 1; panX = 0; panY = 0;
+                    applyTransform();
+                });
+                container.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                    var delta = e.deltaY < 0 ? 1.15 : 1/1.15;
+                    scale = Math.max(1, Math.min(scale * delta, 8));
+                    if (scale === 1) { panX = 0; panY = 0; }
+                    applyTransform();
+                }, { passive: false });
+                img.addEventListener('mousedown', function(e) {
+                    if (scale <= 1) return;
+                    dragging = true; startX = e.clientX - panX; startY = e.clientY - panY;
+                    img.classList.add('panning');
+                    e.preventDefault();
+                });
+                document.addEventListener('mousemove', function(e) {
+                    if (!dragging) return;
+                    panX = e.clientX - startX; panY = e.clientY - startY;
+                    applyTransform();
+                });
+                document.addEventListener('mouseup', function() {
+                    if (dragging) { dragging = false; img.classList.remove('panning'); }
+                });
+            });
+        });
     </script>
+    ${findingsSummaryHtml ? `
+    <section class="findings-section wrap">
+        <h2 id="section-findings"><span class="section-num">1.</span> Regulatory Screening &amp; Findings Summary</h2>
+        <p class="section-intro">A narrative summary of the regulatory framework, special designations, environmental factors, land use plans, and existing authorizations identified within the project area.</p>
+        <div class="findings-summary">${findingsSummaryHtml}</div>
+    </section>
+    ` : ''}
     <main class="wrap">
         ${contentParts.join('\n')}
     </main>
