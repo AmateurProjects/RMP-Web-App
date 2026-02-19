@@ -2278,6 +2278,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         let hasCoverage = false;
         let layerRef = null;
+        let timedOut = false;
+        const COVERAGE_TIMEOUT_MS = config.report?.coverageTimeoutMs ?? 30000;
         
         try {
             layerRef = new FeatureLayer({ url: t.url });
@@ -2293,13 +2295,28 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             checkQuery.num = 1; // Only need to find 1 feature to confirm coverage
             checkQuery.outFields = [layerRef.objectIdField || "OBJECTID"];
             
-            const result = await layerRef.queryFeatures(checkQuery, { signal: abortSignal });
+            // Race the query against a per-layer timeout so a slow service
+            // (e.g. USFWS Critical Habitat with complex geometries) can't
+            // stall the entire analysis batch indefinitely.
+            const result = await Promise.race([
+                layerRef.queryFeatures(checkQuery, { signal: abortSignal }),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
+                )
+            ]);
             hasCoverage = result.features && result.features.length > 0;
         } catch (e) {
             if (e.name === "AbortError" || isReportCanceled(myOp)) return null;
-            console.warn(`Coverage check failed for ${t.title}:`, e.message);
-            // On error, assume coverage to be safe so it appears in report generation
-            hasCoverage = true;
+            if (e.message === "__coverageTimeout__") {
+                timedOut = true;
+                console.warn(`Coverage check timed out for ${t.title} after ${COVERAGE_TIMEOUT_MS / 1000}s — assuming coverage`);
+                if (modal) modal.addLog(`${t.title}: timed out — assuming coverage`, "warning");
+                hasCoverage = true;
+            } else {
+                console.warn(`Coverage check failed for ${t.title}:`, e.message);
+                // On error, assume coverage to be safe so it appears in report generation
+                hasCoverage = true;
+            }
         }
 
         const reportEntry = {
@@ -2313,7 +2330,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             fullRows: null
         };
 
-        const statusBadge = hasCoverage ? 'has features' : 'no features';
+        const statusBadge = timedOut ? 'assumed (timeout)' : hasCoverage ? 'has features' : 'no features';
         const statusClass = hasCoverage ? 'has-hits' : '';
 
         return {

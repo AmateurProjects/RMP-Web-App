@@ -309,7 +309,7 @@
     },
     {
       "title": "National Wetlands Inventory (NWI)",
-      "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Wetlands/MapServer",
+      "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Wetlands/MapServer/0",
       "tier": 1
     },
     {
@@ -411,14 +411,10 @@
     },
     {
       "title": "BLM Taylor Grazing Act Lands",
-      "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_TGA/MapServer",
+      "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_TGA/MapServer/9",
       "tier": 3
     },
-    {
-      "title": "BLM FIAT Sagebrush Habitat at Risk",
-      "url": "https://gis.blm.gov/arcgis/rest/services/wildlife/BLM_FIAT_Sagebrush_Habitat_at_Risk_of_Conifer_Expansion/MapServer",
-      "tier": 3
-    },
+
     {
       "title": "NHDPlus High Resolution",
       "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer",

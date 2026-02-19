@@ -3922,10 +3922,11 @@ ${getA11yWidgetBlock()}
             targetLayers = lastReportRowsByLayer;
         }
 
-        // Filter to layers with hits that can generate maps
+        // Filter to layers with coverage that can generate maps
+        // Feature counts are queried during report generation (deferred from screening)
         const mappableLayers = targetLayers
-            .filter(x => (x?.count || 0) > 0)
-            .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
+            .filter(x => x?.hasCoverage || (x?.count || 0) > 0)
+            .filter(x => x?.url || x?.__isImageService)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 
         // Open the progressive report window
@@ -3949,7 +3950,7 @@ ${getA11yWidgetBlock()}
         } = mapUtils;
 
         const {
-            queryAllFeaturesPaged, computeLayerCoverageStats, computeElevationStats, SQM_PER_ACRE
+            queryAllFeaturesPaged, querySingleLayer, computeLayerCoverageStats, computeElevationStats, SQM_PER_ACRE
         } = queryEngine;
 
         try {
@@ -3993,22 +3994,20 @@ ${getA11yWidgetBlock()}
 
             if (!report.isOpen()) return; // User closed window
 
-            // === STEP 2: Summary stats ===
-            const totalLayers = targetLayers.length;
-            const layersWithHits = targetLayers.filter(x => (x.count || 0) > 0).length;
-            const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
+            // === STEP 2: Summary stats placeholder (updated after layer queries) ===
+            const layersInAoiEstimate = targetLayers.filter(x => x.hasCoverage).length;
 
-            const summaryHtml = `
+            const summaryPlaceholderHtml = `
                 <h2>Summary</h2>
-                <div class="totals">
+                <div class="totals" id="summary-stats-pills">
                     <div class="row">
-                        <div class="pill">${totalLayers} Layers Queried</div>
-                        <div class="pill">${layersWithHits} Layers in AOI</div>
-                        <div class="pill">${totalFeatures} Features in AOI</div>
+                        <div class="pill">${targetLayers.length} Layers Queried</div>
+                        <div class="pill">${layersInAoiEstimate} Layers in AOI</div>
+                        <div class="pill">… Features in AOI</div>
                     </div>
                 </div>
             `;
-            report.appendContent(summaryHtml);
+            report.appendContent(summaryPlaceholderHtml);
 
             if (!report.isOpen()) return;
 
@@ -4095,6 +4094,28 @@ ${getA11yWidgetBlock()}
                         }
 
                         try {
+                            // === Deferred feature query (screening only checked coverage) ===
+                            let featureCount = item.count || 0;
+                            if (!item._exportQuery && item.url) {
+                                report.updateProgress("Building report...", `Querying features: ${layerTitle}`);
+                                try {
+                                    const qr = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
+                                    featureCount = qr.count || 0;
+                                    item.count = featureCount;
+                                    item.rows = qr.features ? qr.features.map(f => f.attributes) : [];
+                                    item._layer = qr.layer;
+                                    item._exportQuery = qr.exportQuery;
+                                } catch (qe) {
+                                    console.warn(`Feature query failed for ${layerTitle}:`, qe);
+                                }
+                            }
+
+                            // Skip layers with no actual features
+                            if (featureCount === 0) {
+                                report.replaceMapPlaceholder(layerId, '');
+                                continue;
+                            }
+
                             // Create temp layer for screenshot - use service's native renderer
                             const tempGeomType = await getLayerGeometryType(item.url);
 
@@ -4140,7 +4161,7 @@ ${getA11yWidgetBlock()}
                             }
 
                             const narrativeHtml = buildLayerNarrative({
-                                aoiAcres, featureCount: item.count || 0, layerTitle,
+                                aoiAcres, featureCount, layerTitle,
                                 acresCovered, pctCovered, isPolygon: isPolygonLayer
                             });
 
@@ -4168,7 +4189,20 @@ ${getA11yWidgetBlock()}
                 }
             }
 
-            // === STEP 4: Data Sources table and footer ===
+            // === STEP 4: Update summary stats now that feature counts are known ===
+            const totalLayers = targetLayers.length;
+            const layersWithHits = targetLayers.filter(x => (x.count || 0) > 0).length;
+            const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
+
+            report.updateSection("summary-stats-pills", `
+                <div class="row">
+                    <div class="pill">${totalLayers} Layers Queried</div>
+                    <div class="pill">${layersWithHits} Layers in AOI</div>
+                    <div class="pill">${totalFeatures} Features in AOI</div>
+                </div>
+            `);
+
+            // === STEP 5: Data Sources table and footer ===
             const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);
             report.appendContent(dataSourcesHtml);
             report.hideProgress();
@@ -4223,7 +4257,7 @@ ${getA11yWidgetBlock()}
         } = mapUtils;
 
         const {
-            queryAllFeaturesPaged, computeElevationStats,
+            queryAllFeaturesPaged, querySingleLayer, computeElevationStats,
             computeLayerCoverageStats, buildPerFeatureTable, SQM_PER_ACRE
         } = queryEngine;
 
@@ -4324,8 +4358,8 @@ ${getA11yWidgetBlock()}
             if (ext && ext.expand) fixedExtent = ext.expand(paddingFactor);
 
             const targets = lastReportRowsByLayer
-                .filter(x => (x?.count || 0) > 0)
-                .filter(x => (x?._layer && x?._exportQuery) || x?.__isImageService)
+                .filter(x => x?.hasCoverage || (x?.count || 0) > 0)
+                .filter(x => x?.url || x?.__isImageService)
                 .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 
             // Categorize targets into buckets for grouped output
@@ -4460,6 +4494,25 @@ ${getA11yWidgetBlock()}
                         }
                         continue;
                     }
+
+                    // === Deferred feature query (screening only checked coverage) ===
+                    let featureCount = item.count || 0;
+                    if (!item._exportQuery && item.url) {
+                        _setStatus(`building final report\u2026 (querying ${item.title})`);
+                        try {
+                            const qr = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
+                            featureCount = qr.count || 0;
+                            item.count = featureCount;
+                            item.rows = qr.features ? qr.features.map(f => f.attributes) : [];
+                            item._layer = qr.layer;
+                            item._exportQuery = qr.exportQuery;
+                        } catch (qe) {
+                            console.warn(`Feature query failed for ${item.title}:`, qe);
+                        }
+                    }
+
+                    // Skip layers with no actual features
+                    if ((item.count || 0) === 0) continue;
 
                     // FeatureServer layers
                     const tempGeomType = await getLayerGeometryType(item.url);
@@ -4760,18 +4813,17 @@ ${getA11yWidgetBlock()}
                 </div>
             `);
 
-            // === STEP 2: Summary stats ===
-            const totalLayers = targetLayers.length;
-            const layersWithHits = targetLayers.filter(x => (x.count || 0) > 0).length;
-            const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
-
+            // === STEP 2: Summary stats placeholder (updated after layer queries) ===
+            // Actual feature counts are computed during step 3; insert placeholder index
+            const summaryPlaceholderIndex = contentParts.length;
+            const layersInAoiEstimate = targetLayers.filter(x => x.hasCoverage).length;
             contentParts.push(`
                 <h2>Summary</h2>
                 <div class="totals">
                     <div class="row">
-                        <div class="pill">${totalLayers} Layers Queried</div>
-                        <div class="pill">${layersWithHits} Layers in AOI</div>
-                        <div class="pill">${totalFeatures} Features in AOI</div>
+                        <div class="pill">${targetLayers.length} Layers Queried</div>
+                        <div class="pill">${layersInAoiEstimate} Layers in AOI</div>
+                        <div class="pill">\u2026 Features in AOI</div>
                     </div>
                 </div>
             `);
@@ -4999,6 +5051,21 @@ ${getA11yWidgetBlock()}
 
             onStep("Finalizing report...");
             onProgress(95, mapsGenerated, sectionsComplete);
+
+            // Update summary stats now that actual feature counts are known
+            const totalLayers = targetLayers.length;
+            const layersWithHits = targetLayers.filter(x => (x.count || 0) > 0).length;
+            const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
+            contentParts[summaryPlaceholderIndex] = `
+                <h2>Summary</h2>
+                <div class="totals">
+                    <div class="row">
+                        <div class="pill">${totalLayers} Layers Queried</div>
+                        <div class="pill">${layersWithHits} Layers in AOI</div>
+                        <div class="pill">${totalFeatures} Features in AOI</div>
+                    </div>
+                </div>
+            `;
 
             onStep("Building data sources table...");
             const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);

@@ -187,17 +187,36 @@ define([], function () {
 
     // ── Service expansion helpers ────────────────────────────────────
 
+    // Layer types that FeatureLayer cannot load (case-insensitive substring match)
+    const _unsupportedLayerTypes = ["annotation", "raster", "group"];
+
+    function _isUnsupportedLayerType(typeStr) {
+        const t = String(typeStr || "").toLowerCase();
+        return _unsupportedLayerTypes.some(u => t.includes(u));
+    }
+
     async function expandMapServerToSublayers(serviceUrl, { polygonOnly = true } = {}) {
         const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
         const info = await fetchJson(pjsonUrl);
         const layers = Array.isArray(info?.layers) ? info.layers : [];
 
         if (!polygonOnly) {
-            // Filter out Annotation sublayers — FeatureLayer cannot render them
+            // Build set of IDs for annotation/raster/group parents so we can
+            // also reject their children (which may lack an explicit type).
+            const unsupportedParentIds = new Set(
+                layers
+                    .filter(l => _isUnsupportedLayerType(l.type || l.subLayerType))
+                    .map(l => l.id)
+            );
+
             return layers
                 .filter(l => {
-                    const t = String(l.type || l.subLayerType || "").toLowerCase();
-                    return !t.includes("annotation");
+                    // Skip layers whose own type is unsupported
+                    if (_isUnsupportedLayerType(l.type || l.subLayerType)) return false;
+                    // Skip children of unsupported parents (e.g. annotation sub-classes)
+                    if (l.parentLayerId != null && l.parentLayerId !== -1
+                        && unsupportedParentIds.has(l.parentLayerId)) return false;
+                    return true;
                 })
                 .map(l => {
                     let title = String(l.name || "");
@@ -209,16 +228,14 @@ define([], function () {
         // Parallel geometry type checks for polygon filtering
         const checks = await Promise.allSettled(
             layers.map(async l => {
-                // Skip Annotation sublayers early — FeatureLayer cannot render them
-                const parentType = String(l.type || l.subLayerType || "").toLowerCase();
-                if (parentType.includes("annotation")) return null;
+                // Skip unsupported layer types early
+                if (_isUnsupportedLayerType(l.type || l.subLayerType)) return null;
 
                 const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
                 try {
                     const lpjson = await fetchJson(layerUrl + "?f=pjson");
                     // Also check sublayer type from its own metadata
-                    const slType = String(lpjson?.type || "").toLowerCase();
-                    if (slType.includes("annotation")) return null;
+                    if (_isUnsupportedLayerType(lpjson?.type)) return null;
                     const g = String(lpjson?.geometryType || "");
                     if (!g.toLowerCase().includes("polygon")) return null;
                     let title = String(l.name || "");
@@ -239,11 +256,21 @@ define([], function () {
         const pjsonUrl = serviceUrl.replace(/\/$/, "") + "?f=pjson";
         const info = await fetchJson(pjsonUrl);
         const layers = (info && info.layers) ? info.layers : [];
-        // Filter out Annotation sublayers — FeatureLayer cannot render them
+
+        // Build set of unsupported parent IDs
+        const unsupportedParentIds = new Set(
+            layers
+                .filter(l => _isUnsupportedLayerType(l.type || l.subLayerType))
+                .map(l => l.id)
+        );
+
+        // Filter out annotation/raster/group layers AND their children
         return layers
             .filter(l => {
-                const t = String(l.type || l.subLayerType || "").toLowerCase();
-                return !t.includes("annotation");
+                if (_isUnsupportedLayerType(l.type || l.subLayerType)) return false;
+                if (l.parentLayerId != null && l.parentLayerId !== -1
+                    && unsupportedParentIds.has(l.parentLayerId)) return false;
+                return true;
             })
             .map(l => ({
                 title: (l && l.name) ? String(l.name) : `Layer ${l.id}`,
@@ -259,12 +286,13 @@ define([], function () {
         // Parallel geometry type checks
         const checks = await Promise.allSettled(
             layers.map(async l => {
+                // Skip unsupported layer types early
+                if (_isUnsupportedLayerType(l.type || l.subLayerType)) return null;
                 const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
                 try {
                     const lpjson = await fetchJson(layerUrl + "?f=pjson");
-                    // Skip annotation sublayers
-                    const slType = String(lpjson?.type || "").toLowerCase();
-                    if (slType.includes("annotation")) return null;
+                    // Recheck from sublayer's own metadata
+                    if (_isUnsupportedLayerType(lpjson?.type)) return null;
                     const g = String(lpjson?.geometryType || "").toLowerCase();
                     if (!g.includes("polygon")) return null;
                     // Skip layers without query capability
@@ -289,11 +317,18 @@ define([], function () {
         const info = await fetchJson(pjsonUrl);
         const layers = Array.isArray(info?.layers) ? info.layers : [];
 
+        // Build set of unsupported parent IDs
+        const unsupportedParentIds = new Set(
+            layers
+                .filter(l => _isUnsupportedLayerType(l.type || l.subLayerType))
+                .map(l => l.id)
+        );
+
         const out = [];
         for (const l of layers) {
-            // Skip Annotation sublayers — FeatureLayer cannot render them
-            const t = String(l.type || l.subLayerType || "").toLowerCase();
-            if (t.includes("annotation")) continue;
+            if (_isUnsupportedLayerType(l.type || l.subLayerType)) continue;
+            if (l.parentLayerId != null && l.parentLayerId !== -1
+                && unsupportedParentIds.has(l.parentLayerId)) continue;
 
             const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
             let title = l?.name ? String(l.name) : `Layer ${l.id}`;
