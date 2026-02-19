@@ -283,255 +283,275 @@
           <div class="wizard-question">How would you like to define your project area?</div>
           <div class="wizard-subtext">Choose the method that best fits your situation. You do not need GIS expertise.</div>
 
-          <div class="aoi-methods" id="aoiMethods">
-            <button class="aoi-method-card" data-method="search" type="button">
-              <div class="aoi-method-icon">📍</div>
-              <div class="aoi-method-text">
-                <div class="aoi-method-title">Search by Location</div>
-                <div class="aoi-method-desc">Address, place name, or coordinates</div>
+          <!-- Swipe container for AOI methods -->
+          <div class="aoi-swipe-container" id="aoiSwipeContainer">
+            <div class="aoi-swipe-track" id="aoiSwipeTrack">
+              
+              <!-- Slide 0: Method Selection Cards -->
+              <div class="aoi-swipe-slide" data-slide="methods">
+                <div class="aoi-methods" id="aoiMethods">
+                  <button class="aoi-method-card" data-method="search" type="button">
+                    <div class="aoi-method-icon">📍</div>
+                    <div class="aoi-method-text">
+                      <div class="aoi-method-title">Search by Location</div>
+                      <div class="aoi-method-desc">Address, place name, or coordinates</div>
+                    </div>
+                    <div class="aoi-method-arrow">›</div>
+                  </button>
+                  <button class="aoi-method-card" data-method="permit" type="button">
+                    <div class="aoi-method-icon">📋</div>
+                    <div class="aoi-method-text">
+                      <div class="aoi-method-title">Find Existing Permit or Lease</div>
+                      <div class="aoi-method-desc">Grazing, ROW, mining claim, oil &amp; gas, or other lease</div>
+                    </div>
+                    <div class="aoi-method-arrow">›</div>
+                  </button>
+                  <button class="aoi-method-card" data-method="select" type="button">
+                    <div class="aoi-method-icon">🗺️</div>
+                    <div class="aoi-method-text">
+                      <div class="aoi-method-title">Select from Map</div>
+                      <div class="aoi-method-desc">Click a township, section, or parcel boundary</div>
+                    </div>
+                    <div class="aoi-method-arrow">›</div>
+                  </button>
+                  <button class="aoi-method-card" data-method="draw" type="button">
+                    <div class="aoi-method-icon">✏️</div>
+                    <div class="aoi-method-text">
+                      <div class="aoi-method-title">Draw Custom Area</div>
+                      <div class="aoi-method-desc">Sketch your own boundary on the map</div>
+                    </div>
+                    <div class="aoi-method-arrow">›</div>
+                  </button>
+                  <button class="aoi-method-card" data-method="upload" type="button">
+                    <div class="aoi-method-icon">📂</div>
+                    <div class="aoi-method-text">
+                      <div class="aoi-method-title">Upload Shapefile / GeoJSON</div>
+                      <div class="aoi-method-desc">Upload a .zip, .geojson, .kml, or .kmz file</div>
+                    </div>
+                    <div class="aoi-method-arrow">›</div>
+                  </button>
+                </div>
               </div>
-              <div class="aoi-method-arrow">›</div>
-            </button>
-            <button class="aoi-method-card" data-method="permit" type="button">
-              <div class="aoi-method-icon">📋</div>
-              <div class="aoi-method-text">
-                <div class="aoi-method-title">Find Existing Permit or Lease</div>
-                <div class="aoi-method-desc">Grazing, ROW, mining claim, oil &amp; gas, or other lease</div>
-              </div>
-              <div class="aoi-method-arrow">›</div>
-            </button>
-            <button class="aoi-method-card" data-method="select" type="button">
-              <div class="aoi-method-icon">🗺️</div>
-              <div class="aoi-method-text">
-                <div class="aoi-method-title">Select from Map</div>
-                <div class="aoi-method-desc">Click a township, section, or parcel boundary</div>
-              </div>
-              <div class="aoi-method-arrow">›</div>
-            </button>
-            <button class="aoi-method-card" data-method="draw" type="button">
-              <div class="aoi-method-icon">✏️</div>
-              <div class="aoi-method-text">
-                <div class="aoi-method-title">Draw Custom Area</div>
-                <div class="aoi-method-desc">Sketch your own boundary on the map</div>
-              </div>
-              <div class="aoi-method-arrow">›</div>
-            </button>
-            <button class="aoi-method-card" data-method="upload" type="button">
-              <div class="aoi-method-icon">📂</div>
-              <div class="aoi-method-text">
-                <div class="aoi-method-title">Upload Shapefile / GeoJSON</div>
-                <div class="aoi-method-desc">Upload a .zip, .geojson, .kml, or .kmz file</div>
-              </div>
-              <div class="aoi-method-arrow">›</div>
-            </button>
-          </div>
 
-          <!-- Search by Location sub-panel -->
-          <div id="aoiMethodSearch" class="aoi-method-panel hidden">
-            <div class="aoi-method-panel-head">
-              <span>Search by Location</span>
-            </div>
-            <div class="aoi-method-panel-body">
-              <input type="text" id="wizLocationInput" class="input-field" placeholder="Enter address, city, or place name…" autocomplete="off" spellcheck="false">
-              <div id="wizLocationResults" class="wiz-location-results hidden"></div>
-              <div class="hint">Find a location, then select a nearby parcel or switch to Draw to outline your project area.</div>
-            </div>
-          </div>
-
-          <!-- Find Existing Permit sub-panel -->
-          <div id="aoiMethodPermit" class="aoi-method-panel hidden">
-            <div class="aoi-method-panel-head">
-              <span>Find Existing Permit or Lease</span>
-            </div>
-            <div class="aoi-method-panel-body">
-              <div class="permit-legend">
-                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="found" style="position:static;"></span> Features in view</span>
-                <span class="permit-legend-item"><span class="permit-feat-dot" data-status="none" style="position:static;"></span> None in view</span>
+              <!-- Slide 1: Search by Location -->
+              <div class="aoi-swipe-slide" data-slide="search" id="aoiMethodSearch">
+                <button class="aoi-slide-back" type="button" data-back="true">‹ Back</button>
+                <div class="aoi-slide-header">
+                  <span class="aoi-slide-icon">📍</span>
+                  <span class="aoi-slide-title">Search by Location</span>
+                </div>
+                <div class="aoi-slide-body">
+                  <input type="text" id="wizLocationInput" class="input-field" placeholder="Enter address, city, or place name…" autocomplete="off" spellcheck="false">
+                  <div id="wizLocationResults" class="wiz-location-results hidden"></div>
+                  <div class="hint">Find a location, then select a nearby parcel or switch to Draw to outline your project area.</div>
+                </div>
               </div>
-              <div id="wizPermitList" class="permit-list">
-                <div class="permit-group-label">Energy &amp; Minerals</div>
-                <button class="permit-item" data-permit="oilgas" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Oil &amp; Gas Lease</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
-                <button class="permit-item" data-permit="geothermal" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Geothermal Lease</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
-                <button class="permit-item" data-permit="coal" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Coal Lease / Case</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
-                <button class="permit-item" data-permit="mining" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Mining Claim (Active)</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
 
-                <div class="permit-group-label">Land Use Authorizations</div>
-                <button class="permit-item" data-permit="row" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Right-of-Way (ROW)</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
-                <button class="permit-item" data-permit="lua" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Lease, Permit, or Easement</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
+              <!-- Slide 2: Find Existing Permit -->
+              <div class="aoi-swipe-slide" data-slide="permit" id="aoiMethodPermit">
+                <button class="aoi-slide-back" type="button" data-back="true">‹ Back</button>
+                <div class="aoi-slide-header">
+                  <span class="aoi-slide-icon">📋</span>
+                  <span class="aoi-slide-title">Find Existing Permit or Lease</span>
+                </div>
+                <div class="aoi-slide-body">
+                  <div class="permit-legend">
+                    <span class="permit-legend-item"><span class="permit-feat-dot" data-status="found" style="position:static;"></span> Features in view</span>
+                    <span class="permit-legend-item"><span class="permit-feat-dot" data-status="none" style="position:static;"></span> None in view</span>
+                  </div>
+                  <div id="wizPermitList" class="permit-list">
+                    <div class="permit-group-label">Energy &amp; Minerals</div>
+                    <button class="permit-item" data-permit="oilgas" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Oil &amp; Gas Lease</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
+                    <button class="permit-item" data-permit="geothermal" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Geothermal Lease</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
+                    <button class="permit-item" data-permit="coal" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Coal Lease / Case</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
+                    <button class="permit-item" data-permit="mining" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Mining Claim (Active)</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
 
-                <div class="permit-group-label">Grazing</div>
-                <button class="permit-item" data-permit="allotment" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Grazing Allotment</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
-                <button class="permit-item" data-permit="pasture" type="button" aria-pressed="false">
-                  <span class="permit-item-label">Grazing Pasture</span>
-                  <span class="permit-indicators">
-                    <span class="permit-spinner hidden" title="Checking…"></span>
-                    <span class="permit-feat-dot" data-status="unknown" title=""></span>
-                  </span>
-                </button>
+                    <div class="permit-group-label">Land Use Authorizations</div>
+                    <button class="permit-item" data-permit="row" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Right-of-Way (ROW)</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
+                    <button class="permit-item" data-permit="lua" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Lease, Permit, or Easement</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
+
+                    <div class="permit-group-label">Grazing</div>
+                    <button class="permit-item" data-permit="allotment" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Grazing Allotment</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
+                    <button class="permit-item" data-permit="pasture" type="button" aria-pressed="false">
+                      <span class="permit-item-label">Grazing Pasture</span>
+                      <span class="permit-indicators">
+                        <span class="permit-spinner hidden" title="Checking…"></span>
+                        <span class="permit-feat-dot" data-status="unknown" title=""></span>
+                      </span>
+                    </button>
+                  </div>
+                  <div class="hint" style="margin-top:8px;">Select a type, then click its boundary on the map to use as your project area.</div>
+                </div>
               </div>
-              <div class="hint" style="margin-top:8px;">Select a type, then click its boundary on the map to use as your project area.</div>
-            </div>
-          </div>
 
-          <!-- Select from Map sub-panel -->
-          <div id="aoiMethodSelect" class="aoi-method-panel hidden">
-            <div class="aoi-method-panel-head">
-              <span>Select from Map</span>
-            </div>
-            <div class="aoi-method-panel-body">
-              <label class="label">Choose boundary type</label>
-              <div class="toolgroup" role="group">
-                <button id="wizTownshipBtn" class="toolbtn" type="button" aria-pressed="false">
-                  <span class="box box-lg"></span><span class="tooltext">Township</span>
-                </button>
-                <button id="wizSectionBtn" class="toolbtn" type="button" aria-pressed="false">
-                  <span class="box box-md"></span><span class="tooltext">Section</span>
-                </button>
-                <button id="wizParcelBtn" class="toolbtn" type="button" aria-pressed="false">
-                  <span class="box box-sm"></span><span class="tooltext">Parcel</span>
-                </button>
+              <!-- Slide 3: Select from Map -->
+              <div class="aoi-swipe-slide" data-slide="select" id="aoiMethodSelect">
+                <button class="aoi-slide-back" type="button" data-back="true">‹ Back</button>
+                <div class="aoi-slide-header">
+                  <span class="aoi-slide-icon">🗺️</span>
+                  <span class="aoi-slide-title">Select from Map</span>
+                </div>
+                <div class="aoi-slide-body">
+                  <label class="label">Choose boundary type</label>
+                  <div class="toolgroup" role="group">
+                    <button id="wizTownshipBtn" class="toolbtn" type="button" aria-pressed="false">
+                      <span class="box box-lg"></span><span class="tooltext">Township</span>
+                    </button>
+                    <button id="wizSectionBtn" class="toolbtn" type="button" aria-pressed="false">
+                      <span class="box box-md"></span><span class="tooltext">Section</span>
+                    </button>
+                    <button id="wizParcelBtn" class="toolbtn" type="button" aria-pressed="false">
+                      <span class="box box-sm"></span><span class="tooltext">Parcel</span>
+                    </button>
+                  </div>
+                  <div class="hint">Choose a boundary size, then click on the map to select your project area.</div>
+                </div>
               </div>
-              <div class="hint">Choose a boundary size, then click on the map to select your project area.</div>
-            </div>
-          </div>
 
-          <!-- Upload File sub-panel -->
-          <div id="aoiMethodUpload" class="aoi-method-panel hidden">
-            <div class="aoi-method-panel-head">
-              <span>Upload Spatial File</span>
-            </div>
-            <div class="aoi-method-panel-body">
-              <div id="uploadDropZone" class="upload-drop-zone">
-                <div class="upload-drop-icon">📂</div>
-                <div class="upload-drop-text">Drag &amp; drop a file here</div>
-                <div class="upload-drop-or">or</div>
-                <label class="btn subtle upload-browse-btn">
-                  Browse Files
-                  <input type="file" id="aoiFileInput" accept=".zip,.geojson,.json,.kml,.kmz" style="display:none;">
-                </label>
-                <div class="upload-drop-formats">Shapefile (.zip), GeoJSON, KML, KMZ &bull; Max 10 MB</div>
-              </div>
-              <div id="uploadStatus" class="upload-status hidden"></div>
+              <!-- Slide 4: Draw Custom Area -->
+              <div class="aoi-swipe-slide" data-slide="draw" id="aoiMethodDraw">
+                <button class="aoi-slide-back" type="button" data-back="true">‹ Back</button>
+                <div class="aoi-slide-header">
+                  <span class="aoi-slide-icon">✏️</span>
+                  <span class="aoi-slide-title">Draw Custom Area</span>
+                </div>
+                <div class="aoi-slide-body">
+                  <div class="draw-tool-group">
+                    <span class="draw-tool-label">Draw type:</span>
+                    <div class="draw-tool-btns">
+                      <button id="wizDrawPolygon" class="draw-tool-btn active" type="button" title="Draw polygon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,3 22,15 12,21 2,15"/></svg>
+                        <span>Polygon</span>
+                      </button>
+                      <button id="wizDrawLine" class="draw-tool-btn" type="button" title="Draw line">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20 L12 8 L20 16"/></svg>
+                        <span>Line</span>
+                      </button>
+                      <button id="wizDrawPoint" class="draw-tool-btn" type="button" title="Place point">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>
+                        <span>Point</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="drawHint" class="hint">Click on the map to place vertices. Double-click to finish the polygon.</div>
+                  <div class="row">
+                    <button id="wizStopDrawBtn" class="btn subtle" type="button">Cancel Drawing</button>
+                  </div>
 
-              <!-- Buffer panel (shown after file is processed) -->
-              <div id="uploadBufferPanel" class="upload-buffer-panel hidden">
-                <p id="uploadBufferMsg" class="upload-buffer-msg"></p>
-                <div class="upload-buffer-row">
-                  <label for="uploadBufferInput" class="upload-buffer-label">Buffer distance</label>
-                  <div class="upload-buffer-input-wrap">
-                    <input type="number" id="uploadBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
-                    <span class="upload-buffer-unit">miles</span>
+                  <!-- Draw buffer panel (shown after geometry is drawn) -->
+                  <div id="drawBufferPanel" class="upload-buffer-panel hidden">
+                    <p id="drawBufferMsg" class="upload-buffer-msg"></p>
+                    <div class="upload-buffer-row">
+                      <label for="drawBufferInput" class="upload-buffer-label">Buffer distance</label>
+                      <div class="upload-buffer-input-wrap">
+                        <input type="number" id="drawBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
+                        <span class="upload-buffer-unit">miles</span>
+                      </div>
+                    </div>
+                    <div class="upload-buffer-presets draw-buffer-presets">
+                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.25">¼ mi</button>
+                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.5">½ mi</button>
+                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="1">1 mi</button>
+                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="2">2 mi</button>
+                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="5">5 mi</button>
+                    </div>
+                    <div class="upload-buffer-actions">
+                      <button type="button" id="drawBufferApply" class="btn primary">Apply Buffer</button>
+                      <button type="button" id="drawBufferSkip" class="btn subtle">No Buffer</button>
+                    </div>
                   </div>
                 </div>
-                <div class="upload-buffer-presets">
-                  <button type="button" class="upload-buffer-preset" data-val="0.25">¼ mi</button>
-                  <button type="button" class="upload-buffer-preset" data-val="0.5">½ mi</button>
-                  <button type="button" class="upload-buffer-preset" data-val="1">1 mi</button>
-                  <button type="button" class="upload-buffer-preset" data-val="2">2 mi</button>
-                  <button type="button" class="upload-buffer-preset" data-val="5">5 mi</button>
-                </div>
-                <div class="upload-buffer-actions">
-                  <button type="button" id="uploadBufferApply" class="btn primary">Apply Buffer</button>
-                  <button type="button" id="uploadBufferSkip" class="btn subtle">No Buffer</button>
-                </div>
               </div>
 
-              <div class="hint">Upload a spatial file containing points, lines, or polygons. Non-polygon features will require a buffer to create the AOI. Multiple features are merged automatically.</div>
-            </div>
-          </div>
-
-          <!-- Draw Custom Area sub-panel -->
-          <div id="aoiMethodDraw" class="aoi-method-panel hidden">
-            <div class="aoi-method-panel-head">
-              <span>Draw Custom Area</span>
-            </div>
-            <div class="aoi-method-panel-body">
-              <div class="draw-tool-group">
-                <span class="draw-tool-label">Draw type:</span>
-                <div class="draw-tool-btns">
-                  <button id="wizDrawPolygon" class="draw-tool-btn active" type="button" title="Draw polygon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,3 22,15 12,21 2,15"/></svg>
-                    <span>Polygon</span>
-                  </button>
-                  <button id="wizDrawLine" class="draw-tool-btn" type="button" title="Draw line">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20 L12 8 L20 16"/></svg>
-                    <span>Line</span>
-                  </button>
-                  <button id="wizDrawPoint" class="draw-tool-btn" type="button" title="Place point">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>
-                    <span>Point</span>
-                  </button>
+              <!-- Slide 5: Upload File -->
+              <div class="aoi-swipe-slide" data-slide="upload" id="aoiMethodUpload">
+                <button class="aoi-slide-back" type="button" data-back="true">‹ Back</button>
+                <div class="aoi-slide-header">
+                  <span class="aoi-slide-icon">📂</span>
+                  <span class="aoi-slide-title">Upload Spatial File</span>
                 </div>
-              </div>
-              <div id="drawHint" class="hint">Click on the map to place vertices. Double-click to finish the polygon.</div>
-              <div class="row">
-                <button id="wizStopDrawBtn" class="btn subtle" type="button">Cancel</button>
-              </div>
-
-              <!-- Draw buffer panel (shown after geometry is drawn) -->
-              <div id="drawBufferPanel" class="upload-buffer-panel hidden">
-                <p id="drawBufferMsg" class="upload-buffer-msg"></p>
-                <div class="upload-buffer-row">
-                  <label for="drawBufferInput" class="upload-buffer-label">Buffer distance</label>
-                  <div class="upload-buffer-input-wrap">
-                    <input type="number" id="drawBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
-                    <span class="upload-buffer-unit">miles</span>
+                <div class="aoi-slide-body">
+                  <div id="uploadDropZone" class="upload-drop-zone">
+                    <div class="upload-drop-icon">📂</div>
+                    <div class="upload-drop-text">Drag &amp; drop a file here</div>
+                    <div class="upload-drop-or">or</div>
+                    <label class="btn subtle upload-browse-btn">
+                      Browse Files
+                      <input type="file" id="aoiFileInput" accept=".zip,.geojson,.json,.kml,.kmz" style="display:none;">
+                    </label>
+                    <div class="upload-drop-formats">Shapefile (.zip), GeoJSON, KML, KMZ &bull; Max 10 MB</div>
                   </div>
-                </div>
-                <div class="upload-buffer-presets draw-buffer-presets">
-                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.25">¼ mi</button>
-                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.5">½ mi</button>
-                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="1">1 mi</button>
-                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="2">2 mi</button>
-                  <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="5">5 mi</button>
-                </div>
-                <div class="upload-buffer-actions">
-                  <button type="button" id="drawBufferApply" class="btn primary">Apply Buffer</button>
-                  <button type="button" id="drawBufferSkip" class="btn subtle">No Buffer</button>
+                  <div id="uploadStatus" class="upload-status hidden"></div>
+
+                  <!-- Buffer panel (shown after file is processed) -->
+                  <div id="uploadBufferPanel" class="upload-buffer-panel hidden">
+                    <p id="uploadBufferMsg" class="upload-buffer-msg"></p>
+                    <div class="upload-buffer-row">
+                      <label for="uploadBufferInput" class="upload-buffer-label">Buffer distance</label>
+                      <div class="upload-buffer-input-wrap">
+                        <input type="number" id="uploadBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
+                        <span class="upload-buffer-unit">miles</span>
+                      </div>
+                    </div>
+                    <div class="upload-buffer-presets">
+                      <button type="button" class="upload-buffer-preset" data-val="0.25">¼ mi</button>
+                      <button type="button" class="upload-buffer-preset" data-val="0.5">½ mi</button>
+                      <button type="button" class="upload-buffer-preset" data-val="1">1 mi</button>
+                      <button type="button" class="upload-buffer-preset" data-val="2">2 mi</button>
+                      <button type="button" class="upload-buffer-preset" data-val="5">5 mi</button>
+                    </div>
+                    <div class="upload-buffer-actions">
+                      <button type="button" id="uploadBufferApply" class="btn primary">Apply Buffer</button>
+                      <button type="button" id="uploadBufferSkip" class="btn subtle">No Buffer</button>
+                    </div>
+                  </div>
+
+                  <div class="hint">Upload a spatial file containing points, lines, or polygons. Non-polygon features will require a buffer to create the AOI.</div>
                 </div>
               </div>
+
             </div>
           </div>
 

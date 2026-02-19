@@ -722,6 +722,16 @@ function setActiveTab(tabName) {
         });
     }
 
+    // Swipe slide index mapping
+    const aoiSlideMap = { methods: 0, search: 1, permit: 2, select: 3, draw: 4, upload: 5 };
+
+    function swipeToAoiSlide(slideIndex) {
+        const track = document.getElementById("aoiSwipeTrack");
+        if (track) {
+            track.style.transform = `translateX(-${slideIndex * 100}%)`;
+        }
+    }
+
     function showAoiMethod(method) {
         // Reset any existing AOI process before switching methods
         if (sketch) sketch.cancel();
@@ -746,13 +756,11 @@ function setActiveTab(tabName) {
         clearAllSelectionToolButtons();
 
         currentAoiMethod = method;
-        const methodsEl = document.getElementById("aoiMethods");
-        if (methodsEl) methodsEl.classList.add("hidden");
-        const panels = { search: "aoiMethodSearch", permit: "aoiMethodPermit", select: "aoiMethodSelect", draw: "aoiMethodDraw", upload: "aoiMethodUpload" };
-        for (const [key, id] of Object.entries(panels)) {
-            const p = document.getElementById(id);
-            if (p) p.classList.toggle("hidden", key !== method);
-        }
+
+        // Swipe to the method slide
+        const slideIndex = aoiSlideMap[method] ?? 0;
+        swipeToAoiSlide(slideIndex);
+
         if (method === "draw") {
             if (modeSelect) modeSelect.value = "draw";
             setMode("draw");
@@ -760,28 +768,20 @@ function setActiveTab(tabName) {
             if (modeSelect) modeSelect.value = "select";
             setMode("select");
         }
-
-        // Scroll the opened panel into view so the user sees the options
-        const targetPanel = document.getElementById(panels[method]);
-        if (targetPanel) {
-            requestAnimationFrame(() => {
-                targetPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-            });
-        }
     }
 
     function hideAoiMethodPanels() {
-        ["aoiMethodSearch", "aoiMethodPermit", "aoiMethodSelect", "aoiMethodDraw", "aoiMethodUpload"].forEach(id => {
-            const p = document.getElementById(id);
-            if (p) p.classList.add("hidden");
-        });
-        const methodsEl = document.getElementById("aoiMethods");
-        if (methodsEl) methodsEl.classList.remove("hidden");
+        // Swipe back to the methods selection slide
+        swipeToAoiSlide(0);
         currentAoiMethod = null;
 
         // Stop any active sketch and restore click-to-select
         if (sketch) sketch.cancel();
         currentInteractionMode = "select";
+
+        // Hide all selection layers
+        for (let i = 0; i < selectionLayers.length; i++) disableSelectionLayer(i);
+        clearAllSelectionToolButtons();
     }
 
     function setWizPlssActive(which) {
@@ -844,8 +844,6 @@ function setActiveTab(tabName) {
             else if (aoiSourceLayerTitle) sourceEl.textContent = aoiSourceLayerTitle;
             else sourceEl.textContent = "Map selection";
         }
-        // Update tier layer count when step 2 is shown
-        updateTierLayerCount();
     }
 
     let wizLocationDebounce = null;
@@ -3175,6 +3173,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             card.addEventListener("click", () => {
                 const method = card.dataset.method;
                 if (method) showAoiMethod(method);
+            });
+        });
+
+        // AOI slide back buttons
+        document.querySelectorAll(".aoi-slide-back").forEach(btn => {
+            btn.addEventListener("click", () => {
+                hideAoiMethodPanels();
             });
         });
 
