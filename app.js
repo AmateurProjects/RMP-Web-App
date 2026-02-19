@@ -178,6 +178,10 @@ function setBusy(isBusy) {
             if (cancelBtn) {
                 cancelBtn.addEventListener("click", () => {
                     reportOpToken++; // Cancel analysis
+                    if (reportAbortController) {
+                        reportAbortController.abort(); // Cancel in-flight network requests
+                        reportAbortController = null;
+                    }
                     lockMapInteraction(false);
                     setBusy(false);
                     setStatus("canceled");
@@ -547,6 +551,7 @@ function setBusy(isBusy) {
 
     // ---------- Operation lock + cancel (Report / Visual) ----------
     let reportOpToken = 0;
+    let reportAbortController = null; // AbortController for in-flight network requests
 
     const navDefaults = { captured: false, values: {} };
     const navProps = [
@@ -816,7 +821,7 @@ function setActiveTab(tabName) {
                 const acres = Math.abs(areaSqm) / 4046.8564224;
                 aoiCurrentAcres = acres;
                 const el = document.getElementById("wizAoiAcres");
-                if (el) el.textContent = formatNumber(acres, 2) + " acres";
+                if (el) el.textContent = formatNumber(acres, 0) + " acres";
 
                 // Check against warning threshold
                 const warningThreshold = config.report?.aoiWarningAcres ?? 250000;
@@ -1937,6 +1942,10 @@ function preExpandServiceRoots() {
 async function runAnalysis() {
     const myOp = startReportOp();
 
+    // Create a new AbortController for this analysis run
+    if (reportAbortController) reportAbortController.abort();
+    reportAbortController = new AbortController();
+
     const reportGeom = getReportGeometry();
     if (!reportGeom) {
         endReportOp(myOp);
@@ -2069,6 +2078,9 @@ async function runAnalysis() {
     } finally {
         setBusy(false);
         endReportOp(myOp);
+        if (reportAbortController) {
+            reportAbortController = null;
+        }
         document.removeEventListener("visibilitychange", onVisibilityChange);
         if (bgBanner) bgBanner.classList.add("hidden");
     }
@@ -2077,6 +2089,7 @@ async function runAnalysis() {
 
 // Extracted query logic - checks layer coverage (extent intersection only)
 async function queryAllLayers(reportGeom, myOp, modal = null) {
+    const abortSignal = reportAbortController ? reportAbortController.signal : null;
     if (resultsEl) resultsEl.innerHTML = "";
     if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
@@ -2202,6 +2215,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         }))
     ]);
 
+    // Early exit if canceled during service expansion
+    if (isReportCanceled(myOp)) return;
+
     // Collect all expanded targets
     expandedTargets.push(...directTargets);
     for (const r of fsResults) {
@@ -2233,8 +2249,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // 2. ImageServer layers — fetch metadata
         if (t.__isImageService) {
+            if (isReportCanceled(myOp)) return null;
             const metaUrl = `${t.url}?f=json`;
-            const resp = await fetch(metaUrl);
+            const resp = await fetch(metaUrl, { signal: abortSignal });
             const meta = await resp.json();
 
             const serviceDesc = meta.description || meta.serviceDescription || "No description available.";
@@ -2305,13 +2322,17 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // 4. Regular feature layer — quick check if any features intersect AOI
         // Full feature queries are deferred to report generation
+        if (isReportCanceled(myOp)) return null;
+
         let hasCoverage = false;
         let layerRef = null;
         
         try {
             layerRef = new FeatureLayer({ url: t.url });
-            await layerRef.load();
+            await layerRef.load({ signal: abortSignal });
             
+            if (isReportCanceled(myOp)) return null;
+
             // Quick check: query for just 1 feature to see if any intersect
             const checkQuery = layerRef.createQuery();
             checkQuery.geometry = reportGeom;
@@ -2320,9 +2341,10 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             checkQuery.num = 1; // Only need to find 1 feature to confirm coverage
             checkQuery.outFields = [layerRef.objectIdField || "OBJECTID"];
             
-            const result = await layerRef.queryFeatures(checkQuery);
+            const result = await layerRef.queryFeatures(checkQuery, { signal: abortSignal });
             hasCoverage = result.features && result.features.length > 0;
         } catch (e) {
+            if (e.name === "AbortError" || isReportCanceled(myOp)) return null;
             console.warn(`Coverage check failed for ${t.title}:`, e.message);
             // On error, assume coverage to be safe so it appears in report generation
             hasCoverage = true;
@@ -2384,6 +2406,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             expandedTargets.slice(bStart, bEnd).map(t => processOneTarget(t))
         );
 
+        // Check cancellation after batch completes
+        if (isReportCanceled(myOp)) {
+            setStatus("canceled");
+            break;
+        }
+
         // Collect results in order
         for (const r of batchResults) {
             if (r.status === "fulfilled" && r.value) {
@@ -2412,10 +2440,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         setStatus(`Running analysis... (queried ${bEnd}/${expandedTargets.length})`);
     }
 
-    renderResults(cards.join(""));
-    wireExportButtons();
-    if (exportAllBtn) exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
-    renderVisualSummary();
+    // Only render results if analysis was not canceled
+    if (!isReportCanceled(myOp)) {
+        renderResults(cards.join(""));
+        wireExportButtons();
+        if (exportAllBtn) exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
+        renderVisualSummary();
+    }
 }
 
 
