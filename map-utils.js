@@ -653,6 +653,8 @@ define([
                             outFields: ["*"],
                             visible: isAlwaysVisible
                         };
+                        // Disable labels only for the States Generalized sublayer
+                        if (/states\s*generalized/i.test(sl.title)) layerOpts.labelsVisible = false;
                         if (!useServiceRenderer) {
                             layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
                         }
@@ -701,6 +703,8 @@ define([
                             outFields: ["*"],
                             visible: isAlwaysVisible
                         };
+                        // Disable labels only for the States Generalized sublayer
+                        if (/states\s*generalized/i.test(sl.title)) layerOpts.labelsVisible = false;
                         if (!useServiceRenderer) {
                             layerOpts.renderer = getPresetRenderer("report", cfg, geomType) || undefined;
                         }
