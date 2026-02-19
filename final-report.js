@@ -282,6 +282,8 @@ define([
         if (!item) return "";
 
         const title = (item.title || "").toLowerCase();
+        const displayTitle = escapeHtml(item.title || "Layer");
+        const headerLabel = `${displayTitle} Layer Highlights`;
         const rows  = item.fullRows || item.rows || [];
         if (!rows.length) return "";
 
@@ -298,7 +300,7 @@ define([
                 if (scenicRating) scenicRatingCounts.set(scenicRating, (scenicRatingCounts.get(scenicRating) || 0) + 1);
             }
             if (vriClassCounts.size > 0 || scenicRatingCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>VRI Attributes</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (vriClassCounts.size > 0) {
                     const classItems = Array.from(vriClassCounts.entries())
                         .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
@@ -327,7 +329,7 @@ define([
                 if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
             }
             if (speciesCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Critical Habitat Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 const speciesItems = Array.from(speciesCounts.entries())
                     .sort((a, b) => b[1] - a[1]).slice(0, 10)
                     .map(([sp, count]) => `${escapeHtml(sp)} (${count})`)
@@ -344,7 +346,7 @@ define([
                 if (name) allotmentNames.add(name);
             }
             if (allotmentNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Grazing Allotment Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 const names = Array.from(allotmentNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                 summaryHtml += `<tr><td>Allotment Names</td><td>${names}${allotmentNames.size > 10 ? " ..." : ""}</td></tr>`;
             }
@@ -358,7 +360,7 @@ define([
                 if (name) areaNames.add(name);
             }
             if (areaNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Wilderness Area Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 const names = Array.from(areaNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                 summaryHtml += `<tr><td>Area Names</td><td>${names}${areaNames.size > 10 ? " ..." : ""}</td></tr>`;
             }
@@ -372,7 +374,7 @@ define([
                 if (name) acecNames.add(name);
             }
             if (acecNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>ACEC Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 const names = Array.from(acecNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                 summaryHtml += `<tr><td>ACEC Names</td><td>${names}${acecNames.size > 10 ? " ..." : ""}</td></tr>`;
             }
@@ -386,7 +388,7 @@ define([
                 if (name) herdNames.add(name);
             }
             if (herdNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Herd Area Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 const names = Array.from(herdNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                 summaryHtml += `<tr><td>Herd Area Names</td><td>${names}${herdNames.size > 10 ? " ..." : ""}</td></tr>`;
             }
@@ -403,7 +405,7 @@ define([
                 if (use) useCounts.set(use, (useCounts.get(use) || 0) + 1);
             }
             if (speciesCounts.size > 0 || useCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Migration Corridor Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (speciesCounts.size > 0) {
                     const speciesItems = Array.from(speciesCounts.entries())
                         .map(([sp, count]) => `${escapeHtml(sp)} (${count})`).join(", ");
@@ -431,7 +433,7 @@ define([
                 if (caseNo) caseNumbers.add(caseNo);
             }
             if (authTypes.size > 0 || statusCounts.size > 0 || caseNumbers.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>ROW Authorization Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (authTypes.size > 0) {
                     const items = Array.from(authTypes.entries())
                         .map(([t, count]) => `${escapeHtml(t)} (${count})`).join(", ");
@@ -473,7 +475,7 @@ define([
                 if (rodYear) rodYears.add(String(rodYear));
             }
             if (planNames.size > 0 || statusCounts.size > 0 || epLinks.size > 0 || nepaNumbers.size > 0 || rodYears.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Land Use Plan Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (planNames.size > 0) {
                     const names = Array.from(planNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>LUP Name</td><td>${names}${planNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -512,7 +514,7 @@ define([
                 if (desig) designations.set(desig, (designations.get(desig) || 0) + 1);
             }
             if (areaNames.size > 0 || designations.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Conservation Area Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (areaNames.size > 0) {
                     const names = Array.from(areaNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Area Names</td><td>${names}${areaNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -536,7 +538,7 @@ define([
                 if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
             }
             if (allocations.size > 0 || statusCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Mineral Allocation Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (allocations.size > 0) {
                     const items = Array.from(allocations.entries())
                         .map(([a, count]) => `${escapeHtml(a)} (${count})`).join(", ");
@@ -561,7 +563,7 @@ define([
                 if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
             }
             if (allocations.size > 0 || statusCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Timber Allocation Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (allocations.size > 0) {
                     const items = Array.from(allocations.entries())
                         .map(([a, count]) => `${escapeHtml(a)} (${count})`).join(", ");
@@ -583,7 +585,7 @@ define([
                 if (region) regionNames.add(region);
             }
             if (regionNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>USFWS Region Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 const names = Array.from(regionNames).map(n => escapeHtml(n)).join(", ");
                 summaryHtml += `<tr><td>Regions</td><td>${names}</td></tr>`;
             }
@@ -600,7 +602,7 @@ define([
                 if (allotment) allotmentNames.add(allotment);
             }
             if (pastureNames.size > 0 || allotmentNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Grazing Pasture Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (pastureNames.size > 0) {
                     const names = Array.from(pastureNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Pasture Names</td><td>${names}${pastureNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -642,7 +644,7 @@ define([
             }
             if (statusCounts.size > 0 || typeCounts.size > 0 || caseNumbers.size > 0 ||
                 lesseeNames.size > 0 || commodityCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Oil & Gas Lease Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (statusCounts.size > 0) {
                     const items = Array.from(statusCounts.entries())
                         .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
@@ -692,7 +694,7 @@ define([
                 if (activity) activityTypes.add(activity);
             }
             if (siteNames.size > 0 || siteTypes.size > 0 || feeCounts.size > 0 || activityTypes.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Recreation Site Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (siteNames.size > 0) {
                     const names = Array.from(siteNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Site Names</td><td>${names}${siteNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -734,7 +736,7 @@ define([
                 if (fy) fiscalYears.add(fy);
             }
             if (projectNames.size > 0 || statusCounts.size > 0 || purposeCounts.size > 0 || fiscalYears.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>LWCF Project Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (projectNames.size > 0) {
                     const names = Array.from(projectNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Project/Tract Names</td><td>${names}${projectNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -773,7 +775,7 @@ define([
                 if (nepaNo) nepaNumbers.add(nepaNo);
             }
             if (projectNames.size > 0 || statusCounts.size > 0 || typeCounts.size > 0 || nepaNumbers.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>ePlanning Project Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (projectNames.size > 0) {
                     const names = Array.from(projectNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Project Names</td><td>${names}${projectNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -820,7 +822,7 @@ define([
                 if (cmplx) complexNames.add(cmplx);
             }
             if (fireNames.size > 0 || causeCounts.size > 0 || discoveryYears.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Fire Perimeter Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (fireNames.size > 0) {
                     const names = Array.from(fireNames).slice(0, 15).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Fire Names</td><td>${names}${fireNames.size > 15 ? " ..." : ""}</td></tr>`;
@@ -875,7 +877,7 @@ define([
                 if (city) cityLabels.add(city);
             }
             if (unitNames.size > 0 || orgTypes.size > 0 || adminStates.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>BLM Administrative Unit Details</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (unitNames.size > 0) {
                     const names = Array.from(unitNames).slice(0, 15).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Unit Names</td><td>${names}${unitNames.size > 15 ? " ..." : ""}</td></tr>`;
@@ -932,7 +934,7 @@ define([
                 }
             }
             if (genericNames.size > 0 || genericStatus.size > 0 || genericTypes.size > 0 || genericUrls.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Layer Highlights</b></td></tr>`;
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
                 if (genericNames.size > 0) {
                     const names = Array.from(genericNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Names</td><td>${names}${genericNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -4199,6 +4201,8 @@ ${getA11yWidgetBlock()}
                                 }
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                 await waitForViewStationary(1500);
+                                // Refresh mask so outer ring matches the current view extent
+                                updateAoiMask(true);
                                 await waitForTabVisible(5000);
                                 dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             } catch (e) {
@@ -4298,11 +4302,17 @@ ${getA11yWidgetBlock()}
                                 acresCovered, pctCovered, isPolygon: isPolygonLayer
                             });
 
+                            // Build per-feature attribute table
+                            const perFeatureTableHtml = (featureCount > 0)
+                                ? await buildPerFeatureTable(item, selectionGeom, i)
+                                : "";
+
                             // Build section HTML
                             const sectionHtml = `
                                 ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : '<div class="sub">Map generation failed</div>'}
                                 ${narrativeHtml}
                                 ${generateLayerAttributeSummary(item) ? `<table class="metaTbl">${generateLayerAttributeSummary(item)}</table>` : ''}
+                                ${perFeatureTableHtml}
                             `;
 
                             report.replaceMapPlaceholder(layerId, sectionHtml);
@@ -4601,6 +4611,8 @@ ${getA11yWidgetBlock()}
                             // Re-check that layer has finished rendering at the new extent
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                             await waitForViewStationary(1500);
+                            // Refresh mask so outer ring matches the current view extent
+                            updateAoiMask(true);
 
                             const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
@@ -4686,6 +4698,8 @@ ${getA11yWidgetBlock()}
                         // Re-check that layer has finished rendering at the new extent
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
                         await waitForViewStationary(1500);
+                        // Refresh mask so outer ring matches the current view extent
+                        updateAoiMask(true);
 
                         const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                         if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
@@ -5052,6 +5066,8 @@ ${getA11yWidgetBlock()}
                                 }
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                 await waitForViewStationary(1500);
+                                // Refresh mask so outer ring matches the current view extent
+                                updateAoiMask(true);
                                 await waitForTabVisible(5000);
                                 dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             } catch (e) {

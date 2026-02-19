@@ -2093,8 +2093,8 @@ th{
     position: relative;
     background: white;
     border-radius: 16px;
-    width: 90%;
-    max-width: 500px;
+    width: 500px;
+    max-width: 90vw;
     max-height: 90vh;
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
@@ -2227,12 +2227,18 @@ th{
     background: #f8f9fa;
     padding: 10px 14px;
     border-radius: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .report-modal-progress-detail {
     font-size: 14px;
     color: #666;
     padding: 6px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .report-modal-stats {

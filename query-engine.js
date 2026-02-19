@@ -630,7 +630,8 @@ define([
         let aoiAreaSqm = 0;
         try { aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters")); }
         catch (e) { aoiAreaSqm = 0; }
-        if (!aoiAreaSqm) return "";
+        // Note: aoiAreaSqm may be 0 for line/point AOIs — that's OK, we only
+        // need it for polygon-layer "% of AOI" calculations.
 
         const pageSize  = S.config.report?.pageSize ?? 1000;
         const maxExport = S.config.report?.maxExportFeatures ?? 50000;
@@ -730,7 +731,7 @@ define([
                         if (isPolygonLayer) {
                             const areaSqm = Math.max(0, geometryEngine.geodesicArea(inter, "square-meters"));
                             acresCovered  = areaSqm / SQM_PER_ACRE;
-                            pctAoi        = Math.min(100, Math.max(0, (areaSqm / aoiAreaSqm) * 100));
+                            pctAoi        = aoiAreaSqm > 0 ? Math.min(100, Math.max(0, (areaSqm / aoiAreaSqm) * 100)) : 0;
                         }
                         if (isPolylineLayer) {
                             const lengthM = Math.max(0, geometryEngine.geodesicLength(inter, "meters"));
