@@ -236,12 +236,12 @@
     },
     {
       "title": "BLM Wild Horse and Burro Herd Areas",
-      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Wild_Horse_and_Burro_Heard_Area_Polygons/FeatureServer/4",
+      "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_WHB/MapServer/1",
       "tier": 2
     },
     {
       "title": "BLM Wild Horse and Burro Herd Management Areas",
-      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Wild_Horse_and_Burro_Heard_Mgmt_Area_Polygons/FeatureServer/5",
+      "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_WHB/MapServer/0",
       "tier": 2
     },
     {
