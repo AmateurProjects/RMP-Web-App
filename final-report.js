@@ -3082,9 +3082,246 @@ define([
                 padding-top: 16px;
                 border-top: 1px solid rgba(255,255,255,0.2);
             }
+            /* Summary stats table */
+            table.summary-stats-tbl {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 16px 0;
+                background: var(--blm-tan);
+                border-radius: 6px;
+                overflow: hidden;
+            }
+            table.summary-stats-tbl th {
+                background: var(--blm-green);
+                color: var(--white);
+                padding: 10px 14px;
+                text-align: left;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            table.summary-stats-tbl td {
+                padding: 10px 14px;
+                border-bottom: 1px solid var(--border);
+                font-size: 13px;
+            }
+            /* Interactive Data Tables */
+            .interactive-table-wrapper {
+                margin-top: 16px;
+            }
+            .table-toolbar {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
+                flex-wrap: wrap;
+            }
+            .col-hide-btn {
+                display: inline-block;
+                margin-left: 6px;
+                padding: 0 4px;
+                font-size: 10px;
+                line-height: 16px;
+                color: rgba(255,255,255,0.55);
+                background: transparent;
+                border: 1px solid rgba(255,255,255,0.25);
+                border-radius: 3px;
+                cursor: pointer;
+                vertical-align: middle;
+                transition: color 0.15s, border-color 0.15s;
+            }
+            .col-hide-btn:hover {
+                color: #fff;
+                border-color: rgba(255,255,255,0.7);
+                background: rgba(255,255,255,0.15);
+            }
+            .hidden-cols-bar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-bottom: 8px;
+                min-height: 0;
+            }
+            .hidden-col-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 3px 10px;
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--blm-green);
+                background: #e8f5e9;
+                border: 1px solid var(--blm-green);
+                border-radius: 12px;
+                cursor: pointer;
+                transition: background 0.15s;
+                white-space: nowrap;
+            }
+            .hidden-col-pill:hover {
+                background: #c8e6c9;
+            }
+            .hidden-col-pill .pill-x {
+                font-size: 13px;
+                font-weight: 700;
+                line-height: 1;
+            }
+            .table-scroll {
+                overflow-x: auto;
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                max-height: 500px;
+                overflow-y: auto;
+            }
+            .interactive-table {
+                width: max-content;
+                min-width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+                background: var(--white);
+            }
+            .interactive-table th {
+                background: var(--blm-green);
+                color: var(--white);
+                padding: 8px 12px;
+                text-align: left;
+                cursor: pointer;
+                user-select: none;
+                white-space: nowrap;
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                border-right: 1px solid rgba(255,255,255,0.15);
+            }
+            .interactive-table th:hover {
+                background: var(--blm-green-light);
+            }
+            .interactive-table td {
+                padding: 6px 12px;
+                border-bottom: 1px solid var(--border);
+                white-space: nowrap;
+                max-width: 320px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                font-size: 12px;
+            }
+            .interactive-table tr:nth-child(even) {
+                background: var(--blm-tan);
+            }
+            .interactive-table tr:hover {
+                background: rgba(26,71,42,0.06);
+            }
+            .sort-arrow {
+                font-size: 10px;
+                opacity: 0.6;
+                margin-left: 3px;
+            }
+            /* Section collapse */
+            .section-collapse-wrap {
+                overflow: hidden;
+                transition: max-height 0.3s ease;
+            }
+            .section.section-hidden .section-collapse-wrap {
+                max-height: 0 !important;
+            }
+            .section-hide-btn {
+                float: right;
+                padding: 4px 10px;
+                font-size: 12px;
+                background: var(--blm-tan);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                cursor: pointer;
+                color: var(--muted);
+                transition: background 0.15s;
+            }
+            .section-hide-btn:hover {
+                background: #e0ddd4;
+            }
+            /* Map zoom controls */
+            .map-zoom-controls {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                z-index: 10;
+            }
+            .map-zoom-controls button {
+                width: 28px;
+                height: 28px;
+                border: 1px solid var(--border);
+                background: var(--white);
+                border-radius: 4px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                color: var(--blm-green);
+                transition: background 0.15s;
+            }
+            .map-zoom-controls button:hover {
+                background: var(--blm-tan);
+            }
+            .map {
+                position: relative;
+            }
+            /* Section collapse animation */
+            .section {
+                transition: opacity 0.35s ease, padding 0.35s ease, background 0.35s ease;
+            }
+            .section .section-collapse-wrap {
+                display: grid;
+                grid-template-rows: 1fr;
+                transition: grid-template-rows 0.35s ease;
+                overflow: hidden;
+            }
+            .section.section-hidden .section-collapse-wrap {
+                grid-template-rows: 0fr;
+            }
+            .section .section-collapse-inner {
+                min-height: 0;
+                overflow: hidden;
+            }
+            .section.section-hidden {
+                opacity: 0.5;
+                min-height: 0;
+                padding: 16px 24px;
+                background: #f9f9f7;
+            }
+            .section.section-hidden h3 {
+                margin: 0;
+                padding-bottom: 0;
+                border-bottom: none;
+                font-size: 14px;
+                color: var(--muted);
+                text-decoration: line-through;
+            }
+            .section.section-hidden .section-hide-btn {
+                display: inline-block !important;
+                background: #e8f5e9;
+                color: #2e7d32;
+                border-color: #a5d6a7;
+            }
+            .section.section-hidden .section-hide-btn:hover {
+                background: #c8e6c9;
+            }
+            .section-hidden + .pagebreak { display: none; }
             @media print {
                 .report-actions { display: none; }
                 .export-btn { display: none; }
+                .interactive-table-wrapper .table-toolbar { display: none !important; }
+                .hidden-cols-bar { display: none !important; }
+                .col-hide-btn { display: none !important; }
+                .section-hide-btn { display: none !important; }
+                .map-zoom-controls { display: none !important; }
+                .interactive-table { font-size: 9px; }
+                .interactive-table th {
+                    background: var(--blm-green) !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }
             }
         `;
     }
@@ -3145,6 +3382,93 @@ define([
             if (titleEl) titleEl.textContent = title;
             if (statusEl) statusEl.textContent = status;
         };
+        
+        // Toggle individual layer section visibility
+        function toggleSection(btn) {
+            var section = btn.closest('.section');
+            if (!section) return;
+            var isHidden = section.classList.toggle('section-hidden');
+            btn.innerHTML = isHidden ? '&#x2713; Show' : '&#x2715; Hide';
+        }
+        
+        // Interactive table: column sorting
+        function sortInteractiveTable(th) {
+            var table = th.closest('table');
+            if (!table) return;
+            var colIdx = parseInt(th.getAttribute('data-col'));
+            var tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+            var currentSort = th.getAttribute('data-sort-dir') || 'none';
+            var newSort = currentSort === 'asc' ? 'desc' : 'asc';
+            // Reset all headers in this table
+            var allTh = table.querySelectorAll('th');
+            for (var hi = 0; hi < allTh.length; hi++) {
+                allTh[hi].setAttribute('data-sort-dir', 'none');
+                var arrow = allTh[hi].querySelector('.sort-arrow');
+                if (arrow) { arrow.textContent = '\\u21C5'; }
+            }
+            th.setAttribute('data-sort-dir', newSort);
+            var sortArrow = th.querySelector('.sort-arrow');
+            if (sortArrow) sortArrow.textContent = newSort === 'asc' ? '\\u25B2' : '\\u25BC';
+            rows.sort(function(a, b) {
+                var aCell = a.querySelector('td[data-col="' + colIdx + '"]');
+                var bCell = b.querySelector('td[data-col="' + colIdx + '"]');
+                var aVal = aCell ? (aCell.getAttribute('data-sort-val') || aCell.textContent.trim()) : '';
+                var bVal = bCell ? (bCell.getAttribute('data-sort-val') || bCell.textContent.trim()) : '';
+                var aNum = parseFloat(aVal);
+                var bNum = parseFloat(bVal);
+                var cmp;
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    cmp = aNum - bNum;
+                } else {
+                    cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
+                }
+                return newSort === 'asc' ? cmp : -cmp;
+            });
+            for (var ri = 0; ri < rows.length; ri++) {
+                tbody.appendChild(rows[ri]);
+            }
+        }
+        
+        // Interactive table: hide a column from its header button
+        function hideColumn(wrapperId, colIdx) {
+            var wrapper = document.getElementById(wrapperId);
+            if (!wrapper) return;
+            var elements = wrapper.querySelectorAll('[data-col="' + colIdx + '"]');
+            for (var ei = 0; ei < elements.length; ei++) {
+                elements[ei].style.display = 'none';
+            }
+            var th = wrapper.querySelector('thead th[data-col="' + colIdx + '"]');
+            var label = th ? (th.getAttribute('data-label') || 'Column ' + colIdx) : 'Column ' + colIdx;
+            var bar = wrapper.querySelector('.hidden-cols-bar');
+            if (!bar) return;
+            var pill = document.createElement('span');
+            pill.className = 'hidden-col-pill';
+            pill.setAttribute('data-col', colIdx);
+            pill.innerHTML = label + ' <span class="pill-x">&#215;</span>';
+            pill.title = 'Click to show "' + label + '" column';
+            pill.onclick = function() { showColumn(wrapperId, colIdx); };
+            bar.appendChild(pill);
+            bar.style.display = 'flex';
+        }
+        
+        // Interactive table: restore a hidden column via pill click
+        function showColumn(wrapperId, colIdx) {
+            var wrapper = document.getElementById(wrapperId);
+            if (!wrapper) return;
+            var elements = wrapper.querySelectorAll('[data-col="' + colIdx + '"]');
+            for (var ei = 0; ei < elements.length; ei++) {
+                elements[ei].style.display = '';
+            }
+            var bar = wrapper.querySelector('.hidden-cols-bar');
+            if (bar) {
+                var pills = bar.querySelectorAll('.hidden-col-pill[data-col="' + colIdx + '"]');
+                for (var pi = 0; pi < pills.length; pi++) pills[pi].remove();
+                if (!bar.querySelector('.hidden-col-pill')) bar.style.display = 'none';
+            }
+        }
+        
         // Signal that the page is ready
         window.reportReady = true;
     </script>

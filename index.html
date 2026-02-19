@@ -590,7 +590,8 @@
           </div>
         </div>
 
-        <div class="permit-bucket-tabs" id="permitBucketTabs">
+        <!-- Tabs hidden - using back button navigation instead -->
+        <div class="permit-bucket-tabs hidden" id="permitBucketTabs">
           <button class="permit-tab active" data-bucket="overview" type="button">Overview</button>
           <button class="permit-tab" data-bucket="land-status" type="button">Land Status</button>
           <button class="permit-tab" data-bucket="land-use" type="button">Land Use</button>
@@ -600,13 +601,18 @@
           <button class="permit-tab" data-bucket="all-data" type="button">All Data</button>
         </div>
 
-        <section id="bucketOverview" class="bucket-panel active"></section>
-        <section id="bucketLandStatus" class="bucket-panel"></section>
-        <section id="bucketLandUse" class="bucket-panel"></section>
-        <section id="bucketSpecial" class="bucket-panel"></section>
-        <section id="bucketEnvironmental" class="bucket-panel"></section>
-        <section id="bucketAuthorizations" class="bucket-panel"></section>
-        <section id="bucketAllData" class="bucket-panel"></section>
+        <!-- Swipe container for bucket panels -->
+        <div class="bucket-swipe-container" id="bucketSwipeContainer">
+          <div class="bucket-swipe-track" id="bucketSwipeTrack">
+            <section id="bucketOverview" class="bucket-swipe-slide active" data-bucket="overview"></section>
+            <section id="bucketLandStatus" class="bucket-swipe-slide" data-bucket="land-status"></section>
+            <section id="bucketLandUse" class="bucket-swipe-slide" data-bucket="land-use"></section>
+            <section id="bucketSpecial" class="bucket-swipe-slide" data-bucket="special"></section>
+            <section id="bucketEnvironmental" class="bucket-swipe-slide" data-bucket="environmental"></section>
+            <section id="bucketAuthorizations" class="bucket-swipe-slide" data-bucket="authorizations"></section>
+            <section id="bucketAllData" class="bucket-swipe-slide" data-bucket="all-data"></section>
+          </div>
+        </div>
       </section>
 
     </div><!-- /permitModePanel -->

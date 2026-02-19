@@ -3314,6 +3314,64 @@ th{
     display: block;
 }
 
+/* Back button in bucket panels */
+.bucket-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    margin: 10px 16px 0 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-family: inherit;
+}
+
+.bucket-back-btn:hover {
+    background: var(--blm-green-pale);
+    border-color: var(--blm-green-light);
+    color: var(--blm-green);
+}
+
+/* ============================================
+   BUCKET SWIPE CONTAINER (Slide navigation)
+   ============================================ */
+.bucket-swipe-container {
+    position: relative;
+    overflow: hidden;
+}
+
+.bucket-swipe-track {
+    display: flex;
+    align-items: flex-start;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+}
+
+.bucket-swipe-slide {
+    flex: 0 0 100%;
+    min-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Hide inactive slides to prevent height contribution */
+.bucket-swipe-slide:not(.active) {
+    visibility: hidden;
+    max-height: 0;
+    overflow: hidden;
+}
+
+.bucket-swipe-slide.active {
+    visibility: visible;
+    max-height: none;
+    overflow: visible;
+}
+
 .bucket-card {
     background: var(--bg-white);
     border: 1px solid var(--border-light);
@@ -3544,6 +3602,19 @@ th{
 }
 .overview-cat-row.clear .overview-cat-status  { color: #2e7d32; }
 .overview-cat-row.findings .overview-cat-status { color: #e65100; font-weight: 600; }
+
+/* All Data row styled slightly different */
+.overview-cat-row.all-data {
+    border-top: 1px solid var(--border-light);
+    margin-top: 4px;
+    padding-top: 12px;
+}
+.overview-cat-row.all-data .overview-cat-indicator {
+    background: var(--text-muted);
+}
+.overview-cat-row.all-data .overview-cat-status {
+    color: var(--text-secondary);
+}
 
 .overview-cat-arrow {
     font-size: 18px;

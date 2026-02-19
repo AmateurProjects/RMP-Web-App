@@ -832,7 +832,7 @@ function setActiveTab(tabName) {
                                 Your AOI is approximately <b>${formatNumber(acres, 0)} acres</b> (~${sqMiles} sq mi).
                                 Analysis over such large areas may take <b>${estMinutes}+ minutes</b> and some service queries may time out.
                                 The analysis will automatically use spatial chunking to improve reliability.
-                                <div class="warn-detail">For faster results, consider selecting a smaller area or using Tier 1 (Essential) analysis depth.</div>
+                                <div class="warn-detail">For faster results, consider selecting a smaller area.</div>
                             </div>`;
                         warningEl.classList.remove("hidden");
                     }
@@ -930,12 +930,6 @@ function setActiveTab(tabName) {
             const lwh = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
             let oh = '<div class="overview-dash">';
 
-            // ── Summary stats row ──
-            oh += '<div class="permit-summary-grid">';
-            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + tl + '</div><div class="permit-summary-stat-label">Layers Checked</div></div>';
-            oh += '<div class="permit-summary-stat"><div class="permit-summary-stat-value">' + lwh + '</div><div class="permit-summary-stat-label">With Features</div></div>';
-            oh += '</div>';
-
             // ── Category status rows (traffic-light dashboard) ──
             oh += '<div class="overview-category-grid">';
             for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
@@ -954,6 +948,14 @@ function setActiveTab(tabName) {
                 oh += '<span class="overview-cat-arrow">›</span>';
                 oh += '</button>';
             }
+            // All Data row
+            oh += '<button class="overview-cat-row all-data" type="button" data-goto-bucket="all-data">';
+            oh += '<span class="overview-cat-indicator"></span>';
+            oh += '<span class="overview-cat-icon">📊</span>';
+            oh += '<span class="overview-cat-label">All Layers</span>';
+            oh += '<span class="overview-cat-status">' + lwh + ' of ' + tl + ' layer' + (tl !== 1 ? 's' : '') + '</span>';
+            oh += '<span class="overview-cat-arrow">›</span>';
+            oh += '</button>';
             oh += '</div>';
 
             // ── Disclaimer ──
@@ -980,7 +982,9 @@ function setActiveTab(tabName) {
             const pe = document.getElementById(pid);
             if (!pe) continue;
             const items = buckets[bk] || [];
-            let h = '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + bd.icon + ' ' + escapeHtml(bd.label) + '</div>';
+            // Back button to return to overview
+            let h = '<button class="bucket-back-btn" type="button" data-back-to-overview="true">‹ Back to Results</button>';
+            h += '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + bd.icon + ' ' + escapeHtml(bd.label) + '</div>';
             const layersWithFeatures = items.filter(it => it.hasCoverage).length;
             h += '<div class="bucket-card-count' + (layersWithFeatures === 0 ? ' zero' : '') + '">' + layersWithFeatures + ' of ' + items.length + ' layer' + (items.length !== 1 ? 's' : '') + '</div></div>';
             h += '<div class="bucket-card-desc">' + escapeHtml(bd.description) + '</div><ul class="bucket-layer-list">';
@@ -1023,7 +1027,9 @@ function setActiveTab(tabName) {
         const adEl = document.getElementById("bucketAllData");
         if (adEl) {
             const layersWithFeatures = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
-            let ad = '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">📊 All Queried Layers</div>';
+            // Back button to return to overview
+            let ad = '<button class="bucket-back-btn" type="button" data-back-to-overview="true">‹ Back to Results</button>';
+            ad += '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">📊 All Queried Layers</div>';
             ad += '<div class="bucket-card-count">' + layersWithFeatures + ' of ' + lastReportRowsByLayer.length + '</div></div><ul class="bucket-layer-list">';
             const sorted = lastReportRowsByLayer.slice().sort((a, b) => (b.hasCoverage ? 1 : 0) - (a.hasCoverage ? 1 : 0));
             for (const it of sorted) {
@@ -1036,14 +1042,33 @@ function setActiveTab(tabName) {
         }
     }
 
+    // Bucket slide index mapping
+    const bucketSlideMap = { "overview": 0, "land-status": 1, "land-use": 2, "special": 3, "environmental": 4, "authorizations": 5, "all-data": 6 };
+
     function setActiveBucket(bucketKey) {
-        document.querySelectorAll("#permitBucketTabs .permit-tab").forEach(tab => {
-            tab.classList.toggle("active", tab.dataset.bucket === bucketKey);
-        });
-        const pm = { "overview": "bucketOverview", "land-status": "bucketLandStatus", "land-use": "bucketLandUse", "special": "bucketSpecial", "environmental": "bucketEnvironmental", "authorizations": "bucketAuthorizations", "all-data": "bucketAllData" };
-        for (const [key, id] of Object.entries(pm)) {
-            const p = document.getElementById(id);
-            if (p) p.classList.toggle("active", key === bucketKey);
+        const track = document.getElementById("bucketSwipeTrack");
+        const slideIndex = bucketSlideMap[bucketKey] ?? 0;
+        
+        if (track) {
+            track.style.transform = `translateX(-${slideIndex * 100}%)`;
+            // Mark the active slide for CSS height calculation
+            const slides = track.querySelectorAll(".bucket-swipe-slide");
+            slides.forEach((slide, i) => {
+                slide.classList.toggle("active", i === slideIndex);
+            });
+        }
+        
+        // Wire up back buttons (on first click into a category)
+        if (bucketKey !== "overview") {
+            const pm = { "land-status": "bucketLandStatus", "land-use": "bucketLandUse", "special": "bucketSpecial", "environmental": "bucketEnvironmental", "authorizations": "bucketAuthorizations", "all-data": "bucketAllData" };
+            const activePanel = document.getElementById(pm[bucketKey]);
+            if (activePanel) {
+                const backBtn = activePanel.querySelector('.bucket-back-btn[data-back-to-overview]');
+                if (backBtn && !backBtn._wired) {
+                    backBtn._wired = true;
+                    backBtn.addEventListener('click', () => setActiveBucket('overview'));
+                }
+            }
         }
     }
 
