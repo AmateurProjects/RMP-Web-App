@@ -94,17 +94,12 @@ html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
     color: #888;
     font-weight: 400;
 }
-/* Filter applied to the whole page */
-html.cv-protanopia    { filter: url(#cv-protanopia); }
-html.cv-deuteranopia  { filter: url(#cv-deuteranopia); }
-html.cv-tritanopia    { filter: url(#cv-tritanopia); }
-html.cv-achromatopsia { filter: url(#cv-achromatopsia); }
-html.cv-highcontrast  { filter: url(#cv-highcontrast); }
-/* Prevent the filter from creating a new stacking context that breaks fixed positioning */
-html[class*="cv-"] body {
-    /* Ensures modals, popups etc. still render correctly under the page-level filter */
-    isolation: auto;
-}
+/* Filter applied to <body> for cross-browser compat (iOS Safari breaks when filter is on <html>) */
+body.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
+body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
+body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
+body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
+body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
 
 /* ============================================
    APP LOADING OVERLAY
@@ -3834,32 +3829,4 @@ th{
   margin-top: 4px;
 }
 
-/* ============================================
-   BACKGROUND-TAB WARNING BANNER
-   ============================================ */
-.bg-tab-warning {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100000;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #fff3cd 0%, #ffe8a1 100%);
-  border-bottom: 2px solid #f0ad4e;
-  color: #664d03;
-  font-size: 13.5px;
-  font-weight: 500;
-  line-height: 1.4;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-  animation: bgWarnSlide 0.35s ease-out;
-}
-.bg-tab-warning.hidden {
-  display: none;
-}
-@keyframes bgWarnSlide {
-  from { transform: translateY(-100%); opacity: 0; }
-  to   { transform: translateY(0);     opacity: 1; }
-}
+

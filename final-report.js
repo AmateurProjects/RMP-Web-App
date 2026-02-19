@@ -236,6 +236,46 @@ define([
     }
 
     // ────────────────────────────────────────────
+    // buildLayerNarrative — readable summary paragraph under each map
+    // ────────────────────────────────────────────
+    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isImagery, elevStats }) {
+        const aoiStr   = `<b>${formatNumber(aoiAcres, 2)}</b> acres`;
+        const titleStr = `<b>${escapeHtml(layerTitle)}</b>`;
+
+        let narrative = `The Area of Interest is ${aoiStr}. `;
+
+        if (isImagery) {
+            // Imagery / raster layer narrative
+            narrative += `The Area of Interest intersects with ${titleStr}, which is an Imagery Layer; therefore details regarding the analysis of this layer are described below.`;
+
+            if (elevStats) {
+                narrative += `<div style="margin-top:10px;">` +
+                    `Elevation within the Area of Interest ranges from a minimum of <b>${formatNumber(elevStats.minFt, 0)}</b> ft ` +
+                    `(<b>${formatNumber(elevStats.min, 1)}</b> m) to a maximum of <b>${formatNumber(elevStats.maxFt, 0)}</b> ft ` +
+                    `(<b>${formatNumber(elevStats.max, 1)}</b> m), an elevation change of <b>${formatNumber(elevStats.elevationChangeFt, 0)}</b> ft ` +
+                    `(<b>${formatNumber(elevStats.elevationChange, 1)}</b> m).` +
+                    (elevStats.meanFt ? ` The mean elevation is <b>${formatNumber(elevStats.meanFt, 0)}</b> ft (<b>${formatNumber(elevStats.mean, 1)}</b> m).` : '') +
+                    `</div>`;
+            }
+        } else {
+            // Feature layer narrative
+            const countStr = `<b>${escapeHtml(String(featureCount))}</b> feature${featureCount !== 1 ? 's' : ''}`;
+            narrative += `Within the Area of Interest, `;
+
+            if (isPolygon && acresCovered > 0) {
+                const covStr = `<b>${formatNumber(acresCovered, 2)}</b> acres`;
+                const pctStr = `<b>${formatNumber(pctCovered, 1)}%</b>`;
+                narrative += `${covStr} (${countStr}) from the ${titleStr} layer was detected. `;
+                narrative += `This layer covers approximately ${pctStr} of the Area of Interest.`;
+            } else {
+                narrative += `${countStr} from the ${titleStr} layer ${featureCount !== 1 ? 'were' : 'was'} detected.`;
+            }
+        }
+
+        return `<div class="layer-narrative">${narrative}</div>`;
+    }
+
+    // ────────────────────────────────────────────
     // generateLayerAttributeSummary  (~900 lines)
     // ────────────────────────────────────────────
     function generateLayerAttributeSummary(item) {
@@ -1293,31 +1333,15 @@ define([
                     width: 200px;
                     background: rgba(26,71,42,0.05);
                 }
-                table.summary-stats-tbl{
-                    width: auto;
-                    display: inline-table;
-                    margin-top: 16px;
-                    border-collapse: collapse;
-                    font-size: 13px;
+                .layer-narrative {
+                    margin: 16px 0;
+                    padding: 14px 20px;
                     background: var(--blm-tan);
-                    border-radius: 6px;
-                    overflow: hidden;
-                }
-                table.summary-stats-tbl th{
-                    padding: 8px 20px;
-                    color: var(--blm-green);
-                    font-weight: 600;
-                    font-size: 12px;
-                    text-transform: uppercase;
-                    letter-spacing: 0.3px;
-                    border-bottom: 2px solid var(--border);
-                    text-align: center;
-                    background: rgba(26,71,42,0.05);
-                }
-                table.summary-stats-tbl td{
-                    padding: 10px 20px;
-                    text-align: center;
-                    font-size: 14px;
+                    border-left: 4px solid var(--blm-green);
+                    border-radius: 4px;
+                    font-size: 13.5px;
+                    line-height: 1.65;
+                    color: var(--text);
                 }
                 table.data-sources-table{ 
                     width:100%; 
@@ -1854,13 +1878,12 @@ define([
                     content: '\u2713 ';
                 }
                 .a11y-option small { color: #888; font-weight: 400; }
-                /* Color-vision filter classes */
-                html.cv-protanopia    { filter: url(#cv-protanopia); }
-                html.cv-deuteranopia  { filter: url(#cv-deuteranopia); }
-                html.cv-tritanopia    { filter: url(#cv-tritanopia); }
-                html.cv-achromatopsia { filter: url(#cv-achromatopsia); }
-                html.cv-highcontrast  { filter: url(#cv-highcontrast); }
-                html[class*="cv-"] body { isolation: auto; }
+                /* Color-vision filter classes — applied to body for iOS Safari compat */
+                body.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
+                body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
+                body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
+                body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
+                body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
                 /* Back-to-top button */
                 .back-to-top {
                     display: none;
@@ -2317,96 +2340,9 @@ define([
                     }
                 });
             })();
-
-            // ── Accessibility Color-Vision Widget ──
-            // Wait for DOM to be ready since widget HTML comes after this script
-            document.addEventListener('DOMContentLoaded', function() {
-                var STORAGE_KEY = 'a11y-cv-mode';
-                var toggleBtn = document.getElementById('a11yToggleBtnReport');
-                var menu = document.getElementById('a11yMenuReport');
-                if (!toggleBtn || !menu) return;
-                var options = menu.querySelectorAll('.a11y-option');
-                var CV_CLASSES = ['cv-protanopia','cv-deuteranopia','cv-tritanopia','cv-achromatopsia','cv-highcontrast'];
-
-                function applyMode(mode) {
-                    CV_CLASSES.forEach(function(c) { document.documentElement.classList.remove(c); });
-                    if (mode && mode !== 'none') document.documentElement.classList.add('cv-' + mode);
-                    options.forEach(function(b) { b.setAttribute('aria-checked', b.getAttribute('data-cv') === mode ? 'true' : 'false'); });
-                    try { localStorage.setItem(STORAGE_KEY, mode || 'none'); } catch(_) {}
-                }
-                var saved = 'none';
-                try { saved = localStorage.getItem(STORAGE_KEY) || 'none'; } catch(_) {}
-                applyMode(saved);
-
-                toggleBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    var isHidden = menu.classList.toggle('hidden');
-                    toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
-                    if (!isHidden) { var first = menu.querySelector('.a11y-option'); if (first) first.focus(); }
-                });
-                options.forEach(function(b) {
-                    b.addEventListener('click', function(e) { e.stopPropagation(); applyMode(b.getAttribute('data-cv')); });
-                });
-                menu.addEventListener('keydown', function(e) {
-                    var items = Array.prototype.slice.call(options);
-                    var idx = items.indexOf(document.activeElement);
-                    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
-                    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
-                    else if (e.key === 'Escape') { menu.classList.add('hidden'); toggleBtn.setAttribute('aria-expanded','false'); toggleBtn.focus(); }
-                });
-                document.addEventListener('click', function(e) {
-                    var widget = document.getElementById('a11yWidgetReport');
-                    if (!menu.classList.contains('hidden') && widget && !widget.contains(e.target)) {
-                        menu.classList.add('hidden');
-                        toggleBtn.setAttribute('aria-expanded','false');
-                    }
-                });
-            });
             </script>
 
-            <!-- Accessibility: SVG color-vision filters -->
-            <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
-              <defs>
-                <filter id="cv-protanopia">
-                  <feColorMatrix type="matrix" values="0.567,0.433,0,0,0 0.558,0.442,0,0,0 0,0.242,0.758,0,0 0,0,0,1,0"/>
-                </filter>
-                <filter id="cv-deuteranopia">
-                  <feColorMatrix type="matrix" values="0.625,0.375,0,0,0 0.7,0.3,0,0,0 0,0.3,0.7,0,0 0,0,0,1,0"/>
-                </filter>
-                <filter id="cv-tritanopia">
-                  <feColorMatrix type="matrix" values="0.95,0.05,0,0,0 0,0.433,0.567,0,0 0,0.475,0.525,0,0 0,0,0,1,0"/>
-                </filter>
-                <filter id="cv-achromatopsia">
-                  <feColorMatrix type="matrix" values="0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0,0,0,1,0"/>
-                </filter>
-                <filter id="cv-highcontrast">
-                  <feComponentTransfer>
-                    <feFuncR type="linear" slope="1.8" intercept="-0.35"/>
-                    <feFuncG type="linear" slope="1.8" intercept="-0.35"/>
-                    <feFuncB type="linear" slope="1.8" intercept="-0.35"/>
-                  </feComponentTransfer>
-                </filter>
-              </defs>
-            </svg>
-
-            <!-- Accessibility floating menu -->
-            <div id="a11yWidgetReport" class="a11y-widget" role="region" aria-label="Accessibility options">
-              <button id="a11yToggleBtnReport" class="a11y-toggle" aria-haspopup="true" aria-expanded="false" title="Vision Assistance">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-                  <circle cx="12" cy="4.5" r="2"/>
-                  <path d="M12 7.5c-3.5 0-6 1-6 1v2s2.5-.5 5-.7V12l-3.5 7h2.2l2.3-5 2.3 5h2.2L13 12v-2.2c2.5.2 5 .7 5 .7v-2s-2.5-1-6-1z"/>
-                </svg>
-              </button>
-              <div id="a11yMenuReport" class="a11y-menu hidden" role="menu" aria-label="Color vision modes">
-                <div class="a11y-menu-header">Vision Assistance</div>
-                <button class="a11y-option" role="menuitem" data-cv="none">Normal Vision</button>
-                <button class="a11y-option" role="menuitem" data-cv="protanopia">Protanopia <small>(no red)</small></button>
-                <button class="a11y-option" role="menuitem" data-cv="deuteranopia">Deuteranopia <small>(no green)</small></button>
-                <button class="a11y-option" role="menuitem" data-cv="tritanopia">Tritanopia <small>(no blue)</small></button>
-                <button class="a11y-option" role="menuitem" data-cv="achromatopsia">Achromatopsia <small>(grayscale)</small></button>
-                <button class="a11y-option" role="menuitem" data-cv="highcontrast">High Contrast</button>
-              </div>
-            </div>
+            ${getA11yWidgetBlock()}
 
             </body>
             </html>`;
@@ -2422,6 +2358,91 @@ define([
         const srcDetail = (S.aoiSource === "select" && tool) ? ` (${tool})` : "";
         const layer = S.aoiSourceLayerTitle ? ` \u2022 Source layer: ${S.aoiSourceLayerTitle}` : "";
         return `${src}${srcDetail} \u2022 AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
+    }
+
+    /**
+     * Build a data sources table scoped to the layers used in a specific report.
+     * Each layer gets a row with Name, URL, Features in AOI, UP/Down,
+     * followed by a description row.
+     */
+    async function buildLayerSourcesTable(layers) {
+        if (!layers || !layers.length) return "";
+
+        // Fetch descriptions in parallel (with timeout) — reuse cached ones
+        const descFetchResults = await Promise.allSettled(
+            layers.map(async item => {
+                const url = item.url;
+                if (!url) return { url: "", desc: "" };
+
+                const cached = S.serviceStatus.get(url + "::desc");
+                if (cached) return { url, desc: cached };
+
+                try {
+                    const pjsonUrl = normalizePjsonUrl(url);
+                    const pjson = await fetchJsonWithTimeout(pjsonUrl, 5000);
+                    const desc = pickServiceDescription(pjson) || "";
+                    if (desc) S.serviceStatus.set(url + "::desc", desc);
+                    return { url, desc };
+                } catch (e) {
+                    return { url, desc: "" };
+                }
+            })
+        );
+
+        const descByUrl = new Map();
+        for (const r of descFetchResults) {
+            if (r.status === "fulfilled" && r.value) {
+                descByUrl.set(r.value.url, r.value.desc);
+            }
+        }
+
+        const rows = layers.map(item => {
+            const url = item.url || "";
+            const status = S.serviceStatus.get(url) || "UNKNOWN";
+            const statusClass = status === "UP" ? "status-up" : "status-down";
+            const desc = descByUrl.get(url) || S.serviceStatus.get(url + "::desc") || "";
+            const featCount = item.count || 0;
+
+            const countDisplay = featCount > 0
+                ? `<b>${escapeHtml(String(featCount))}</b>`
+                : '<span class="feat-count-zero">0</span>';
+
+            const descRow = desc
+                ? `<tr class="desc-row"><td colspan="4">${escapeHtml(desc)}</td></tr>`
+                : `<tr class="desc-row"><td colspan="4" style="opacity:0.5;">(No description available)</td></tr>`;
+
+            return `
+                <tr>
+                    <td class="service-name-col">${escapeHtml(item.title || "Unknown")}</td>
+                    <td class="service-url-col"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a></td>
+                    <td class="feat-count">${countDisplay}</td>
+                    <td class="service-status-col"><span class="${statusClass}">${status}</span></td>
+                </tr>
+                ${descRow}
+            `;
+        }).join("");
+
+        return `
+            <div class="section" style="background: transparent; border: none; box-shadow: none; padding: 0;">
+                <h2>Data Sources</h2>
+                <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
+                    The following geospatial web services were queried for this report. Service availability was verified at the time of report generation.
+                </p>
+                <table class="data-sources-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Layer Name</th>
+                            <th style="width: 35%;">Web Service URL</th>
+                            <th style="width: 15%;">Features in AOI</th>
+                            <th style="width: 10%;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
+        `;
     }
 
     async function buildDataSourcesSection() {
@@ -2858,6 +2879,105 @@ define([
     // ────────────────────────────────────────────────────────────────
 
     /**
+     * Returns the SVG color-vision filters, accessibility widget HTML,
+     * and the inline JS that wires it up. Designed to be injected just
+     * before </body> in every report template.
+     * Uses `document.body` for filter classes (iOS Safari compat).
+     */
+    function getA11yWidgetBlock() {
+        return `
+    <!-- Accessibility: SVG color-vision filters -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+      <defs>
+        <filter id="cv-protanopia">
+          <feColorMatrix type="matrix" values="0.567,0.433,0,0,0 0.558,0.442,0,0,0 0,0.242,0.758,0,0 0,0,0,1,0"/>
+        </filter>
+        <filter id="cv-deuteranopia">
+          <feColorMatrix type="matrix" values="0.625,0.375,0,0,0 0.7,0.3,0,0,0 0,0.3,0.7,0,0 0,0,0,1,0"/>
+        </filter>
+        <filter id="cv-tritanopia">
+          <feColorMatrix type="matrix" values="0.95,0.05,0,0,0 0,0.433,0.567,0,0 0,0.475,0.525,0,0 0,0,0,1,0"/>
+        </filter>
+        <filter id="cv-achromatopsia">
+          <feColorMatrix type="matrix" values="0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0,0,0,1,0"/>
+        </filter>
+        <filter id="cv-highcontrast">
+          <feComponentTransfer>
+            <feFuncR type="linear" slope="1.8" intercept="-0.35"/>
+            <feFuncG type="linear" slope="1.8" intercept="-0.35"/>
+            <feFuncB type="linear" slope="1.8" intercept="-0.35"/>
+          </feComponentTransfer>
+        </filter>
+      </defs>
+    </svg>
+    <!-- Accessibility floating widget -->
+    <div id="a11yWidgetReport" class="a11y-widget" role="region" aria-label="Accessibility options">
+      <button id="a11yToggleBtnReport" class="a11y-toggle" aria-haspopup="true" aria-expanded="false" title="Vision Assistance">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="4.5" r="2"/>
+          <path d="M12 7.5c-3.5 0-6 1-6 1v2s2.5-.5 5-.7V12l-3.5 7h2.2l2.3-5 2.3 5h2.2L13 12v-2.2c2.5.2 5 .7 5 .7v-2s-2.5-1-6-1z"/>
+        </svg>
+      </button>
+      <div id="a11yMenuReport" class="a11y-menu hidden" role="menu" aria-label="Color vision modes">
+        <div class="a11y-menu-header">Vision Assistance</div>
+        <button class="a11y-option" role="menuitem" data-cv="none">Normal Vision</button>
+        <button class="a11y-option" role="menuitem" data-cv="protanopia">Protanopia <small>(no red)</small></button>
+        <button class="a11y-option" role="menuitem" data-cv="deuteranopia">Deuteranopia <small>(no green)</small></button>
+        <button class="a11y-option" role="menuitem" data-cv="tritanopia">Tritanopia <small>(no blue)</small></button>
+        <button class="a11y-option" role="menuitem" data-cv="achromatopsia">Achromatopsia <small>(grayscale)</small></button>
+        <button class="a11y-option" role="menuitem" data-cv="highcontrast">High Contrast</button>
+      </div>
+    </div>
+    <script>
+    (function() {
+        var STORAGE_KEY = 'a11y-cv-mode';
+        var toggleBtn = document.getElementById('a11yToggleBtnReport');
+        var menu = document.getElementById('a11yMenuReport');
+        if (!toggleBtn || !menu) return;
+        var options = menu.querySelectorAll('.a11y-option');
+        var CV_CLASSES = ['cv-protanopia','cv-deuteranopia','cv-tritanopia','cv-achromatopsia','cv-highcontrast'];
+        function applyMode(mode) {
+            CV_CLASSES.forEach(function(c) { document.body.classList.remove(c); });
+            if (mode && mode !== 'none') document.body.classList.add('cv-' + mode);
+            options.forEach(function(b) { b.setAttribute('aria-checked', b.getAttribute('data-cv') === mode ? 'true' : 'false'); });
+            try { localStorage.setItem(STORAGE_KEY, mode || 'none'); } catch(_) {}
+        }
+        var saved = 'none';
+        try { saved = localStorage.getItem(STORAGE_KEY) || 'none'; } catch(_) {}
+        applyMode(saved);
+        toggleBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var isHidden = menu.classList.toggle('hidden');
+            toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+            if (!isHidden) { var first = menu.querySelector('.a11y-option'); if (first) first.focus(); }
+        });
+        // Touch support for iOS Safari
+        toggleBtn.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            toggleBtn.click();
+        });
+        options.forEach(function(b) {
+            b.addEventListener('click', function(e) { e.stopPropagation(); applyMode(b.getAttribute('data-cv')); });
+        });
+        menu.addEventListener('keydown', function(e) {
+            var items = Array.prototype.slice.call(options);
+            var idx = items.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
+            else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
+            else if (e.key === 'Escape') { menu.classList.add('hidden'); toggleBtn.setAttribute('aria-expanded','false'); toggleBtn.focus(); }
+        });
+        document.addEventListener('click', function(e) {
+            var widget = document.getElementById('a11yWidgetReport');
+            if (!menu.classList.contains('hidden') && widget && !widget.contains(e.target)) {
+                menu.classList.add('hidden');
+                toggleBtn.setAttribute('aria-expanded','false');
+            }
+        });
+    })();
+    </script>`;
+    }
+
+    /**
      * Get the CSS styles for the progressive report (shared with regular report)
      */
     function getReportStyles() {
@@ -3082,27 +3202,16 @@ define([
                 padding-top: 16px;
                 border-top: 1px solid rgba(255,255,255,0.2);
             }
-            /* Summary stats table */
-            table.summary-stats-tbl {
-                width: 100%;
-                border-collapse: collapse;
+            /* Layer narrative paragraph */
+            .layer-narrative {
                 margin: 16px 0;
+                padding: 14px 20px;
                 background: var(--blm-tan);
-                border-radius: 6px;
-                overflow: hidden;
-            }
-            table.summary-stats-tbl th {
-                background: var(--blm-green);
-                color: var(--white);
-                padding: 10px 14px;
-                text-align: left;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            table.summary-stats-tbl td {
-                padding: 10px 14px;
-                border-bottom: 1px solid var(--border);
-                font-size: 13px;
+                border-left: 4px solid var(--blm-green);
+                border-radius: 4px;
+                font-size: 13.5px;
+                line-height: 1.65;
+                color: var(--text);
             }
             /* Interactive Data Tables */
             .interactive-table-wrapper {
@@ -3308,9 +3417,153 @@ define([
                 background: #c8e6c9;
             }
             .section-hidden + .pagebreak { display: none; }
+            /* Data sources table */
+            table.data-sources-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 16px;
+                font-size: 12px;
+                table-layout: fixed;
+                background: var(--white);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                overflow: hidden;
+            }
+            table.data-sources-table th {
+                background: var(--blm-green);
+                color: var(--white);
+                padding: 10px 14px;
+                text-align: left;
+                font-weight: 600;
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            table.data-sources-table td {
+                padding: 10px 14px;
+                border-bottom: 1px solid var(--border);
+                vertical-align: top;
+                word-wrap: break-word;
+            }
+            table.data-sources-table tr:last-child td { border-bottom: none; }
+            table.data-sources-table .service-url-col {
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 10px;
+                word-break: break-all;
+                color: var(--muted);
+            }
+            table.data-sources-table .desc-row td {
+                padding: 4px 14px 12px 14px;
+                font-size: 11px;
+                color: var(--muted);
+                line-height: 1.5;
+                border-bottom: 2px solid var(--border);
+                background: var(--blm-tan);
+                font-style: italic;
+            }
+            table.data-sources-table .feat-count { font-weight: 600; text-align: center; }
+            table.data-sources-table .feat-count-zero { color: var(--muted); opacity: 0.6; }
+            .status-up { color: #2e7d32; font-weight: 600; }
+            .status-down { color: #c62828; font-weight: 600; }
+            /* Accessibility Widget */
+            .a11y-widget {
+                position: fixed;
+                bottom: 16px;
+                right: 16px;
+                z-index: 50000;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+            .a11y-toggle {
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                border: 2px solid #1a73e8;
+                background: #fff;
+                color: #1a73e8;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+                transition: background 0.2s, color 0.2s, transform 0.15s;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .a11y-toggle:hover,
+            .a11y-toggle:focus-visible {
+                background: #1a73e8;
+                color: #fff;
+                transform: scale(1.08);
+                outline: 2px solid #fff;
+                outline-offset: 2px;
+            }
+            .a11y-toggle[aria-expanded="true"] {
+                background: #1a73e8;
+                color: #fff;
+            }
+            .a11y-menu {
+                position: absolute;
+                bottom: 52px;
+                right: 0;
+                min-width: 220px;
+                background: #fff;
+                border: 1px solid #d0d0d0;
+                border-radius: 10px;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+                padding: 6px 0;
+                animation: a11yFadeIn 0.15s ease;
+            }
+            .a11y-menu.hidden { display: none; }
+            @keyframes a11yFadeIn {
+                from { opacity: 0; transform: translateY(8px); }
+                to   { opacity: 1; transform: translateY(0); }
+            }
+            .a11y-menu-header {
+                padding: 8px 14px 6px;
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                color: #666;
+                border-bottom: 1px solid #eee;
+                margin-bottom: 4px;
+            }
+            .a11y-option {
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 8px 14px;
+                border: none;
+                background: none;
+                font-size: 13px;
+                color: #333;
+                cursor: pointer;
+                transition: background 0.12s;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .a11y-option:hover,
+            .a11y-option:focus-visible {
+                background: #e8f0fe;
+                outline: none;
+            }
+            .a11y-option[aria-checked="true"] {
+                font-weight: 700;
+                color: #1a73e8;
+                background: #e8f0fe;
+            }
+            .a11y-option[aria-checked="true"]::before {
+                content: '\\2713 ';
+            }
+            .a11y-option small { color: #888; font-weight: 400; }
+            /* Color-vision filters \u2014 applied to body for iOS Safari compat */
+            body.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
+            body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
+            body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
+            body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
+            body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
             @media print {
                 .report-actions { display: none; }
                 .export-btn { display: none; }
+                .a11y-widget { display: none !important; }
                 .interactive-table-wrapper .table-toolbar { display: none !important; }
                 .hidden-cols-bar { display: none !important; }
                 .col-hide-btn { display: none !important; }
@@ -3472,6 +3725,7 @@ define([
         // Signal that the page is ready
         window.reportReady = true;
     </script>
+${getA11yWidgetBlock()}
 </body>
 </html>`;
 
@@ -3690,11 +3944,12 @@ define([
             waitForViewStationary, waitForLayerReadyToCapture,
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
-            getLayerGeometryType, makeRendererOpaque, getPresetRenderer
+            getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
+            thickenLayerSymbology
         } = mapUtils;
 
         const {
-            queryAllFeaturesPaged, computeLayerCoverageStats, SQM_PER_ACRE
+            queryAllFeaturesPaged, computeLayerCoverageStats, computeElevationStats, SQM_PER_ACRE
         } = queryEngine;
 
         try {
@@ -3748,8 +4003,8 @@ define([
                 <div class="totals">
                     <div class="row">
                         <div class="pill">${totalLayers} Layers Queried</div>
-                        <div class="pill">${layersWithHits} With Findings</div>
-                        <div class="pill">${totalFeatures} Total Features</div>
+                        <div class="pill">${layersWithHits} Layers in AOI</div>
+                        <div class="pill">${totalFeatures} Features in AOI</div>
                     </div>
                 </div>
             `;
@@ -3823,10 +4078,19 @@ define([
                         // Add placeholder for this layer
                         report.addMapPlaceholder(layerTitle, layerId);
 
-                        // Skip ImageServer layers for now (complex handling)
+                        // Skip ImageServer layers — generate narrative with elevation stats
                         if (item.__isImageService) {
-                            const noMapHtml = `<div class="sub">Imagery layer — coverage statistics not available</div>`;
-                            report.replaceMapPlaceholder(layerId, noMapHtml);
+                            let elevStats = null;
+                            try {
+                                elevStats = await computeElevationStats(item.url, selectionGeom);
+                            } catch (e) { /* skip */ }
+
+                            const narrativeHtml = buildLayerNarrative({
+                                aoiAcres, featureCount: 0, layerTitle,
+                                acresCovered: 0, pctCovered: 0,
+                                isPolygon: false, isImagery: true, elevStats
+                            });
+                            report.replaceMapPlaceholder(layerId, narrativeHtml);
                             continue;
                         }
 
@@ -3845,28 +4109,8 @@ define([
                             // Wait for layer to load so service renderer is available
                             try { await tempLayer.when(); } catch (e) { /* continue */ }
                             
-                            // Thicken polygon outlines while preserving service's original symbology
-                            if (tempGeomType && String(tempGeomType).toLowerCase().includes('polygon') && tempLayer.renderer) {
-                                try {
-                                    const r = tempLayer.renderer.clone();
-                                    const MIN_OUTLINE = 3;
-                                    function thickenOutline(sym) {
-                                        if (!sym) return;
-                                        if (sym.outline) {
-                                            sym.outline.width = Math.max(sym.outline.width || 0, MIN_OUTLINE);
-                                        } else {
-                                            sym.outline = { color: [0, 0, 0, 0.8], width: MIN_OUTLINE };
-                                        }
-                                    }
-                                    if (r.symbol) thickenOutline(r.symbol);
-                                    if (r.defaultSymbol) thickenOutline(r.defaultSymbol);
-                                    if (r.uniqueValueInfos) r.uniqueValueInfos.forEach(uv => thickenOutline(uv.symbol));
-                                    if (r.classBreakInfos) r.classBreakInfos.forEach(cb => thickenOutline(cb.symbol));
-                                    tempLayer.renderer = r;
-                                } catch (e) {
-                                    console.warn("Could not thicken outline for", item.title, e);
-                                }
-                            }
+                            // Thicken borders while preserving service's original symbology
+                            thickenLayerSymbology(tempLayer, tempGeomType);
 
                             setVisibilityForScreenshot(tempLayer);
 
@@ -3880,26 +4124,30 @@ define([
                             view.map.remove(tempLayer);
 
                             // Calculate coverage stats
-                            let coverageHtml = "";
-                            try {
-                                const stats = await computeLayerCoverageStats(item);
-                                if (stats && stats.acresCovered > 0) {
-                                    coverageHtml = `
-                                        <table class="metaTbl">
-                                            <tr><td>Features Found</td><td>${item.count || 0}</td></tr>
-                                            <tr><td>Approx. Coverage</td><td>${formatNumber(stats.acresCovered, 2)} acres (${formatNumber(stats.pctAoiCovered, 1)}% of AOI)</td></tr>
-                                        </table>
-                                    `;
+                            const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            let acresCovered = 0;
+                            let pctCovered = 0;
+                            if (isPolygonLayer) {
+                                try {
+                                    const stats = await computeLayerCoverageStats(item, selectionGeom);
+                                    if (stats) {
+                                        acresCovered = stats.acresCovered || 0;
+                                        pctCovered = stats.pctAoiCovered || 0;
+                                    }
+                                } catch (e) {
+                                    // Stats failed, skip
                                 }
-                            } catch (e) {
-                                // Stats failed, skip
                             }
+
+                            const narrativeHtml = buildLayerNarrative({
+                                aoiAcres, featureCount: item.count || 0, layerTitle,
+                                acresCovered, pctCovered, isPolygon: isPolygonLayer
+                            });
 
                             // Build section HTML
                             const sectionHtml = `
                                 ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : '<div class="sub">Map generation failed</div>'}
-                                <div class="sub">${item.count || 0} feature${item.count !== 1 ? 's' : ''} intersecting AOI</div>
-                                ${coverageHtml}
+                                ${narrativeHtml}
                                 ${generateLayerAttributeSummary(item) ? `<table class="metaTbl">${generateLayerAttributeSummary(item)}</table>` : ''}
                             `;
 
@@ -3920,7 +4168,9 @@ define([
                 }
             }
 
-            // === STEP 4: Add footer and finalize ===
+            // === STEP 4: Data Sources table and footer ===
+            const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);
+            report.appendContent(dataSourcesHtml);
             report.hideProgress();
             report.addFooter();
             onProgress("Complete", 100);
@@ -3968,7 +4218,8 @@ define([
             waitForViewStationary, waitForLayerReadyToCapture,
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
-            getLayerGeometryType, makeRendererOpaque, getPresetRenderer
+            getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
+            thickenLayerSymbology
         } = mapUtils;
 
         const {
@@ -4179,19 +4430,13 @@ define([
                             const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
-                            const meta = item.__serviceMeta || {};
                             const elevStats = await computeElevationStats(item.url, selectionGeom);
 
-                            let elevStatsHtml = '';
-                            if (elevStats) {
-                                elevStatsHtml = `
-                                  <tr><td colspan="2" style="background:#f0f0f0; font-weight:600;">Elevation Statistics (within AOI)</td></tr>
-                                  <tr><td>Minimum Elevation</td><td><b>${formatNumber(elevStats.minFt, 0)}</b> ft (${formatNumber(elevStats.min, 1)} m)</td></tr>
-                                  <tr><td>Maximum Elevation</td><td><b>${formatNumber(elevStats.maxFt, 0)}</b> ft (${formatNumber(elevStats.max, 1)} m)</td></tr>
-                                  <tr><td>Elevation Change</td><td><b>${formatNumber(elevStats.elevationChangeFt, 0)}</b> ft (${formatNumber(elevStats.elevationChange, 1)} m)</td></tr>
-                                  ${elevStats.meanFt ? `<tr><td>Mean Elevation</td><td><b>${formatNumber(elevStats.meanFt, 0)}</b> ft (${formatNumber(elevStats.mean, 1)} m)</td></tr>` : ''}
-                                `;
-                            }
+                            const narrativeHtml = buildLayerNarrative({
+                                aoiAcres, featureCount: 0, layerTitle: item.title,
+                                acresCovered: 0, pctCovered: 0,
+                                isPolygon: false, isImagery: true, elevStats
+                            });
 
                             sectionsHtml += `
                               <div class="section layer-section page-break">
@@ -4205,12 +4450,7 @@ define([
                                   </div>
                                   <img src="${dataUrl}" alt="${escapeHtml(item.title)}" style="width:100%; border-radius:8px;" />
                                 </div>
-                                <table class="info-table" style="margin-top:16px;">
-                                  <tr><td style="width:200px;">Service Name</td><td><b>${escapeHtml(meta.name || item.title)}</b></td></tr>
-                                  <tr><td>Type</td><td>Image Service (Elevation/Raster)</td></tr>
-                                  ${elevStatsHtml}
-                                  ${meta.copyright ? `<tr><td>Source</td><td>${escapeHtml(meta.copyright)}</td></tr>` : ''}
-                                </table>
+                                ${narrativeHtml}
                                 </div></div>
                               </div>
                             `;
@@ -4241,31 +4481,8 @@ define([
                     // Wait for the layer to load so its service renderer is available
                     try { await temp.when(); } catch (e) { /* continue even if load fails */ }
 
-                    // Thicken polygon outlines while preserving the service's original symbology
-                    if (tempGeomType && String(tempGeomType).toLowerCase().includes('polygon') && temp.renderer) {
-                        try {
-                            const r = temp.renderer.clone();
-                            const MIN_OUTLINE = 3;
-
-                            function thickenOutline(sym) {
-                                if (!sym) return;
-                                if (sym.outline) {
-                                    sym.outline.width = Math.max(sym.outline.width || 0, MIN_OUTLINE);
-                                } else {
-                                    sym.outline = { color: [0, 0, 0, 0.8], width: MIN_OUTLINE };
-                                }
-                            }
-
-                            if (r.symbol) thickenOutline(r.symbol);
-                            if (r.defaultSymbol) thickenOutline(r.defaultSymbol);
-                            if (r.uniqueValueInfos) r.uniqueValueInfos.forEach(uv => thickenOutline(uv.symbol));
-                            if (r.classBreakInfos) r.classBreakInfos.forEach(cb => thickenOutline(cb.symbol));
-
-                            temp.renderer = r;
-                        } catch (e) {
-                            console.warn("Could not thicken outline for", item.title, e);
-                        }
-                    }
+                    // Thicken borders while preserving the service's original symbology
+                    thickenLayerSymbology(temp, tempGeomType);
 
                     try {
                         setVisibilityForScreenshot(temp);
@@ -4296,16 +4513,10 @@ define([
                             ? await buildPerFeatureTable(item, selectionGeom, globalLayerIndex)
                             : "";
 
-                        // Only flag low-coverage for polygon layers (not points or lines)
-                        const isSingleFeatureLowCoverage = isPolygonLayer && (item.count === 1 && pctCovered < 3);
-
-                        // Coverage rows only for polygon layers
-                        const coverageRowsHtml = isPolygonLayer
-                            ? `<th>Percent of AOI</th>`
-                            : "";
-                        const coverageValHtml = isPolygonLayer
-                            ? `<td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage \u2014 possible sliver or boundary artifact">\u26A0\uFE0F</span>' : ''}</td>`
-                            : "";
+                        const narrativeHtml = buildLayerNarrative({
+                            aoiAcres, featureCount: item.count || 0, layerTitle: item.title,
+                            acresCovered, pctCovered, isPolygon: isPolygonLayer
+                        });
 
                         sectionsHtml += `
                         <div class="section">
@@ -4319,18 +4530,7 @@ define([
                                 </div>
                                 <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
                             </div>
-                            <table class="summary-stats-tbl">
-                                <thead><tr>
-                                    <th>AOI Area</th>
-                                    <th>Intersecting Features</th>
-                                    ${coverageRowsHtml}
-                                </tr></thead>
-                                <tbody><tr>
-                                    <td><b>${formatNumber(aoiAcres, 2)}</b> acres</td>
-                                    <td><b>${escapeHtml(String(item.count || 0))}</b></td>
-                                    ${coverageValHtml}
-                                </tr></tbody>
-                            </table>
+                            ${narrativeHtml}
                             ${layerAttrSummary ? `<table class="metaTbl">${layerAttrSummary}</table>` : ''}
                             ${perFeatureTableHtml}
                             </div></div>
@@ -4354,7 +4554,7 @@ define([
             }
 
             // STEP 4: Data Sources Appendix
-            const dataSourcesHtml = await buildDataSourcesSection();
+            const dataSourcesHtml = await buildLayerSourcesTable(lastReportRowsByLayer);
 
             // STEP 4b: Generate findings summary paragraph
             const findingsSummaryHtml = generateFindingsSummary(lastReportRowsByLayer, aoiAcres);
@@ -4366,9 +4566,9 @@ define([
 
             const totalsHtml = `
               <div class="row">
-                <div class="pill">Layers queried: <b>${escapeHtml(String(totalLayers))}</b></div>
-                <div class="pill">Layers with hits: <b>${escapeHtml(String(layersWithHits))}</b></div>
-                <div class="pill">Total intersecting features: <b>${escapeHtml(String(totalHits))}</b></div>
+                <div class="pill">Layers Queried: <b>${escapeHtml(String(totalLayers))}</b></div>
+                <div class="pill">Layers in AOI: <b>${escapeHtml(String(layersWithHits))}</b></div>
+                <div class="pill">Features in AOI: <b>${escapeHtml(String(totalHits))}</b></div>
               </div>
             `;
 
@@ -4504,10 +4704,11 @@ define([
             waitForViewStationary, waitForLayerReadyToCapture,
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
-            getLayerGeometryType, makeRendererOpaque, getPresetRenderer
+            getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
+            thickenLayerSymbology
         } = mapUtils;
 
-        const { computeLayerCoverageStats, buildPerFeatureTable, SQM_PER_ACRE } = queryEngine;
+        const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, SQM_PER_ACRE } = queryEngine;
 
         // Accumulate content sections
         const contentParts = [];
@@ -4569,8 +4770,8 @@ define([
                 <div class="totals">
                     <div class="row">
                         <div class="pill">${totalLayers} Layers Queried</div>
-                        <div class="pill">${layersWithHits} With Findings</div>
-                        <div class="pill">${totalFeatures} Total Features</div>
+                        <div class="pill">${layersWithHits} Layers in AOI</div>
+                        <div class="pill">${totalFeatures} Features in AOI</div>
                     </div>
                 </div>
             `);
@@ -4639,12 +4840,25 @@ define([
                         onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                         onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
 
-                        // Skip ImageServer layers
+                        // Skip ImageServer layers — generate narrative with elevation stats
                         if (item.__isImageService) {
+                            let elevStats = null;
+                            try {
+                                elevStats = await computeElevationStats(item.url, selectionGeom);
+                            } catch (e) { /* skip */ }
+
+                            const narrativeHtml = buildLayerNarrative({
+                                aoiAcres, featureCount: 0, layerTitle,
+                                acresCovered: 0, pctCovered: 0,
+                                isPolygon: false, isImagery: true, elevStats
+                            });
+
                             contentParts.push(`
                                 <div class="section">
-                                    <h3>${escapeHtml(layerTitle)}</h3>
-                                    <div class="sub">Imagery layer — coverage statistics not available</div>
+                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
+                                    <div class="section-collapse-wrap"><div class="section-collapse-inner">
+                                    ${narrativeHtml}
+                                    </div></div>
                                 </div>
                             `);
                             sectionsComplete++;
@@ -4697,28 +4911,8 @@ define([
                             // Wait for layer to load so service renderer is available
                             try { await tempLayer.when(); } catch (e) { /* continue */ }
                             
-                            // Thicken polygon outlines while preserving service's original symbology
-                            if (tempGeomType && String(tempGeomType).toLowerCase().includes('polygon') && tempLayer.renderer) {
-                                try {
-                                    const r = tempLayer.renderer.clone();
-                                    const MIN_OUTLINE = 3;
-                                    function thickenOutline(sym) {
-                                        if (!sym) return;
-                                        if (sym.outline) {
-                                            sym.outline.width = Math.max(sym.outline.width || 0, MIN_OUTLINE);
-                                        } else {
-                                            sym.outline = { color: [0, 0, 0, 0.8], width: MIN_OUTLINE };
-                                        }
-                                    }
-                                    if (r.symbol) thickenOutline(r.symbol);
-                                    if (r.defaultSymbol) thickenOutline(r.defaultSymbol);
-                                    if (r.uniqueValueInfos) r.uniqueValueInfos.forEach(uv => thickenOutline(uv.symbol));
-                                    if (r.classBreakInfos) r.classBreakInfos.forEach(cb => thickenOutline(cb.symbol));
-                                    tempLayer.renderer = r;
-                                } catch (e) {
-                                    console.warn("Could not thicken outline for", item.title, e);
-                                }
-                            }
+                            // Thicken borders while preserving service's original symbology
+                            thickenLayerSymbology(tempLayer, tempGeomType);
 
                             setVisibilityForScreenshot(tempLayer);
 
@@ -4733,14 +4927,18 @@ define([
 
                             // Calculate coverage stats
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            let acresCovered = 0;
                             let pctCovered = 0;
-                            try {
-                                const stats = await computeLayerCoverageStats(item);
-                                if (stats) {
-                                    pctCovered = stats.pctAoiCovered || 0;
+                            if (isPolygonLayer) {
+                                try {
+                                    const stats = await computeLayerCoverageStats(item, selectionGeom);
+                                    if (stats) {
+                                        acresCovered = stats.acresCovered || 0;
+                                        pctCovered = stats.pctAoiCovered || 0;
+                                    }
+                                } catch (e) {
+                                    // Stats failed, skip
                                 }
-                            } catch (e) {
-                                // Stats failed, skip
                             }
 
                             // Build per-feature table
@@ -4748,14 +4946,10 @@ define([
                                 ? await buildPerFeatureTable(item, selectionGeom, i)
                                 : "";
 
-                            // Only flag low-coverage for polygon layers
-                            const isSingleFeatureLowCoverage = isPolygonLayer && (featureCount === 1 && pctCovered < 3);
-
-                            // Coverage rows only for polygon layers
-                            const coverageRowsHtml = isPolygonLayer ? `<th>Percent of AOI</th>` : "";
-                            const coverageValHtml = isPolygonLayer
-                                ? `<td><b>${formatNumber(pctCovered, 2)}%</b>${isSingleFeatureLowCoverage ? ' <span style="color:#856404;" title="Low coverage — possible sliver or boundary artifact">⚠️</span>' : ''}</td>`
-                                : "";
+                            const narrativeHtml = buildLayerNarrative({
+                                aoiAcres, featureCount, layerTitle,
+                                acresCovered, pctCovered, isPolygon: isPolygonLayer
+                            });
 
                             // Build section HTML with hide button and zoom controls (matching old report)
                             const attrSummary = generateLayerAttributeSummary(item);
@@ -4771,18 +4965,7 @@ define([
                                         </div>
                                         ${dataUrl ? `<img src="${dataUrl}" alt="AOI + ${escapeHtml(layerTitle)}"/>` : '<div class="sub">Map generation failed</div>'}
                                     </div>
-                                    <table class="summary-stats-tbl">
-                                        <thead><tr>
-                                            <th>AOI Area</th>
-                                            <th>Intersecting Features</th>
-                                            ${coverageRowsHtml}
-                                        </tr></thead>
-                                        <tbody><tr>
-                                            <td><b>${formatNumber(aoiAcres, 2)}</b> acres</td>
-                                            <td><b>${escapeHtml(String(featureCount))}</b></td>
-                                            ${coverageValHtml}
-                                        </tr></tbody>
-                                    </table>
+                                    ${narrativeHtml}
                                     ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
                                     ${perFeatureTableHtml}
                                     </div></div>
@@ -4816,6 +4999,9 @@ define([
 
             onStep("Finalizing report...");
             onProgress(95, mapsGenerated, sectionsComplete);
+
+            onStep("Building data sources table...");
+            const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);
 
             // Generate regulatory/findings summary (uses updated feature counts from queries)
             const findingsSummaryHtml = generateFindingsSummary(targetLayers, aoiAcres);
@@ -5014,11 +5200,13 @@ define([
     ` : ''}
     <main class="wrap">
         ${contentParts.join('\n')}
+        ${dataSourcesHtml}
     </main>
     <footer class="report-footer">
         <p>This report is for informational purposes only and does not constitute a formal BLM determination.</p>
         <p>Generated by the BLM Permit Screening Tool &bull; ${formatDateTimeForReport(new Date())}</p>
     </footer>
+${getA11yWidgetBlock()}
 </body>
 </html>`;
 

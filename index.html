@@ -95,14 +95,6 @@
             </div>
         </div>
         
-        <!-- Stay-in-tab notice (hidden - map gen now happens in report tab) -->
-        <div class="analysis-tab-notice" style="display:none;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            <span>Please keep this tab <strong>open and visible</strong> until the analysis finishes. Switching tabs or minimizing the browser will pause map generation.</span>
-        </div>
-
         <div class="analysis-body">
             <!-- Current Step -->
             <div class="analysis-section">
@@ -125,7 +117,7 @@
             </div>
             <div class="analysis-stat">
                 <div class="analysis-stat-value" id="analysisFeaturesFound">0</div>
-                <div class="analysis-stat-label">Layers with Features</div>
+                <div class="analysis-stat-label">Layers in AOI</div>
             </div>
         </div>
         
@@ -144,7 +136,7 @@
             <h2>Screening Complete!</h2>
             <div class="analysis-success-summary">
                 <div><strong id="successLayersQueried">0</strong> layers queried</div>
-                <div><strong id="successFeaturesFound">0</strong> layers with features</div>
+                <div><strong id="successFeaturesFound">0</strong> layers in AOI</div>
                 <div id="successDuration" style="margin-top:6px;font-size:13px;color:var(--text-muted);"></div>
                 <div style="margin-top:12px;font-size:13px;color:var(--text-muted);font-style:italic;">
                     Close to generate reports from the category tabs
@@ -200,14 +192,6 @@
             <button id="reportModalCancelBtn" class="btn btn-secondary">Cancel</button>
         </div>
     </div>
-</div>
-
-<!-- Background-tab warning banner (fixed at top, shown when tab is hidden during analysis) -->
-<div id="bgTabWarning" class="bg-tab-warning hidden">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
-        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-    </svg>
-    <span>Analysis paused &mdash; map screenshots require this tab to be visible. Please keep this window active.</span>
 </div>
 
 <!-- Feature Picker Modal (multiple overlapping polygons) -->

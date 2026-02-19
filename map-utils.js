@@ -75,6 +75,56 @@ define([
         return r;
     }
 
+    /**
+     * Thicken the symbology of a loaded FeatureLayer for clearer report maps.
+     * - Polygon layers: ensures outline width >= MIN_POLYGON_OUTLINE (default 4pt)
+     * - Polyline layers: ensures line width >= MIN_LINE_WIDTH (default 3pt)
+     * - Point layers: left unchanged (markers are already visible)
+     * Preserves the service's original colors and symbology; only overrides widths.
+     * @param {FeatureLayer} layer — a loaded FeatureLayer with a renderer
+     * @param {string} geomType — geometry type string from the service (e.g. "esriGeometryPolygon")
+     */
+    function thickenLayerSymbology(layer, geomType) {
+        if (!layer || !layer.renderer || !geomType) return;
+        const gt = String(geomType).toLowerCase();
+        const isPolygon  = gt.includes("polygon");
+        const isPolyline = gt.includes("polyline") || gt.includes("line");
+        if (!isPolygon && !isPolyline) return;
+
+        try {
+            const r = layer.renderer.clone();
+            const MIN_POLYGON_OUTLINE = 4;
+            const MIN_LINE_WIDTH      = 3;
+
+            function thickenSymbol(sym) {
+                if (!sym) return;
+
+                if (isPolygon) {
+                    // Thicken polygon outline
+                    if (sym.outline) {
+                        sym.outline.width = Math.max(sym.outline.width || 0, MIN_POLYGON_OUTLINE);
+                    } else {
+                        sym.outline = { color: [0, 0, 0, 0.8], width: MIN_POLYGON_OUTLINE };
+                    }
+                } else if (isPolyline) {
+                    // Thicken line width (SimpleLineSymbol stores width directly on the symbol)
+                    if (sym.width != null) {
+                        sym.width = Math.max(sym.width, MIN_LINE_WIDTH);
+                    }
+                }
+            }
+
+            if (r.symbol)         thickenSymbol(r.symbol);
+            if (r.defaultSymbol)  thickenSymbol(r.defaultSymbol);
+            if (r.uniqueValueInfos)  r.uniqueValueInfos.forEach(uv => thickenSymbol(uv.symbol));
+            if (r.classBreakInfos)   r.classBreakInfos.forEach(cb => thickenSymbol(cb.symbol));
+
+            layer.renderer = r;
+        } catch (e) {
+            console.warn("[thickenLayerSymbology] Could not thicken symbology for layer:", e);
+        }
+    }
+
     // ── AOI Layer Management ─────────────────────────────────────────
 
     function ensureAoiOnTop() {
@@ -412,8 +462,6 @@ define([
 
         await waitForViewStationary(1500);
 
-        await waitForViewStationary(800);
-
         // Force a render frame so the canvas is up-to-date
         await new Promise(r => requestAnimationFrame(r));
 
@@ -724,6 +772,7 @@ define([
         getPresetRenderer,
         getLayerGeometryType,
         makeRendererOpaque,
+        thickenLayerSymbology,
 
         // AOI layer
         ensureAoiOnTop,

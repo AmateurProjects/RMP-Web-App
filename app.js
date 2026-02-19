@@ -31,8 +31,8 @@ require([
 
     // ── Destructure config-helpers for functions already extracted ──
     const {
-        escapeHtml, normalize, plssToolLabel,
-        isPlssLayerTitleOrUrl, isPlssIntersectedLayerTitle,
+        escapeHtml, normalize,
+        isPlssLayerTitleOrUrl,
         isFeatureServerRoot, isMapServerRoot,
         safeFilename, formatNumber,
         fetchJson, fetchJsonWithTimeout,
@@ -40,7 +40,6 @@ require([
         pickServiceDescription, buildLayerCfgIndex, getConfiguredServices,
         setBasemapBaseLayerOpacity, isImageryBasemap,
         expandMapServerToSublayers, expandServiceToSublayers,
-        expandFeatureServerToPolygonSublayers, expandFeatureServerToAllSublayers,
         flattenAttributes, toCsv, downloadText
     } = configHelpers;
 
@@ -132,7 +131,6 @@ require([
     const wizPermitList = document.getElementById("wizPermitList");
     const wizLocationInput = document.getElementById("wizLocationInput");
     const wizLocationResults = document.getElementById("wizLocationResults");
-    const tierLayerCountEl = document.getElementById("tierLayerCount");
 
     /* ── Layer count helper (all layers, no tier filtering) ── */
     function getTotalLayerCount() {
@@ -479,17 +477,8 @@ function setBusy(isBusy) {
         setStatus, finalReportStatus
     });
     const {
-        formatLegalDescription, generateLayerAttributeSummary,
-        openHtmlInNewTab, formatDateTimeForReport, buildFinalReportHtmlDoc,
-        getAoiSummaryForReport, buildDataSourcesSection,
-        generateAoiMapsWithCircles, buildFinalReportHtml, viewFinalReport,
-        getCachedFinalReportHtml, setCachedFinalReportHtml,
-        getLastReportId, getReportShareUrl, loadReportFromDb, cleanupExpiredReports,
-        // Progressive report builder
-        openProgressiveReport, buildProgressiveReport,
-        categorizeLayersIntoBuckets: categorizeFinalReportBuckets,
-        REPORT_BUCKETS: FINAL_REPORT_BUCKETS,
-        // Background report builder (new)
+        openHtmlInNewTab, setCachedFinalReportHtml,
+        loadReportFromDb, cleanupExpiredReports,
         buildReportInBackground, openCompletedReport
     } = finalReport;
 
@@ -1338,6 +1327,9 @@ function clearAll() {
     setCachedFinalReportHtml(null);
     if (viewReportBtn) viewReportBtn.disabled = true;
 
+    // Clear cached bucket reports (prevents stale HTML from accumulating in memory)
+    Object.keys(cachedBucketReports).forEach(k => delete cachedBucketReports[k]);
+
     if (aoiLayer) aoiLayer.removeAll();
     aoiGraphic = null;
 
@@ -1347,7 +1339,12 @@ function clearAll() {
     setBusy(false);
 
     // Reset wizard-specific UI state
-    if (wizFullReport) wizFullReport.disabled = true;
+    if (wizFullReport) {
+        wizFullReport.disabled = true;
+        delete wizFullReport.dataset.reportReady;
+        wizFullReport.innerHTML = '📋 Full Report';
+        wizFullReport.classList.remove('ready-to-view');
+    }
     setWizPlssActive(null);
 
     // Clear wizard location search
@@ -1959,34 +1956,6 @@ async function runAnalysis() {
 
     const analysisStartTime = Date.now();
 
-    // ── Background-tab warning system ──
-    const bgBanner = document.getElementById("bgTabWarning");
-    let bgNotifSent = false;
-
-    function onVisibilityChange() {
-        if (document.hidden) {
-            // Tab went to background during analysis — show warning
-            if (bgBanner) bgBanner.classList.remove("hidden");
-            analysisModal.addLog("Tab hidden — screenshots will pause until you return", "warning");
-
-            // Send a browser Notification so the user knows to return
-            if (!bgNotifSent && "Notification" in window && Notification.permission === "granted") {
-                new Notification("RMP Screening Tool", {
-                    body: "Analysis is paused — return to this tab to continue map generation.",
-                    icon: "https://www.blm.gov/themes/usasearch/img/favicon.ico"
-                });
-                bgNotifSent = true;
-            } else if (!bgNotifSent && "Notification" in window && Notification.permission === "default") {
-                Notification.requestPermission(); // prompt for next time
-            }
-        } else {
-            // Tab visible again — hide warning
-            if (bgBanner) bgBanner.classList.add("hidden");
-            bgNotifSent = false;
-        }
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
     // ✅ Show analysis modal
     analysisModal.show();
     analysisModal.setProgress(0);
@@ -2046,7 +2015,7 @@ async function runAnalysis() {
         layersQueried = lastReportRowsByLayer.length;
         const layersWithFeatures = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
         analysisModal.updateStats(layersQueried, layersWithFeatures, 0);
-        analysisModal.addLog(`Found ${layersWithFeatures} of ${layersQueried} layers with features in your project area`, "success");
+        analysisModal.addLog(`Found ${layersWithFeatures} of ${layersQueried} layers in your project area`, "success");
         analysisModal.setProgress(100);
 
         // ─────────────────────────────────────────────────────────────────
@@ -2081,8 +2050,6 @@ async function runAnalysis() {
         if (reportAbortController) {
             reportAbortController = null;
         }
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-        if (bgBanner) bgBanner.classList.add("hidden");
     }
 }
 
@@ -3834,11 +3801,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     const CV_CLASSES = ["cv-protanopia", "cv-deuteranopia", "cv-tritanopia", "cv-achromatopsia", "cv-highcontrast"];
 
     function applyMode(mode) {
-        // Remove all cv- classes from <html>
-        CV_CLASSES.forEach(c => document.documentElement.classList.remove(c));
+        // Remove all cv- classes from <body> (body instead of html for iOS Safari compat)
+        CV_CLASSES.forEach(c => document.body.classList.remove(c));
         // Apply the chosen one
         if (mode && mode !== "none") {
-            document.documentElement.classList.add("cv-" + mode);
+            document.body.classList.add("cv-" + mode);
         }
         // Update aria-checked on menu items
         options.forEach(btn => {
