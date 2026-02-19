@@ -910,21 +910,29 @@ define([
             const genericNames  = new Set();
             const genericStatus = new Map();
             const genericTypes  = new Map();
+            const genericUrls   = new Map(); // fieldLabel → Set of URLs
             const namePatterns   = /^(.*_)?(NAME|NM|TITLE|LABEL|DESCRIPTION|DESC)(_.*)?$/i;
             const statusPatterns = /^(.*_)?(STATUS|STAT|STATE|CONDITION)(_.*)?$/i;
             const typePatterns   = /^(.*_)?(TYPE|TYP|CLASS|CATEGORY|CAT|KIND)(_.*)?$/i;
+            const urlPattern     = /^https?:\/\//i;
             for (const row of rows) {
                 for (const [key, val] of Object.entries(row)) {
                     if (val == null || val === "" || typeof val === "number") continue;
                     const strVal = String(val).trim();
-                    if (!strVal || strVal.length > 200) continue;
-                    if (namePatterns.test(key)) genericNames.add(strVal);
-                    else if (statusPatterns.test(key)) genericStatus.set(strVal, (genericStatus.get(strVal) || 0) + 1);
-                    else if (typePatterns.test(key)) genericTypes.set(strVal, (genericTypes.get(strVal) || 0) + 1);
+                    if (!strVal || strVal.length > 500) continue;
+                    if (urlPattern.test(strVal)) {
+                        const label = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                        if (!genericUrls.has(label)) genericUrls.set(label, new Set());
+                        genericUrls.get(label).add(strVal);
+                    } else if (strVal.length <= 200) {
+                        if (namePatterns.test(key)) genericNames.add(strVal);
+                        else if (statusPatterns.test(key)) genericStatus.set(strVal, (genericStatus.get(strVal) || 0) + 1);
+                        else if (typePatterns.test(key)) genericTypes.set(strVal, (genericTypes.get(strVal) || 0) + 1);
+                    }
                 }
             }
-            if (genericNames.size > 0 || genericStatus.size > 0 || genericTypes.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Feature Details</b></td></tr>`;
+            if (genericNames.size > 0 || genericStatus.size > 0 || genericTypes.size > 0 || genericUrls.size > 0) {
+                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>Layer Highlights</b></td></tr>`;
                 if (genericNames.size > 0) {
                     const names = Array.from(genericNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
                     summaryHtml += `<tr><td>Names</td><td>${names}${genericNames.size > 10 ? " ..." : ""}</td></tr>`;
@@ -938,6 +946,49 @@ define([
                     const items = Array.from(genericStatus.entries()).slice(0, 10)
                         .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
                     summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
+                }
+                if (genericUrls.size > 0) {
+                    for (const [label, urlSet] of genericUrls) {
+                        const links = Array.from(urlSet).slice(0, 5)
+                            .map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`)
+                            .join("<br/>");
+                        summaryHtml += `<tr><td>${escapeHtml(label)}</td><td>${links}${urlSet.size > 5 ? "<br/>..." : ""}</td></tr>`;
+                    }
+                }
+            }
+        }
+
+        // ── Append any URL/link values found across ALL rows (for non-generic sections too) ──
+        if (summaryHtml && rows.length > 0) {
+            const urlPattern = /^https?:\/\//i;
+            const collectedUrls = new Map(); // fieldLabel → Set of URLs
+            for (const row of rows) {
+                for (const [key, val] of Object.entries(row)) {
+                    if (val == null || val === "") continue;
+                    const strVal = String(val).trim();
+                    if (!strVal || strVal.length > 500) continue;
+                    if (urlPattern.test(strVal)) {
+                        const label = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                        if (!collectedUrls.has(label)) collectedUrls.set(label, new Set());
+                        collectedUrls.get(label).add(strVal);
+                    }
+                }
+            }
+            // Only append if there are URLs not already shown (check if summaryHtml already contains them)
+            if (collectedUrls.size > 0) {
+                let urlHtml = "";
+                for (const [label, urlSet] of collectedUrls) {
+                    // Skip if these URLs are already present in the summary
+                    const firstUrl = Array.from(urlSet)[0];
+                    if (summaryHtml.includes(escapeHtml(firstUrl))) continue;
+                    const links = Array.from(urlSet).slice(0, 5)
+                        .map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`)
+                        .join("<br/>");
+                    urlHtml += `<tr><td>${escapeHtml(label)}</td><td>${links}${urlSet.size > 5 ? "<br/>..." : ""}</td></tr>`;
+                }
+                if (urlHtml) {
+                    summaryHtml += `<tr><td colspan="2" style="padding-top:8px;"><b>Links</b></td></tr>`;
+                    summaryHtml += urlHtml;
                 }
             }
         }
@@ -2361,6 +2412,21 @@ define([
         return `${src}${srcDetail} \u2022 AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
     }
 
+    // Helper: look up service status, falling back to parent service URL
+    // (serviceStatus is keyed by config-level URL, but layers may be sublayer URLs)
+    function lookupServiceStatus(url) {
+        if (!url) return "UNKNOWN";
+        const direct = S.serviceStatus.get(url);
+        if (direct) return direct;
+        // Try stripping trailing /N sublayer index
+        const parentUrl = url.replace(/\/\d+\/?$/, "");
+        if (parentUrl !== url) {
+            const parentStatus = S.serviceStatus.get(parentUrl);
+            if (parentStatus) return parentStatus;
+        }
+        return "UNKNOWN";
+    }
+
     /**
      * Build a data sources table scoped to the layers used in a specific report.
      * Each layer gets a row with Name, URL, Features in AOI, UP/Down,
@@ -2399,8 +2465,8 @@ define([
 
         const rows = layers.map(item => {
             const url = item.url || "";
-            const status = S.serviceStatus.get(url) || "UNKNOWN";
-            const statusClass = status === "UP" ? "status-up" : "status-down";
+            const status = lookupServiceStatus(url);
+            const statusClass = status === "UP" ? "status-up" : (status === "UNKNOWN" ? "status-unknown" : "status-down");
             const desc = descByUrl.get(url) || S.serviceStatus.get(url + "::desc") || "";
             const featCount = item.count || 0;
 
@@ -2484,8 +2550,8 @@ define([
         }
 
         const rows = services.map(svc => {
-            const status = S.serviceStatus.get(svc.url) || "UNKNOWN";
-            const statusClass = status === "UP" ? "status-up" : "status-down";
+            const status = lookupServiceStatus(svc.url);
+            const statusClass = status === "UP" ? "status-up" : (status === "UNKNOWN" ? "status-unknown" : "status-down");
             const desc = descByUrl.get(svc.url) || S.serviceStatus.get(svc.url + "::desc") || "";
             const normalUrl = String(svc.url).replace(/\/+$/, "");
             const featCount = countByUrl.has(normalUrl) ? countByUrl.get(normalUrl) : null;
@@ -2883,7 +2949,8 @@ define([
      * Returns the SVG color-vision filters, accessibility widget HTML,
      * and the inline JS that wires it up. Designed to be injected just
      * before </body> in every report template.
-     * Uses `document.body` for filter classes (iOS Safari compat).
+     * Applies cv-* classes to `.cv-filter-wrap` so the fixed-position
+     * widget stays viewport-pinned (CSS filter on body breaks position:fixed).
      */
     function getA11yWidgetBlock() {
         return `
@@ -2960,7 +3027,12 @@ define([
             toggleBtn.click();
         });
         options.forEach(function(b) {
-            b.addEventListener('click', function(e) { e.stopPropagation(); applyMode(b.getAttribute('data-cv')); });
+            b.addEventListener('click', function(e) {
+                e.stopPropagation();
+                applyMode(b.getAttribute('data-cv'));
+                menu.classList.add('hidden');
+                toggleBtn.setAttribute('aria-expanded', 'false');
+            });
         });
         menu.addEventListener('keydown', function(e) {
             var items = Array.prototype.slice.call(options);
@@ -3557,12 +3629,12 @@ define([
                 content: '\\2713 ';
             }
             .a11y-option small { color: #888; font-weight: 400; }
-            /* Color-vision filters \u2014 applied to body for iOS Safari compat */
-            body.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
-            body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
-            body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
-            body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
-            body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
+            /* Color-vision filter classes — applied to .cv-filter-wrap so position:fixed widget stays viewport-pinned */
+            .cv-filter-wrap.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
+            .cv-filter-wrap.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
+            .cv-filter-wrap.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
+            .cv-filter-wrap.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
+            .cv-filter-wrap.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
             @media print {
                 .report-actions { display: none; }
                 .export-btn { display: none; }
@@ -4128,8 +4200,7 @@ ${getA11yWidgetBlock()}
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                 await waitForViewStationary(1500);
                                 await waitForTabVisible(5000);
-                                const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                                dataUrl = ss?.dataUrl || null;
+                                dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             } catch (e) {
                                 console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
                             } finally {
@@ -4201,8 +4272,7 @@ ${getA11yWidgetBlock()}
                             await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                             await waitForTabVisible(5000);
 
-                            const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                            const dataUrl = ss?.dataUrl || null;
+                            const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
 
                             // Clean up temp layer
                             view.map.remove(tempLayer);
@@ -4983,8 +5053,7 @@ ${getA11yWidgetBlock()}
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                 await waitForViewStationary(1500);
                                 await waitForTabVisible(5000);
-                                const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                                dataUrl = ss?.dataUrl || null;
+                                dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             } catch (e) {
                                 console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
                             } finally {

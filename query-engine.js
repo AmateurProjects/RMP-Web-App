@@ -212,23 +212,35 @@ define([
         const layer = getCachedLayer(layerUrl);
         
         // ── Extent pre-check: skip layers with no geographic overlap ──
-        // This avoids unnecessary queries for layers that don't cover the AOI region
+        // This avoids unnecessary queries for layers that don't cover the AOI region.
+        // Only run when both extents share the same spatial reference to avoid
+        // false negatives from coordinate system mismatches.
         if (!skipExtentCheck && objectId == null) {
             try {
                 await layer.load();
                 if (layer.fullExtent && geom?.extent) {
-                    const overlaps = geometryEngine.intersects(layer.fullExtent, geom.extent);
-                    if (!overlaps) {
-                        // Layer extent doesn't overlap AOI - skip query entirely
-                        return { 
-                            title: layerTitle, 
-                            url: layerUrl, 
-                            count: 0, 
-                            features: [], 
-                            layer, 
-                            exportQuery: null,
-                            _skippedExtentCheck: true
-                        };
+                    const layerSR = layer.fullExtent.spatialReference;
+                    const geomSR  = geom.extent.spatialReference;
+                    // Only compare extents when spatial references match
+                    const srMatch = layerSR && geomSR && (
+                        layerSR.wkid === geomSR.wkid ||
+                        (layerSR.isWebMercator && geomSR.isWebMercator) ||
+                        (layerSR.wkid === 4326 && geomSR.wkid === 4326)
+                    );
+                    if (srMatch) {
+                        const overlaps = geometryEngine.intersects(layer.fullExtent, geom.extent);
+                        if (!overlaps) {
+                            // Layer extent doesn't overlap AOI - skip query entirely
+                            return { 
+                                title: layerTitle, 
+                                url: layerUrl, 
+                                count: 0, 
+                                features: [], 
+                                layer, 
+                                exportQuery: null,
+                                _skippedExtentCheck: true
+                            };
+                        }
                     }
                 }
             } catch (e) {

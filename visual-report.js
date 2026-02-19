@@ -255,7 +255,7 @@ define([
                         visible: true
                     };
                     if (item.__renderingRule) {
-                        imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
+                        imgLayerOpts.rasterFunction = { functionName: item.__renderingRule };
                     }
                     var temp = new ImageryLayer(imgLayerOpts);
                     view.map.add(temp);

@@ -3947,6 +3947,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
             applyMode(btn.dataset.cv);
+            menu.classList.add("hidden");
+            toggleBtn.setAttribute("aria-expanded", "false");
         });
     });
 

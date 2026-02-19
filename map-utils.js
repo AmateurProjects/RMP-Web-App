@@ -157,28 +157,70 @@ define([
             return;
         }
 
+        // ── Ring winding helpers ──
+        // Shoelace sum: positive → clockwise, negative → counter-clockwise
+        // (in projected coordinate systems where Y increases upward)
+        function shoelaceSum(ring) {
+            let sum = 0;
+            for (let i = 0; i < ring.length - 1; i++) {
+                const x1 = ring[i][0],     y1 = ring[i][1];
+                const x2 = ring[i + 1][0], y2 = ring[i + 1][1];
+                sum += (x2 - x1) * (y2 + y1);
+            }
+            return sum;
+        }
+        function ensureClockwise(ring) {
+            return shoelaceSum(ring) >= 0 ? ring : [...ring].reverse();
+        }
+        function ensureCounterClockwise(ring) {
+            return shoelaceSum(ring) <= 0 ? ring : [...ring].reverse();
+        }
+
         const expandedExt = viewExt.expand(5);
 
-        const outerRing = [
+        // Outer ring must be CLOCKWISE for the non-zero winding fill rule
+        const outerRing = ensureClockwise([
             [expandedExt.xmin, expandedExt.ymin],
-            [expandedExt.xmin, expandedExt.ymax],
-            [expandedExt.xmax, expandedExt.ymax],
             [expandedExt.xmax, expandedExt.ymin],
+            [expandedExt.xmax, expandedExt.ymax],
+            [expandedExt.xmin, expandedExt.ymax],
             [expandedExt.xmin, expandedExt.ymin]
-        ];
+        ]);
 
+        // ── Collect AOI rings and ensure they are COUNTER-CLOCKWISE (holes) ──
         let aoiRings = [];
         if (S.selectionGeom.rings && S.selectionGeom.rings.length > 0) {
-            aoiRings = S.selectionGeom.rings.map(ring => [...ring].reverse());
-        } else if (S.selectionGeom.type === "polygon") {
+            // Project rings to view SR if the geometry is in a different spatial reference
+            let srcRings = S.selectionGeom.rings;
+            const geomSR = S.selectionGeom.spatialReference;
+            const viewSR = view.spatialReference;
+            if (geomSR && viewSR && geomSR.wkid !== viewSR.wkid) {
+                // WGS84 (4326) → Web Mercator (102100/3857) conversion
+                const isGeomWgs84 = (geomSR.wkid === 4326);
+                const isViewWebMerc = (viewSR.isWebMercator || viewSR.wkid === 102100 || viewSR.wkid === 3857);
+                if (isGeomWgs84 && isViewWebMerc) {
+                    const DEG2RAD = Math.PI / 180;
+                    const EARTH_R = 6378137;
+                    srcRings = srcRings.map(function (ring) {
+                        return ring.map(function (pt) {
+                            var x = pt[0] * EARTH_R * DEG2RAD;
+                            var y = Math.log(Math.tan((90 + pt[1]) * DEG2RAD / 2)) * EARTH_R;
+                            return [x, y];
+                        });
+                    });
+                }
+            }
+            aoiRings = srcRings.map(ring => ensureCounterClockwise(ring));
+        } else if (S.selectionGeom.type === "polygon" && S.selectionGeom.extent) {
             const ext = S.selectionGeom.extent;
-            aoiRings = [[
+            // Explicit CCW ring for the hole
+            aoiRings = [ensureCounterClockwise([
                 [ext.xmin, ext.ymin],
                 [ext.xmax, ext.ymin],
                 [ext.xmax, ext.ymax],
                 [ext.xmin, ext.ymax],
                 [ext.xmin, ext.ymin]
-            ]];
+            ])];
         }
 
         if (aoiRings.length === 0) {
