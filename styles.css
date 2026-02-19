@@ -287,7 +287,7 @@ body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-h
 
 /* ── Mid-size screens (tablets, small laptops) ── */
 @media (max-width: 900px) {
-  .feature-search-widget {
+  .feature-search-widget:not(.feature-search-inline) {
     max-width: calc(100vw - 520px);
   }
 }
@@ -341,8 +341,8 @@ body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-h
     font-size: 10px;
   }
 
-  /* ── Search widget ── */
-  .feature-search-widget {
+  /* ── Search widget (floating only) ── */
+  .feature-search-widget:not(.feature-search-inline) {
     position: fixed;
     top: auto;
     bottom: 12px;
@@ -353,13 +353,13 @@ body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-h
     transform: none;
     z-index: 200;
   }
-  .feature-search-input {
+  .feature-search-widget:not(.feature-search-inline) .feature-search-input {
     padding: 14px 44px 14px 14px;
     font-size: 16px; /* prevents iOS zoom on focus */
     border-radius: var(--radius-lg);
     box-shadow: 0 -2px 16px rgba(0,0,0,0.2);
   }
-  .feature-search-results {
+  .feature-search-widget:not(.feature-search-inline) .feature-search-results {
     top: auto;
     bottom: calc(100% + 6px);
     max-height: 50vh;
@@ -882,7 +882,7 @@ body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-h
     min-width: 140px;
   }
 
-  .feature-search-widget {
+  .feature-search-widget:not(.feature-search-inline) {
     left: 4px;
     right: 4px;
     bottom: 8px;
@@ -2282,6 +2282,32 @@ th{
     max-width: calc(100vw - 600px);
 }
 
+/* Inline mode: when embedded in the screening panel slide */
+.feature-search-widget.feature-search-inline {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    width: 100%;
+    max-width: none;
+    z-index: 1;
+}
+.feature-search-inline .feature-search-input {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+    border: 1.5px solid #d0d0d0;
+}
+.feature-search-inline .feature-search-input:focus {
+    box-shadow: 0 1px 8px rgba(0,0,0,0.16);
+    border-color: var(--blm-green, #2d6a4f);
+}
+.feature-search-inline .feature-search-results {
+    position: relative;
+    top: 4px;
+    max-height: 340px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    border: 1px solid #e0e0e0;
+}
+
 .feature-search-container {
     position: relative;
 }
@@ -2896,6 +2922,13 @@ th{
 
 .aoi-slide-body {
     /* Content area for each method */
+    padding: 0 4px;
+}
+
+/* Name-search slide: keep results dropdown visible within panel */
+#aoiMethodNameSearch .aoi-slide-body {
+    position: relative;
+    overflow: visible;
 }
 
 /* ============================================

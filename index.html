@@ -49,21 +49,7 @@
     <div id="overviewLabel">Click to swap basemap</div>
   </div>
   
-  <!-- Feature Search Widget -->
-  <div id="featureSearchWidget" class="feature-search-widget">
-    <div class="feature-search-container">
-      <input type="text" id="featureSearchInput" class="feature-search-input" 
-             placeholder="Search features across all layers..." 
-             autocomplete="off" spellcheck="false">
-      <button id="featureSearchClear" class="feature-search-clear" title="Clear search">&times;</button>
-      <svg class="feature-search-icon" id="featureSearchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"></circle>
-        <path d="M21 21l-4.35-4.35"></path>
-      </svg>
-      <div id="featureSearchSpinner" class="feature-search-spinner" style="display:none;"></div>
-      <div id="featureSearchResults" class="feature-search-results"></div>
-    </div>
-  </div>
+  <!-- Feature Search Widget (moved into screening panel slide) -->
   
   <div id="viewBlocker" class="view-blocker hidden" aria-hidden="true"></div>
 
@@ -273,6 +259,14 @@
                     <div class="aoi-method-text">
                       <div class="aoi-method-title">Search by Location</div>
                       <div class="aoi-method-desc">Address, place name, or coordinates</div>
+                    </div>
+                    <div class="aoi-method-arrow">›</div>
+                  </button>
+                  <button class="aoi-method-card" data-method="namesearch" type="button">
+                    <div class="aoi-method-icon">🔍</div>
+                    <div class="aoi-method-text">
+                      <div class="aoi-method-title">Search by Name or ID</div>
+                      <div class="aoi-method-desc">Find a lease, allotment, pasture, ROW, or other feature by name or ID</div>
                     </div>
                     <div class="aoi-method-arrow">›</div>
                   </button>
@@ -527,6 +521,32 @@
                   </div>
 
                   <div class="hint">Upload a spatial file containing points, lines, or polygons. Non-polygon features will require a buffer to create the AOI.</div>
+                </div>
+              </div>
+
+              <!-- Slide 6: Search by Name or ID -->
+              <div class="aoi-swipe-slide" data-slide="namesearch" id="aoiMethodNameSearch">
+                <button class="aoi-slide-back" type="button" data-back="true">‹ Back</button>
+                <div class="aoi-slide-header">
+                  <span class="aoi-slide-icon">🔍</span>
+                  <span class="aoi-slide-title">Search by Name or ID</span>
+                </div>
+                <div class="aoi-slide-body">
+                  <div id="featureSearchWidget" class="feature-search-widget feature-search-inline">
+                    <div class="feature-search-container">
+                      <input type="text" id="featureSearchInput" class="feature-search-input"
+                             placeholder="Search by name, ID, or number across all layers..."
+                             autocomplete="off" spellcheck="false">
+                      <button id="featureSearchClear" class="feature-search-clear" title="Clear search">&times;</button>
+                      <svg class="feature-search-icon" id="featureSearchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="M21 21l-4.35-4.35"></path>
+                      </svg>
+                      <div id="featureSearchSpinner" class="feature-search-spinner" style="display:none;"></div>
+                      <div id="featureSearchResults" class="feature-search-results"></div>
+                    </div>
+                  </div>
+                  <div class="hint">Type the name, ID, serial number, or allotment number of any permit, lease, or feature. Click a result to select it as your project area.</div>
                 </div>
               </div>
 

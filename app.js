@@ -717,7 +717,7 @@ function setActiveTab(tabName) {
     }
 
     // Swipe slide index mapping
-    const aoiSlideMap = { methods: 0, search: 1, permit: 2, select: 3, draw: 4, upload: 5 };
+    const aoiSlideMap = { methods: 0, search: 1, permit: 2, select: 3, draw: 4, upload: 5, namesearch: 6 };
 
     function swipeToAoiSlide(slideIndex) {
         const track = document.getElementById("aoiSwipeTrack");
@@ -771,6 +771,10 @@ function setActiveTab(tabName) {
         } else if (method === "select" || method === "permit") {
             if (modeSelect) modeSelect.value = "select";
             setMode("select");
+        } else if (method === "namesearch") {
+            // Focus the search input when slide opens
+            const searchInput = document.getElementById("featureSearchInput");
+            if (searchInput) setTimeout(() => searchInput.focus(), 400);
         }
     }
 
@@ -902,6 +906,9 @@ function setActiveTab(tabName) {
 
     function populatePermitBuckets() {
         const buckets = categorizeIntoBuckets(lastReportRowsByLayer);
+
+        // Always start at the overview slide for fresh results
+        setActiveBucket('overview');
 
         // Overview bucket — compact dashboard
         const overviewEl = document.getElementById("bucketOverview");
@@ -1339,11 +1346,16 @@ function clearAll() {
     if (wizLocationInput) wizLocationInput.value = "";
     if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
 
-    // Clear permit bucket DOM (step 3 results)
+    // Clear permit bucket DOM (step 3 results) and reset bucket swipe track to overview
     const bucketPanelIds = ["bucketOverview", "bucketLandStatus", "bucketLandUse", "bucketSpecial", "bucketEnvironmental", "bucketAuthorizations", "bucketAllData"];
     bucketPanelIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ""; });
     const summaryEl = document.getElementById("permitResultsSummary");
     if (summaryEl) summaryEl.innerHTML = "";
+    const bucketTrack = document.getElementById("bucketSwipeTrack");
+    if (bucketTrack) {
+        bucketTrack.style.transform = "translateX(0%)";
+        bucketTrack.querySelectorAll(".bucket-swipe-slide").forEach((s, i) => s.classList.toggle("active", i === 0));
+    }
 
     // Clear upload status
     const uploadStatusEl = document.getElementById("uploadStatus");
@@ -3200,6 +3212,51 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             Graphic, GraphicsLayer, enableSelectionLayer
         });
 
+        // Wire search-by-name to set the selected feature as AOI
+        searchModule.setOnFeatureSelected(function (feature) {
+            if (!feature || !feature.geometry) {
+                console.warn("Search result has no geometry");
+                return;
+            }
+
+            const geomJson = feature.geometry;
+            const sr = geomJson.spatialReference || view.spatialReference || { wkid: 102100 };
+
+            // Convert raw REST API geometry JSON into auto-castable geometry with 'type'
+            let geom;
+            if (geomJson.rings && geomJson.rings.length > 0) {
+                geom = { type: "polygon", rings: geomJson.rings, spatialReference: sr };
+            } else if (geomJson.paths && geomJson.paths.length > 0) {
+                geom = { type: "polyline", paths: geomJson.paths, spatialReference: sr };
+            } else if (geomJson.x !== undefined && geomJson.y !== undefined) {
+                geom = { type: "point", x: geomJson.x, y: geomJson.y, spatialReference: sr };
+            } else {
+                console.warn("Unrecognized geometry from search result", geomJson);
+                return;
+            }
+
+            // Set the geometry as the AOI
+            selectionGeom = geom;
+            aoiSource = "search";
+            aoiSourceLayerTitle = feature.layerTitle || null;
+            aoiSourceLayerUrl = feature.layerUrl || null;
+
+            setAoiGeometry(geom);
+            setGeometryFromSelection(geom);
+
+            // Zoom to the selected feature
+            if (geom.type === "point") {
+                view.goTo({ target: geom, zoom: 14 }, { animate: true, duration: 800 });
+            } else {
+                view.goTo(geom, { animate: true, duration: 800 });
+            }
+
+            // Update mask
+            if (typeof updateAoiMask === "function") updateAoiMask();
+
+            setStatus(`Selected: ${feature.layerTitle || "feature"} — ready to screen`);
+        });
+
         // ========================================
         // PERMITTING MODE — Wizard button wiring
         // ========================================
@@ -3839,7 +3896,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     observeWhenReady(".feature-picker-list", ["scroll-fade-sm"]);
     observeWhenReady(".wiz-location-results", ["scroll-fade-sm"]);
     observeWhenReady(".layer-mgr-body", ["scroll-fade-dark"]);
-    observeWhenReady(".analysis-log", ["scroll-fade-sm"]);
 })();
 
 // ════════════════════════════════════════════════════════════════════════════

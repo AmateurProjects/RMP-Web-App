@@ -1878,12 +1878,12 @@ define([
                     content: '\u2713 ';
                 }
                 .a11y-option small { color: #888; font-weight: 400; }
-                /* Color-vision filter classes — applied to body for iOS Safari compat */
-                body.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
-                body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
-                body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
-                body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
-                body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
+                /* Color-vision filter classes — applied to .cv-filter-wrap so position:fixed widget stays viewport-pinned */
+                .cv-filter-wrap.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
+                .cv-filter-wrap.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
+                .cv-filter-wrap.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
+                .cv-filter-wrap.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
+                .cv-filter-wrap.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
                 /* Back-to-top button */
                 .back-to-top {
                     display: none;
@@ -1930,6 +1930,7 @@ define([
             </style>
             </head>
             <body>
+            <div class="cv-filter-wrap">
             <div class="report-header">
                 <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
                 <h1>${safeTitle}</h1>
@@ -1984,8 +1985,6 @@ define([
                 </div>
 
                 ${dataSourcesHtml || ""}
-
-                <a href="#" class="back-to-top" id="backToTop" title="Back to top" aria-label="Back to top">&#8679; Top</a>
                 
                 <div class="report-footer">
                     <div class="dept-name">Bureau of Land Management</div>
@@ -2341,6 +2340,8 @@ define([
                 });
             })();
             </script>
+            </div>
+            <a href="#" class="back-to-top" id="backToTop" title="Back to top" aria-label="Back to top">&#8679; Top</a>
 
             ${getA11yWidgetBlock()}
 
@@ -2936,9 +2937,11 @@ define([
         if (!toggleBtn || !menu) return;
         var options = menu.querySelectorAll('.a11y-option');
         var CV_CLASSES = ['cv-protanopia','cv-deuteranopia','cv-tritanopia','cv-achromatopsia','cv-highcontrast'];
+        var filterWrap = document.querySelector('.cv-filter-wrap');
         function applyMode(mode) {
-            CV_CLASSES.forEach(function(c) { document.body.classList.remove(c); });
-            if (mode && mode !== 'none') document.body.classList.add('cv-' + mode);
+            if (!filterWrap) return;
+            CV_CLASSES.forEach(function(c) { filterWrap.classList.remove(c); });
+            if (mode && mode !== 'none') filterWrap.classList.add('cv-' + mode);
             options.forEach(function(b) { b.setAttribute('aria-checked', b.getAttribute('data-cv') === mode ? 'true' : 'false'); });
             try { localStorage.setItem(STORAGE_KEY, mode || 'none'); } catch(_) {}
         }
@@ -3074,8 +3077,8 @@ define([
                 animation: spin 1s linear infinite;
             }
             @keyframes spin { to { transform: rotate(360deg); } }
-            .progress-text { flex: 1; font-weight: 500; }
-            .progress-status { font-size: 13px; opacity: 0.85; }
+            .progress-text { flex: 1; font-weight: 500; min-width: 0; }
+            .progress-status { font-size: 13px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .section{ 
                 margin-top: 32px; 
                 padding: 24px;
@@ -3601,6 +3604,7 @@ define([
     <style>${getReportStyles()}</style>
 </head>
 <body>
+    <div class="cv-filter-wrap">
     <header class="report-header">
         <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
         <h1>${escapeHtml(title)}</h1>
@@ -3722,9 +3726,36 @@ define([
             }
         }
         
+        // Auto-hide columns that are entirely null/empty
+        window.autoHideNullColumns = function() {
+            var wrappers = document.querySelectorAll('.interactive-table-wrapper');
+            for (var wi = 0; wi < wrappers.length; wi++) {
+                var wrapper = wrappers[wi];
+                var wId = wrapper.id;
+                if (!wId) continue;
+                var ths = wrapper.querySelectorAll('thead th[data-col]');
+                for (var ti = 0; ti < ths.length; ti++) {
+                    var colIdx = ths[ti].getAttribute('data-col');
+                    var tds = wrapper.querySelectorAll('tbody td[data-col="' + colIdx + '"]');
+                    var allEmpty = true;
+                    for (var di = 0; di < tds.length; di++) {
+                        var val = (tds[di].getAttribute('data-sort-val') || tds[di].textContent || '').trim();
+                        if (val !== '' && val !== 'null' && val !== 'Null' && val !== 'NULL' && val !== 'undefined') {
+                            allEmpty = false;
+                            break;
+                        }
+                    }
+                    if (allEmpty && tds.length > 0) {
+                        hideColumn(wId, parseInt(colIdx));
+                    }
+                }
+            }
+        };
+
         // Signal that the page is ready
         window.reportReady = true;
     </script>
+    </div>
 ${getA11yWidgetBlock()}
 </body>
 </html>`;
@@ -4077,8 +4108,35 @@ ${getA11yWidgetBlock()}
                         // Add placeholder for this layer
                         report.addMapPlaceholder(layerTitle, layerId);
 
-                        // Skip ImageServer layers — generate narrative with elevation stats
+                        // ImageServer layers — capture screenshot + elevation narrative
                         if (item.__isImageService) {
+                            let dataUrl = null;
+                            const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
+                            if (item.__renderingRule) {
+                                imgLayerOpts.rasterFunction = { functionName: item.__renderingRule };
+                            }
+                            const tempImg = new ImageryLayer(imgLayerOpts);
+                            try {
+                                view.map.add(tempImg);
+                                setVisibilityForScreenshot(tempImg);
+                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
+                                if (fixedExtent) {
+                                    await view.goTo(fixedExtent, { animate: false });
+                                } else {
+                                    await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                }
+                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
+                                await waitForViewStationary(1500);
+                                await waitForTabVisible(5000);
+                                const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                dataUrl = ss?.dataUrl || null;
+                            } catch (e) {
+                                console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
+                            } finally {
+                                try { view.map.remove(tempImg); } catch (_) {}
+                                restoreVisibility();
+                            }
+
                             let elevStats = null;
                             try {
                                 elevStats = await computeElevationStats(item.url, selectionGeom);
@@ -4089,7 +4147,12 @@ ${getA11yWidgetBlock()}
                                 acresCovered: 0, pctCovered: 0,
                                 isPolygon: false, isImagery: true, elevStats
                             });
-                            report.replaceMapPlaceholder(layerId, narrativeHtml);
+
+                            const sectionHtml = `
+                                ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : ''}
+                                ${narrativeHtml}
+                            `;
+                            report.replaceMapPlaceholder(layerId, sectionHtml);
                             continue;
                         }
 
@@ -4207,6 +4270,14 @@ ${getA11yWidgetBlock()}
             report.appendContent(dataSourcesHtml);
             report.hideProgress();
             report.addFooter();
+
+            // Auto-hide all-NULL columns now that content is fully loaded
+            try {
+                if (report.win && !report.win.closed && report.win.autoHideNullColumns) {
+                    report.win.autoHideNullColumns();
+                }
+            } catch (e) { /* window may be closed */ }
+
             onProgress("Complete", 100);
 
         } catch (e) {
@@ -4892,8 +4963,35 @@ ${getA11yWidgetBlock()}
                         onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                         onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
 
-                        // Skip ImageServer layers — generate narrative with elevation stats
+                        // ImageServer layers — capture screenshot + elevation narrative
                         if (item.__isImageService) {
+                            let dataUrl = null;
+                            const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
+                            if (item.__renderingRule) {
+                                imgLayerOpts.rasterFunction = { functionName: item.__renderingRule };
+                            }
+                            const tempImg = new ImageryLayer(imgLayerOpts);
+                            try {
+                                view.map.add(tempImg);
+                                setVisibilityForScreenshot(tempImg);
+                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
+                                if (fixedExtent) {
+                                    await view.goTo(fixedExtent, { animate: false });
+                                } else {
+                                    await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                }
+                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
+                                await waitForViewStationary(1500);
+                                await waitForTabVisible(5000);
+                                const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                dataUrl = ss?.dataUrl || null;
+                            } catch (e) {
+                                console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
+                            } finally {
+                                try { view.map.remove(tempImg); } catch (_) {}
+                                restoreVisibility();
+                            }
+
                             let elevStats = null;
                             try {
                                 elevStats = await computeElevationStats(item.url, selectionGeom);
@@ -4909,6 +5007,7 @@ ${getA11yWidgetBlock()}
                                 <div class="section">
                                     <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
+                                    ${dataUrl ? `<div class="map"><div class="map-zoom-controls"><button class="zoom-in" title="Zoom in">+</button><button class="zoom-out" title="Zoom out">&minus;</button><button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button></div><img src="${dataUrl}" alt="${escapeHtml(layerTitle)}" style="width:100%; border-radius:8px;" /></div>` : ''}
                                     ${narrativeHtml}
                                     </div></div>
                                 </div>
@@ -5097,6 +5196,7 @@ ${getA11yWidgetBlock()}
     <style>${getReportStyles()}</style>
 </head>
 <body>
+    <div class="cv-filter-wrap">
     <header class="report-header">
         <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
         <h1>${escapeHtml(reportTitle)}</h1>
@@ -5207,8 +5307,35 @@ ${getA11yWidgetBlock()}
             }
         }
 
+        // Auto-hide columns that are entirely null/empty
+        function autoHideNullColumns() {
+            var wrappers = document.querySelectorAll('.interactive-table-wrapper');
+            for (var wi = 0; wi < wrappers.length; wi++) {
+                var wrapper = wrappers[wi];
+                var wId = wrapper.id;
+                if (!wId) continue;
+                var ths = wrapper.querySelectorAll('thead th[data-col]');
+                for (var ti = 0; ti < ths.length; ti++) {
+                    var colIdx = ths[ti].getAttribute('data-col');
+                    var tds = wrapper.querySelectorAll('tbody td[data-col="' + colIdx + '"]');
+                    var allEmpty = true;
+                    for (var di = 0; di < tds.length; di++) {
+                        var val = (tds[di].getAttribute('data-sort-val') || tds[di].textContent || '').trim();
+                        if (val !== '' && val !== 'null' && val !== 'Null' && val !== 'NULL' && val !== 'undefined') {
+                            allEmpty = false;
+                            break;
+                        }
+                    }
+                    if (allEmpty && tds.length > 0) {
+                        hideColumn(wId, parseInt(colIdx));
+                    }
+                }
+            }
+        }
+
         // Initialize zoom/pan controls for map images
         document.addEventListener('DOMContentLoaded', function() {
+            autoHideNullColumns();
             document.querySelectorAll('.map').forEach(function(container) {
                 var img = container.querySelector('img');
                 if (!img) return;
@@ -5273,6 +5400,7 @@ ${getA11yWidgetBlock()}
         <p>This report is for informational purposes only and does not constitute a formal BLM determination.</p>
         <p>Generated by the BLM Permit Screening Tool &bull; ${formatDateTimeForReport(new Date())}</p>
     </footer>
+    </div>
 ${getA11yWidgetBlock()}
 </body>
 </html>`;

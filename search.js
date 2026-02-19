@@ -32,6 +32,7 @@ define(["app/config-helpers"], function (configHelpers) {
     var searchGeneration      = 0;
     var fieldMetadataCache    = new Map();
     var allSearchResults      = [];
+    var onFeatureSelected     = null; // callback(feature) when user clicks a result
 
     // ── Field classification patterns ──
 
@@ -444,9 +445,14 @@ define(["app/config-helpers"], function (configHelpers) {
                         var idx = parseInt(item.getAttribute("data-result-idx"), 10);
                         var feature = allSearchResults[idx];
                         if (feature) {
-                            enableLayerByUrl(feature.layerUrl).then(function () {
-                                return zoomToFeature(feature);
-                            });
+                            if (onFeatureSelected) {
+                                // AOI mode: pass the feature to the callback for direct selection
+                                onFeatureSelected(feature);
+                            } else {
+                                enableLayerByUrl(feature.layerUrl).then(function () {
+                                    return zoomToFeature(feature);
+                                });
+                            }
                         }
                         searchResults.classList.remove("visible");
                     });
@@ -543,6 +549,7 @@ define(["app/config-helpers"], function (configHelpers) {
 
     // ── Public API ──
     return {
-        init: init
+        init: init,
+        setOnFeatureSelected: function (cb) { onFeatureSelected = cb; }
     };
 });
