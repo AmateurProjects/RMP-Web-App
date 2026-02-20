@@ -1249,12 +1249,6 @@ define([
                     content: '\u2713 ';
                 }
                 .a11y-option small { color: #888; font-weight: 400; }
-                /* Color-vision filter classes — applied to .cv-filter-wrap so position:fixed widget stays viewport-pinned */
-                .cv-filter-wrap.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
-                .cv-filter-wrap.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
-                .cv-filter-wrap.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
-                .cv-filter-wrap.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
-                .cv-filter-wrap.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
                 /* Back-to-top button */
                 .back-to-top {
                     display: none;
@@ -2275,31 +2269,17 @@ define([
      * widget stays viewport-pinned (CSS filter on body breaks position:fixed).
      */
     function getA11yWidgetBlock() {
+        // Data-URI SVG filters for cross-browser support (including iOS Safari which
+        // does not support CSS filter: url(#local-id) referencing in-page SVG).
+        var CV_FILTERS = {
+            protanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.567 0.433 0 0 0 0.558 0.442 0 0 0 0 0.242 0.758 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+            deuteranopia:  "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.625 0.375 0 0 0 0.7 0.3 0 0 0 0 0.3 0.7 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+            tritanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.95 0.05 0 0 0 0 0.433 0.567 0 0 0 0.475 0.525 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+            achromatopsia: "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+            highcontrast:  "contrast(1.8) brightness(0.85)"
+        };
+
         return `
-    <!-- Accessibility: SVG color-vision filters -->
-    <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
-      <defs>
-        <filter id="cv-protanopia">
-          <feColorMatrix type="matrix" values="0.567,0.433,0,0,0 0.558,0.442,0,0,0 0,0.242,0.758,0,0 0,0,0,1,0"/>
-        </filter>
-        <filter id="cv-deuteranopia">
-          <feColorMatrix type="matrix" values="0.625,0.375,0,0,0 0.7,0.3,0,0,0 0,0.3,0.7,0,0 0,0,0,1,0"/>
-        </filter>
-        <filter id="cv-tritanopia">
-          <feColorMatrix type="matrix" values="0.95,0.05,0,0,0 0,0.433,0.567,0,0 0,0.475,0.525,0,0 0,0,0,1,0"/>
-        </filter>
-        <filter id="cv-achromatopsia">
-          <feColorMatrix type="matrix" values="0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0.299,0.587,0.114,0,0 0,0,0,1,0"/>
-        </filter>
-        <filter id="cv-highcontrast">
-          <feComponentTransfer>
-            <feFuncR type="linear" slope="1.8" intercept="-0.35"/>
-            <feFuncG type="linear" slope="1.8" intercept="-0.35"/>
-            <feFuncB type="linear" slope="1.8" intercept="-0.35"/>
-          </feComponentTransfer>
-        </filter>
-      </defs>
-    </svg>
     <!-- Accessibility floating widget -->
     <div id="a11yWidgetReport" class="a11y-widget" role="region" aria-label="Accessibility options">
       <button id="a11yToggleBtnReport" class="a11y-toggle" aria-haspopup="true" aria-expanded="false" title="Vision Assistance">
@@ -2325,12 +2305,18 @@ define([
         var menu = document.getElementById('a11yMenuReport');
         if (!toggleBtn || !menu) return;
         var options = menu.querySelectorAll('.a11y-option');
-        var CV_CLASSES = ['cv-protanopia','cv-deuteranopia','cv-tritanopia','cv-achromatopsia','cv-highcontrast'];
         var filterWrap = document.querySelector('.cv-filter-wrap');
+        // Data-URI SVG filters — works on iOS Safari unlike url(#local-id)
+        var CV_FILTERS = ${JSON.stringify(CV_FILTERS).replace(/</g, '<')};
         function applyMode(mode) {
             if (!filterWrap) return;
-            CV_CLASSES.forEach(function(c) { filterWrap.classList.remove(c); });
-            if (mode && mode !== 'none') filterWrap.classList.add('cv-' + mode);
+            if (mode && mode !== 'none' && CV_FILTERS[mode]) {
+                filterWrap.style.webkitFilter = CV_FILTERS[mode];
+                filterWrap.style.filter = CV_FILTERS[mode];
+            } else {
+                filterWrap.style.webkitFilter = '';
+                filterWrap.style.filter = '';
+            }
             options.forEach(function(b) { b.setAttribute('aria-checked', b.getAttribute('data-cv') === mode ? 'true' : 'false'); });
             try { localStorage.setItem(STORAGE_KEY, mode || 'none'); } catch(_) {}
         }
@@ -2951,12 +2937,6 @@ define([
                 content: '\\2713 ';
             }
             .a11y-option small { color: #888; font-weight: 400; }
-            /* Color-vision filter classes — applied to .cv-filter-wrap so position:fixed widget stays viewport-pinned */
-            .cv-filter-wrap.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
-            .cv-filter-wrap.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
-            .cv-filter-wrap.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
-            .cv-filter-wrap.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
-            .cv-filter-wrap.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
             @media print {
                 .report-actions { display: none; }
                 .export-btn { display: none; }

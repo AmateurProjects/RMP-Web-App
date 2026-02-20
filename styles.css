@@ -1,5 +1,19 @@
 html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
 
+/* ── Mobile gesture-conflict prevention ── */
+html, body {
+  overflow: hidden;                   /* prevent rubber-band bounce on iOS */
+  overscroll-behavior: none;           /* prevent pull-to-refresh on Android */
+}
+#viewDiv {
+  touch-action: none;                  /* let ArcGIS SDK own all touch gestures */
+}
+#panel {
+  touch-action: pan-y;                 /* allow vertical scroll only in panel */
+  overscroll-behavior: contain;        /* stop scroll-chaining into the map */
+  -webkit-overflow-scrolling: touch;   /* momentum scroll on older iOS */
+}
+
 /* ============================================
    ACCESSIBILITY WIDGET
    ============================================ */
@@ -94,12 +108,7 @@ html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
     color: #888;
     font-weight: 400;
 }
-/* Filter applied to <body> for cross-browser compat (iOS Safari breaks when filter is on <html>) */
-body.cv-protanopia    { -webkit-filter: url(#cv-protanopia); filter: url(#cv-protanopia); }
-body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia); filter: url(#cv-deuteranopia); }
-body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia); filter: url(#cv-tritanopia); }
-body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia); filter: url(#cv-achromatopsia); }
-body.cv-highcontrast  { -webkit-filter: url(#cv-highcontrast); filter: url(#cv-highcontrast); }
+/* Color-vision filters applied via inline style by app.js (data-URI SVGs for iOS Safari compat) */
 
 /* ============================================
    APP LOADING OVERLAY
@@ -3803,6 +3812,9 @@ th{
   overflow-y: auto;
   flex: 1;
   padding-bottom: 6px;
+  touch-action: pan-y;                 /* vertical scroll only */
+  overscroll-behavior: contain;        /* don't chain into the map */
+  -webkit-overflow-scrolling: touch;
 }
 .layer-mgr-body::-webkit-scrollbar { width: 6px; }
 .layer-mgr-body::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 3px; }

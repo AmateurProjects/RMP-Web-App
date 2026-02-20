@@ -1745,13 +1745,14 @@ cb.addEventListener("change", async () => {
 
         document.addEventListener("touchmove", function (e) {
             if (!isDragging) return;
+            e.preventDefault(); // prevent page scroll while dragging layer manager
             const touch = e.touches[0];
             const dx = touch.clientX - startX;
             const dy = touch.clientY - startY;
             layerManagerWindow.style.left = (origLeft + dx) + "px";
             layerManagerWindow.style.top = (origTop + dy) + "px";
             layerManagerWindow.style.right = "auto";
-        }, { passive: true });
+        }, { passive: false });
 
         document.addEventListener("touchend", function () {
             isDragging = false;
@@ -3946,6 +3947,30 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 })();
 
 // ════════════════════════════════════════════════════════════════════════════
+// Mobile gesture-conflict prevention
+// ════════════════════════════════════════════════════════════════════════════
+(function preventBrowserGestures() {
+    // iOS Safari fires proprietary gesturestart on two-finger pinch.
+    // Preventing it stops the browser from zooming the whole page,
+    // so the ArcGIS map's own pinch-to-zoom works unimpeded.
+    document.addEventListener("gesturestart", function (e) {
+        e.preventDefault();
+    }, { passive: false });
+
+    // Prevent double-tap-to-zoom on the map surface (300 ms tap delay).
+    // The ArcGIS SDK already handles double-click-zoom via its navigation.
+    var viewDiv = document.getElementById("viewDiv");
+    if (viewDiv) {
+        var lastTap = 0;
+        viewDiv.addEventListener("touchend", function (e) {
+            var now = Date.now();
+            if (now - lastTap < 300) { e.preventDefault(); }
+            lastTap = now;
+        }, { passive: false });
+    }
+})();
+
+// ════════════════════════════════════════════════════════════════════════════
 // Accessibility Color-Vision Widget (independent of ArcGIS modules)
 // ════════════════════════════════════════════════════════════════════════════
 (function initA11yWidget() {
@@ -3955,15 +3980,21 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     if (!toggleBtn || !menu) return;
 
     const options = menu.querySelectorAll(".a11y-option");
-    const CV_CLASSES = ["cv-protanopia", "cv-deuteranopia", "cv-tritanopia", "cv-achromatopsia", "cv-highcontrast"];
+
+    // Data-URI SVG filters — works on iOS Safari where url(#local-id) does NOT
+    var CV_FILTERS = {
+        protanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.567 0.433 0 0 0 0.558 0.442 0 0 0 0 0.242 0.758 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+        deuteranopia:  "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.625 0.375 0 0 0 0.7 0.3 0 0 0 0 0.3 0.7 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+        tritanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.95 0.05 0 0 0 0 0.433 0.567 0 0 0 0.475 0.525 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+        achromatopsia: "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+        highcontrast:  "contrast(1.8) brightness(0.85)"
+    };
 
     function applyMode(mode) {
-        // Remove all cv- classes from <body> (body instead of html for iOS Safari compat)
-        CV_CLASSES.forEach(c => document.body.classList.remove(c));
-        // Apply the chosen one
-        if (mode && mode !== "none") {
-            document.body.classList.add("cv-" + mode);
-        }
+        // Apply data-URI SVG filter directly to body style (iOS Safari compat)
+        var filterVal = (mode && mode !== "none" && CV_FILTERS[mode]) ? CV_FILTERS[mode] : "none";
+        document.body.style.webkitFilter = filterVal;
+        document.body.style.filter = filterVal;
         // Update aria-checked on menu items
         options.forEach(btn => {
             btn.setAttribute("aria-checked", btn.dataset.cv === mode ? "true" : "false");
