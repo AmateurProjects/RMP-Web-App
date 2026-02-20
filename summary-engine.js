@@ -93,7 +93,7 @@ define([], function () {
     }
 
     var URL_RX = /^https?:\/\//i;
-    var SKIP_FIELDS = /^(OBJECTID|FID|GLOBALID|SHAPE|SHAPE_AREA|SHAPE_LENGTH|SHAPE_LENG|SHAPE\.AREA|SHAPE\.LEN|SHAPE\.STAREA|SHAPE\.STLENGTH)$/i;
+    var SKIP_FIELDS = /^(OBJECTID|FID|GLOBALID|ST_AREA|ST_LENGTH|ST_PERIMETER|SHAPE([-_. ].*)?|TOTAL[-_ ]?(AREA|LENGTH|ACRES|ACREAGE))$/i;
 
     /* ================================================================
      *  Generic auto-summary builder

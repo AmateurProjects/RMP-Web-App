@@ -728,7 +728,7 @@ define([
         const isPolylineLayer = (geomClass === 'polyline');
 
         // Determine relevant attribute columns
-        const skipPatterns = /^(objectid|oid|fid|shape|shape_area|shape_length|shape\.area|shape\.len|globalid|st_area|st_length|st_perimeter)$/i;
+        const skipPatterns = /^(objectid|oid|fid|globalid|st_area|st_length|st_perimeter|shape([-_. ].*)?|total[-_ ]?(area|length|acres|acreage))$/i;
         const allKeys = new Set();
         for (const f of feats) {
             if (!f.attributes) continue;

@@ -3507,11 +3507,12 @@ ${getA11yWidgetBlock()}
                             let dataUrl = null;
                             const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
                             if (item.__renderingRule) {
-                                imgLayerOpts.rasterFunction = { functionName: item.__renderingRule };
+                                imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
                             }
                             const tempImg = new ImageryLayer(imgLayerOpts);
                             try {
                                 view.map.add(tempImg);
+                                await tempImg.when();
                                 setVisibilityForScreenshot(tempImg);
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
                                 if (fixedExtent) {
@@ -3594,6 +3595,15 @@ ${getA11yWidgetBlock()}
                             setVisibilityForScreenshot(tempLayer);
 
                             await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                            if (fixedExtent) {
+                                await view.goTo(fixedExtent, { animate: false });
+                            } else {
+                                await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                            }
+                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                            await waitForViewStationary(800);
+                            // Refresh mask so outer ring matches the current view extent
+                            updateAoiMask(true);
                             await waitForTabVisible(5000);
 
                             // Fire coverage stats in parallel with screenshot capture
@@ -3917,9 +3927,10 @@ ${getA11yWidgetBlock()}
                             visible: true
                         };
                         if (item.__renderingRule) {
-                            imgLayerOpts.rasterFunction = { functionName: item.__renderingRule };
+                            imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
                         }
                         const temp = new ImageryLayer(imgLayerOpts);
+                        try { await temp.when(); } catch (e) { /* continue */ }
                         view.map.add(temp);
 
                         try {
@@ -4374,11 +4385,12 @@ ${getA11yWidgetBlock()}
                             let dataUrl = null;
                             const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
                             if (item.__renderingRule) {
-                                imgLayerOpts.rasterFunction = { functionName: item.__renderingRule };
+                                imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
                             }
                             const tempImg = new ImageryLayer(imgLayerOpts);
                             try {
                                 view.map.add(tempImg);
+                                await tempImg.when();
                                 setVisibilityForScreenshot(tempImg);
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
                                 if (fixedExtent) {
@@ -4475,6 +4487,15 @@ ${getA11yWidgetBlock()}
                             setVisibilityForScreenshot(tempLayer);
 
                             await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                            if (fixedExtent) {
+                                await view.goTo(fixedExtent, { animate: false });
+                            } else {
+                                await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                            }
+                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                            await waitForViewStationary(800);
+                            // Refresh mask so outer ring matches the current view extent
+                            updateAoiMask(true);
 
                             // Fire coverage stats in parallel with screenshot capture
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
