@@ -771,6 +771,69 @@ define([], function () {
     }
 
     /* ================================================================
+     *  Explicit highlight-fields renderer
+     *  ────────────────────────────────────
+     *  When config specifies `highlightFields: ["FIELD_A", "FIELD_B"]`
+     *  only those fields are summarised. Each field is rendered as a
+     *  frequency map (value → count) or as a unique-values list.
+     * ================================================================ */
+
+    function renderExplicitFields(rows, fieldNames, headerLabel) {
+        if (!rows || !rows.length || !fieldNames || !fieldNames.length) return "";
+
+        var html = '<tr><td colspan="2" style="padding-top:12px;"><b>' + escapeHtml(headerLabel) + "</b></td></tr>";
+        var hasContent = false;
+
+        for (var f = 0; f < fieldNames.length; f++) {
+            var fieldName = fieldNames[f];
+            // Find matching key in rows (case-insensitive)
+            var actualKey = null;
+            var lower = fieldName.toLowerCase();
+            for (var r = 0; r < rows.length && !actualKey; r++) {
+                var keys = Object.keys(rows[r]);
+                for (var k = 0; k < keys.length; k++) {
+                    if (keys[k].toLowerCase() === lower) { actualKey = keys[k]; break; }
+                }
+            }
+            if (!actualKey) continue;
+
+            // Collect value → count frequency map
+            var freq = new Map();
+            for (var r2 = 0; r2 < rows.length; r2++) {
+                var val = rows[r2][actualKey];
+                if (val == null || String(val).trim() === "") continue;
+                var sv = String(val).trim();
+                if (sv.length > 500) continue;
+                freq.set(sv, (freq.get(sv) || 0) + 1);
+            }
+            if (freq.size === 0) continue;
+
+            hasContent = true;
+
+            // Pretty-print the label
+            var label = actualKey.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+
+            // Check if values are URLs
+            var firstVal = Array.from(freq.keys())[0];
+            if (URL_RX.test(firstVal)) {
+                var links = Array.from(freq.keys()).slice(0, 5).map(function (u) {
+                    var esc = escapeHtml(u);
+                    return '<a href="' + esc + '" target="_blank" rel="noopener">' + (esc.length > 60 ? esc.substring(0, 60) + "…" : esc) + "</a>";
+                }).join("<br/>");
+                if (freq.size > 5) links += "<br/>…";
+                html += tr(label, links);
+            } else if (freq.size === 1 && freq.values().next().value === rows.length) {
+                // All rows have the same value
+                html += tr(label, escapeHtml(Array.from(freq.keys())[0]));
+            } else {
+                html += tr(label, freqSummary(freq, 10));
+            }
+        }
+
+        return hasContent ? html : "";
+    }
+
+    /* ================================================================
      *  Public API
      * ================================================================ */
 
@@ -801,6 +864,13 @@ define([], function () {
                 if (S && S.layerCfgByUrl && item.url) {
                     var entry = S.layerCfgByUrl.get(item.url);
                     if (entry) layerCfg = entry.cfg || entry;
+                }
+
+                // If config specifies explicit highlightFields, use only those
+                if (layerCfg && Array.isArray(layerCfg.highlightFields) && layerCfg.highlightFields.length > 0) {
+                    var html = renderExplicitFields(rows, layerCfg.highlightFields, headerLabel);
+                    html = appendUrlRows(html, rows);
+                    return html;
                 }
 
                 // Try plugin first

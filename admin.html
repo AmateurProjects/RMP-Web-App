@@ -288,6 +288,11 @@
         <input type="text" id="fPlugin" placeholder="e.g. vri, critical-habitat, oil-gas"/>
         <div class="hint">Leave blank for auto-detection or generic summary</div>
       </div>
+      <div class="form-row">
+        <label>Highlight Fields (optional)</label>
+        <input type="text" id="fHighlightFields" placeholder="e.g. ALLOT_NAME, STATUS, VRI_CLASS_CODE"/>
+        <div class="hint">Comma-separated field names to show in Layer Highlights. Overrides plugin/auto-detection when set.</div>
+      </div>
     </div>
     <div id="selectionFields" style="display:none">
       <div class="form-row">
@@ -538,6 +543,8 @@ function editReportLayer(idx) {
   document.getElementById('fTier').value = String(l.tier || 1);
   document.getElementById('fServiceType').value = l.serviceType || 'feature';
   document.getElementById('fPlugin').value = l.summaryPlugin || '';
+  var hf = l.highlightFields;
+  document.getElementById('fHighlightFields').value = Array.isArray(hf) ? hf.join(', ') : '';
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -562,7 +569,7 @@ function closeModal() {
 }
 
 function clearForm() {
-  ['fTitle', 'fUrl', 'fPlugin', 'fGroup'].forEach(function (id) { document.getElementById(id).value = ''; });
+  ['fTitle', 'fUrl', 'fPlugin', 'fGroup', 'fHighlightFields'].forEach(function (id) { document.getElementById(id).value = ''; });
   document.getElementById('fCategory').value = 'special';
   document.getElementById('fTier').value = '1';
   document.getElementById('fServiceType').value = 'feature';
@@ -585,6 +592,10 @@ async function saveLayer() {
     };
     var plugin = document.getElementById('fPlugin').value.trim();
     if (plugin) obj.summaryPlugin = plugin;
+    var hfRaw = document.getElementById('fHighlightFields').value.trim();
+    if (hfRaw) {
+      obj.highlightFields = hfRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    }
 
     if (editMode && editMode.type === 'report') {
       // Preserve any extra fields from original
