@@ -41,6 +41,10 @@ define([
     // Key: `${aoiKey}||${layerUrl}` → Feature[] (with geometry + attributes)
     const _geomFeatureCache = new Map();
 
+    // ── Per-feature intersection results cache ──
+    // Key: `${aoiKey}||${layerUrl}` → Map<OID, { acresCovered, pctAoi, lengthFeet, lengthMiles }>
+    const _intersectionCache = new Map();
+
     // ── Helpers ──────────────────────────────────────────────────
 
     /**
@@ -62,6 +66,7 @@ define([
     function resetCoverageCacheForAoi(geom) {
         coverageCache.clear();
         _geomFeatureCache.clear();
+        _intersectionCache.clear();
         coverageAoiKey = getAoiKey(geom);
     }
 
@@ -392,19 +397,18 @@ define([
                 }
 
                 if (features.length > 0 && allSampleFeatures.length < maxSamples) {
-                    // Deduplicate sample features by OID
+                    // Deduplicate sample features by OID using Set for O(1) lookup
+                    const existingOids = new Set(
+                        allSampleFeatures.map(sf => sf.attributes?.[layer.objectIdField || "OBJECTID"])
+                            .filter(v => v != null)
+                    );
                     for (const f of features) {
                         if (allSampleFeatures.length >= maxSamples) break;
                         const fOid = f.attributes?.[layer.objectIdField || "OBJECTID"];
-                        if (fOid != null && oidSet.has(fOid)) {
-                            // Check if we already have this feature in our sample
-                            const alreadyHave = allSampleFeatures.some(sf =>
-                                sf.attributes?.[layer.objectIdField || "OBJECTID"] === fOid
-                            );
-                            if (!alreadyHave) allSampleFeatures.push(f);
-                        } else {
-                            allSampleFeatures.push(f);
-                        }
+                        if (fOid != null && existingOids.has(fOid)) continue;
+                        allSampleFeatures.push(f);
+                        if (fOid != null) existingOids.add(fOid);
+                    }
                     }
                 }
             }
@@ -525,19 +529,42 @@ define([
         // Cache the geometry features for reuse by buildPerFeatureTable
         _geomFeatureCache.set(cacheKey, feats);
 
-        // Intersect each feature with AOI
+        // Intersect each feature with AOI and cache per-feature results
         const interGeoms = [];
+        const perFeatureResults = new Map(); // OID → { acresCovered, pctAoi, lengthFeet, lengthMiles }
+        const oidField = item._layer?.objectIdField || "OBJECTID";
         for (const f of feats) {
             const g = f?.geometry;
             if (!g) continue;
             try {
                 const inter = geometryEngine.intersect(aoiGeom, g);
                 if (!inter) continue;
-                const area = geometryEngine.geodesicArea(inter, "square-meters");
-                if (area <= 0) continue;
+                const gType = (g.type || "").toLowerCase();
+                const isPolygon = gType.includes("polygon");
+                const isPolyline = gType.includes("polyline") || gType.includes("line");
+                let areaSqm = 0;
+                let lengthM = 0;
+                if (isPolygon) {
+                    areaSqm = Math.max(0, geometryEngine.geodesicArea(inter, "square-meters"));
+                    if (areaSqm <= 0) continue;
+                } else if (isPolyline) {
+                    lengthM = Math.max(0, geometryEngine.geodesicLength(inter, "meters"));
+                }
                 interGeoms.push(inter);
+                const oid = f.attributes?.[oidField];
+                if (oid != null) {
+                    perFeatureResults.set(oid, {
+                        acresCovered: areaSqm / SQM_PER_ACRE,
+                        pctAoi: aoiAreaSqm > 0 ? Math.min(100, Math.max(0, (areaSqm / aoiAreaSqm) * 100)) : 0,
+                        lengthFeet: lengthM / METERS_PER_FOOT,
+                        lengthMiles: lengthM / METERS_PER_FOOT / FEET_PER_MILE
+                    });
+                }
             } catch (e) { /* skip bad geom */ }
         }
+
+        // Cache per-feature intersection results for buildPerFeatureTable
+        _intersectionCache.set(cacheKey, perFeatureResults);
 
         if (!interGeoms.length) return { acresCovered: 0, pctAoiCovered: 0 };
 
@@ -713,18 +740,28 @@ define([
 
         const attrKeys = Array.from(allKeys);
 
-        // Build rows: compute per-feature intersection metrics
+        // Build rows: use cached intersection results when available, else compute
+        const oidField = item._layer?.objectIdField || "OBJECTID";
+        const cachedIntersections = _intersectionCache.get(geomCacheKey);
         const tableRows = [];
         for (const f of feats) {
             const attrs = f.attributes || {};
             const geom  = f.geometry;
+            const oid   = attrs[oidField];
 
             let acresCovered = 0;
             let pctAoi       = 0;
             let lengthFeet   = 0;
             let lengthMiles  = 0;
 
-            if (geom) {
+            // Try cached intersection results first (populated by computeLayerCoverageStats)
+            if (cachedIntersections && oid != null && cachedIntersections.has(oid)) {
+                const cached = cachedIntersections.get(oid);
+                acresCovered = cached.acresCovered;
+                pctAoi       = cached.pctAoi;
+                lengthFeet   = cached.lengthFeet;
+                lengthMiles  = cached.lengthMiles;
+            } else if (geom) {
                 try {
                     const inter = geometryEngine.intersect(aoiGeom, geom);
                     if (inter) {
@@ -859,6 +896,9 @@ define([
             getAoiKey,
             resetCoverageCacheForAoi,
             SQM_PER_ACRE,
+
+            // Layer cache (shared across screening + report generation)
+            getCachedLayer,
 
             // Utility
             sampleWithoutReplacement,

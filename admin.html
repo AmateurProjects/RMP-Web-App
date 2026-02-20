@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>RMP Web App – Layer Admin</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #fff; --border: #d4d8dd; --fg: #1e1e1e;
+    --muted: #5c6370; --accent: #1a472a; --accent-light: #2d6a3d;
+    --danger: #c62828; --warn: #e65100; --ok: #2e7d32;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--fg); line-height: 1.5;
+  }
+  header {
+    background: var(--accent); color: #fff; padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header .badge { font-size: 11px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  /* Auth */
+  .auth-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 32px; max-width: 480px; margin: 80px auto; text-align: center;
+  }
+  .auth-card h2 { margin-bottom: 8px; }
+  .auth-card p { color: var(--muted); margin-bottom: 16px; font-size: 14px; }
+  .auth-card input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+  .auth-card .repo-row { display: flex; gap: 8px; }
+  .auth-card .repo-row input { flex: 1; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+    border: none; border-radius: 6px; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-light); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--fg); }
+  .btn-outline:hover { background: #f0f0f0; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+  .tab-btn {
+    padding: 8px 16px; background: none; border: none; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; cursor: pointer; font-size: 14px; color: var(--muted);
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Stats bar */
+  .stats-bar { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 20px; flex: 1; min-width: 140px;
+  }
+  .stat-card .num { font-size: 24px; font-weight: 700; color: var(--accent); }
+  .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Toolbar */
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar input[type="text"] { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+  .toolbar select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+
+  /* Layer table */
+  .layer-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .layer-table th { text-align: left; padding: 10px 12px; background: #f0f2f5; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .layer-table td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: middle; }
+  .layer-table tr:last-child td { border-bottom: none; }
+  .layer-table tr:hover td { background: #f8f9fb; }
+  .layer-table .url-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: monospace; font-size: 11px; }
+  .badge-cat {
+    display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;
+  }
+  .badge-special { background: #e8f5e9; color: #2e7d32; }
+  .badge-environmental { background: #e3f2fd; color: #1565c0; }
+  .badge-authorizations { background: #fff3e0; color: #e65100; }
+  .badge-land-use { background: #f3e5f5; color: #7b1fa2; }
+  .badge-land-status { background: #fce4ec; color: #c62828; }
+  .badge-tier { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; font-size: 11px; font-weight: 700; background: #e0e0e0; }
+  .badge-tier-1 { background: #c8e6c9; color: #1b5e20; }
+  .badge-tier-2 { background: #fff9c4; color: #f57f17; }
+  .badge-tier-3 { background: #ffcdd2; color: #b71c1c; }
+
+  /* Health dots */
+  .health-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #bbb; }
+  .health-dot.ok { background: var(--ok); }
+  .health-dot.err { background: var(--danger); }
+  .health-dot.checking { background: #ffc107; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Modal / form */
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 10px; width: 560px; max-width: 95vw;
+    max-height: 90vh; overflow-y: auto; padding: 24px;
+  }
+  .modal h3 { margin-bottom: 16px; }
+  .form-row { margin-bottom: 12px; }
+  .form-row label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-row input, .form-row select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+  .form-row .hint { font-size: 11px; color: #999; margin-top: 2px; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; background: #333; color: #fff;
+    padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 200;
+    opacity: 0; transform: translateY(10px); transition: all 0.3s;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--danger); }
+
+  /* Reference layers */
+  .ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ref-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;
+  }
+  .ref-card .ref-key { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .ref-card input { width: 100%; font-family: monospace; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+
+  @media (max-width: 768px) {
+    .ref-grid { grid-template-columns: 1fr; }
+    .stats-bar { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RMP Layer Admin</h1>
+  <span class="badge" id="repoLabel">Not connected</span>
+  <div style="flex:1"></div>
+  <button class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.3)" id="logoutBtn" onclick="logout()" style="display:none">Logout</button>
+</header>
+
+<!-- Auth screen -->
+<div id="authScreen" class="auth-card">
+  <h2>Connect to Repository</h2>
+  <p>Enter your GitHub PAT and repo details to manage layers.</p>
+  <div class="form-row">
+    <label>GitHub Personal Access Token</label>
+    <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off"/>
+    <div class="hint">Needs <code>repo</code> scope (or <code>public_repo</code> for public repos)</div>
+  </div>
+  <div class="repo-row" style="margin-bottom:12px">
+    <input type="text" id="ownerInput" placeholder="Owner (e.g. AmateurProjects)"/>
+    <input type="text" id="repoInput" placeholder="Repo (e.g. RMP-Web-App)"/>
+  </div>
+  <div class="form-row">
+    <label>Branch</label>
+    <input type="text" id="branchInput" value="main" placeholder="main"/>
+  </div>
+  <button class="btn btn-primary" style="width:100%" onclick="connect()">Connect</button>
+  <div id="authError" style="color:var(--danger);font-size:13px;margin-top:8px;display:none"></div>
+</div>
+
+<!-- Main admin panel -->
+<div id="adminPanel" class="container" style="display:none">
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="report">Report Layers</button>
+    <button class="tab-btn" data-tab="selection">Selection Layers</button>
+    <button class="tab-btn" data-tab="reference">Reference Layers</button>
+    <button class="tab-btn" data-tab="health">Service Health</button>
+  </div>
+
+  <!-- Report Layers tab -->
+  <div class="tab-panel active" id="tab-report">
+    <div class="stats-bar" id="reportStats"></div>
+    <div class="toolbar">
+      <input type="text" id="searchReport" placeholder="Search layers…" oninput="renderReportTable()"/>
+      <select id="filterCategory" onchange="renderReportTable()">
+        <option value="">All Categories</option>
+        <option value="special">Special Designations</option>
+        <option value="environmental">Environmental</option>
+        <option value="authorizations">Authorizations</option>
+        <option value="land-use">Land Use</option>
+        <option value="land-status">Land Status</option>
+      </select>
+      <select id="filterTier" onchange="renderReportTable()">
+        <option value="">All Tiers</option>
+        <option value="1">Tier 1</option>
+        <option value="2">Tier 2</option>
+        <option value="3">Tier 3</option>
+      </select>
+      <button class="btn btn-primary" onclick="openLayerModal('report')">+ Add Report Layer</button>
+    </div>
+    <table class="layer-table">
+      <thead><tr>
+        <th>Title</th><th>Category</th><th>Tier</th><th>Type</th><th>URL</th><th style="width:80px"></th>
+      </tr></thead>
+      <tbody id="reportTbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Selection Layers tab -->
+  <div class="tab-panel" id="tab-selection">
+    <div class="toolbar">
+      <input type="text" id="searchSelection" placeholder="Search selection layers…" oninput="renderSelectionTable()"/>
+      <button class="btn btn-primary" onclick="openLayerModal('selection')">+ Add Selection Layer</button>
+    </div>
+    <table class="layer-table">
+      <thead><tr>
+        <th>Title</th><th>Group</th><th>Visible</th><th>URL</th><th style="width:80px"></th>
+      </tr></thead>
+      <tbody id="selectionTbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Reference Layers tab -->
+  <div class="tab-panel" id="tab-reference">
+    <p style="margin-bottom:12px;color:var(--muted);font-size:14px">These are infrastructure URLs used by the application. Edit URLs directly below.</p>
+    <div class="ref-grid" id="refGrid"></div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn btn-primary" onclick="saveConfig()">Save Reference Changes</button>
+    </div>
+  </div>
+
+  <!-- Health tab -->
+  <div class="tab-panel" id="tab-health">
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="runHealthCheck()">Run Health Check</button>
+      <span id="healthProgress" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+    <table class="layer-table">
+      <thead><tr><th>Layer</th><th>URL</th><th style="width:80px">Status</th><th style="width:100px">Response</th></tr></thead>
+      <tbody id="healthTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Layer add/edit modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">Add Layer</h3>
+    <div class="form-row">
+      <label>Title</label>
+      <input type="text" id="fTitle" placeholder="BLM Layer Name"/>
+    </div>
+    <div class="form-row">
+      <label>Service URL</label>
+      <input type="text" id="fUrl" placeholder="https://..."/>
+      <div class="hint">Full ArcGIS REST service endpoint URL</div>
+    </div>
+    <div id="reportFields">
+      <div class="form-row">
+        <label>Category</label>
+        <select id="fCategory">
+          <option value="special">Special Designations</option>
+          <option value="environmental">Environmental</option>
+          <option value="authorizations">Authorizations</option>
+          <option value="land-use">Land Use</option>
+          <option value="land-status">Land Status</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Tier</label>
+        <select id="fTier">
+          <option value="1">Tier 1 – Core</option>
+          <option value="2">Tier 2 – Extended</option>
+          <option value="3">Tier 3 – Supplemental</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Service Type</label>
+        <select id="fServiceType">
+          <option value="feature">FeatureServer</option>
+          <option value="map">MapServer</option>
+          <option value="image">ImageServer</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Summary Plugin (optional)</label>
+        <input type="text" id="fPlugin" placeholder="e.g. vri, critical-habitat, oil-gas"/>
+        <div class="hint">Leave blank for auto-detection or generic summary</div>
+      </div>
+    </div>
+    <div id="selectionFields" style="display:none">
+      <div class="form-row">
+        <label>Group</label>
+        <input type="text" id="fGroup" placeholder="e.g. plss, permit"/>
+      </div>
+      <div class="form-row">
+        <label>Visible by default</label>
+        <select id="fVisible">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="deleteBtn" style="display:none" onclick="deleteLayer()">Delete</button>
+      <button class="btn btn-primary" id="saveBtn" onclick="saveLayer()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──
+let config = null;
+let configSha = null;
+let ghToken = '';
+let ghOwner = '';
+let ghRepo = '';
+let ghBranch = 'main';
+let editMode = null; // { type: 'report'|'selection', index: number } or null
+let modalType = 'report';
+
+// ── GitHub API helpers ──
+async function ghFetch(path, opts) {
+  const url = 'https://api.github.com' + path;
+  const headers = {
+    'Authorization': 'Bearer ' + ghToken,
+    'Accept': 'application/vnd.github.v3+json',
+    ...(opts && opts.headers || {})
+  };
+  const res = await fetch(url, { ...opts, headers });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error('GitHub API ' + res.status + ': ' + body);
+  }
+  return res.json();
+}
+
+async function loadConfig() {
+  const data = await ghFetch('/repos/' + ghOwner + '/' + ghRepo + '/contents/config.json?ref=' + ghBranch);
+  configSha = data.sha;
+  const json = atob(data.content.replace(/\n/g, ''));
+  config = JSON.parse(json);
+}
+
+async function pushConfig(message) {
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(config, null, 2) + '\n')));
+  await ghFetch('/repos/' + ghOwner + '/' + ghRepo + '/contents/config.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: message || 'Update config.json via Layer Admin',
+      content: content,
+      sha: configSha,
+      branch: ghBranch
+    })
+  });
+  // Reload to get new SHA
+  await loadConfig();
+}
+
+// ── Auth ──
+async function connect() {
+  ghToken = document.getElementById('tokenInput').value.trim();
+  ghOwner = document.getElementById('ownerInput').value.trim();
+  ghRepo = document.getElementById('repoInput').value.trim();
+  ghBranch = document.getElementById('branchInput').value.trim() || 'main';
+  const errEl = document.getElementById('authError');
+  errEl.style.display = 'none';
+  try {
+    await loadConfig();
+    document.getElementById('authScreen').style.display = 'none';
+    document.getElementById('adminPanel').style.display = 'block';
+    document.getElementById('repoLabel').textContent = ghOwner + '/' + ghRepo + ' (' + ghBranch + ')';
+    document.getElementById('logoutBtn').style.display = '';
+    // Persist (session only)
+    sessionStorage.setItem('rmp_admin', JSON.stringify({ ghToken, ghOwner, ghRepo, ghBranch }));
+    renderAll();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem('rmp_admin');
+  config = null; configSha = null;
+  document.getElementById('authScreen').style.display = '';
+  document.getElementById('adminPanel').style.display = 'none';
+  document.getElementById('repoLabel').textContent = 'Not connected';
+}
+
+// Restore session
+(function () {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('rmp_admin'));
+    if (saved && saved.ghToken) {
+      document.getElementById('tokenInput').value = saved.ghToken;
+      document.getElementById('ownerInput').value = saved.ghOwner;
+      document.getElementById('repoInput').value = saved.ghRepo;
+      document.getElementById('branchInput').value = saved.ghBranch || 'main';
+      connect();
+    }
+  } catch (e) {}
+})();
+
+// ── Tabs ──
+document.querySelectorAll('.tab-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Rendering ──
+function renderAll() {
+  if (!config) return;
+  renderReportStats();
+  renderReportTable();
+  renderSelectionTable();
+  renderRefGrid();
+}
+
+function renderReportStats() {
+  var layers = config.reportLayers || [];
+  var cats = {};
+  layers.forEach(function (l) {
+    var c = l.category || 'uncategorized';
+    cats[c] = (cats[c] || 0) + 1;
+  });
+  var html = '<div class="stat-card"><div class="num">' + layers.length + '</div><div class="label">Total Layers</div></div>';
+  Object.keys(cats).sort().forEach(function (c) {
+    html += '<div class="stat-card"><div class="num">' + cats[c] + '</div><div class="label">' + esc(c) + '</div></div>';
+  });
+  document.getElementById('reportStats').innerHTML = html;
+}
+
+function catBadge(cat) {
+  var cls = 'badge-cat badge-' + (cat || '').replace(/\s+/g, '-');
+  return '<span class="' + cls + '">' + esc(cat || '—') + '</span>';
+}
+
+function tierBadge(tier) {
+  return '<span class="badge-tier badge-tier-' + tier + '">' + tier + '</span>';
+}
+
+function renderReportTable() {
+  var layers = config.reportLayers || [];
+  var search = (document.getElementById('searchReport').value || '').toLowerCase();
+  var filterCat = document.getElementById('filterCategory').value;
+  var filterTier = document.getElementById('filterTier').value;
+
+  var filtered = layers.map(function (l, i) { return { layer: l, index: i }; }).filter(function (item) {
+    var l = item.layer;
+    if (search && !(l.title || '').toLowerCase().includes(search) && !(l.url || '').toLowerCase().includes(search)) return false;
+    if (filterCat && l.category !== filterCat) return false;
+    if (filterTier && String(l.tier) !== filterTier) return false;
+    return true;
+  });
+
+  var html = '';
+  filtered.forEach(function (item) {
+    var l = item.layer;
+    html += '<tr>';
+    html += '<td><strong>' + esc(l.title) + '</strong></td>';
+    html += '<td>' + catBadge(l.category) + '</td>';
+    html += '<td>' + tierBadge(l.tier || 1) + '</td>';
+    html += '<td>' + esc(l.serviceType || '—') + '</td>';
+    html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
+    html += '<td><button class="btn btn-outline btn-sm" onclick="editReportLayer(' + item.index + ')">Edit</button></td>';
+    html += '</tr>';
+  });
+  if (!filtered.length) html = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No layers match filters</td></tr>';
+  document.getElementById('reportTbody').innerHTML = html;
+}
+
+function renderSelectionTable() {
+  var layers = config.selectionLayers || [];
+  var search = (document.getElementById('searchSelection').value || '').toLowerCase();
+  var filtered = layers.map(function (l, i) { return { layer: l, index: i }; }).filter(function (item) {
+    if (search && !(item.layer.title || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+  var html = '';
+  filtered.forEach(function (item) {
+    var l = item.layer;
+    html += '<tr>';
+    html += '<td><strong>' + esc(l.title) + '</strong></td>';
+    html += '<td>' + esc(l.group || '—') + '</td>';
+    html += '<td>' + (l.visible ? 'Yes' : 'No') + '</td>';
+    html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
+    html += '<td><button class="btn btn-outline btn-sm" onclick="editSelectionLayer(' + item.index + ')">Edit</button></td>';
+    html += '</tr>';
+  });
+  document.getElementById('selectionTbody').innerHTML = html;
+}
+
+function renderRefGrid() {
+  var refs = config.referenceLayers || {};
+  var html = '';
+  Object.keys(refs).forEach(function (key) {
+    html += '<div class="ref-card">';
+    html += '<div class="ref-key">' + esc(key) + '</div>';
+    html += '<input type="text" data-ref="' + esc(key) + '" value="' + esc(refs[key]) + '"/>';
+    html += '</div>';
+  });
+  document.getElementById('refGrid').innerHTML = html;
+}
+
+// ── Modal ──
+function openLayerModal(type) {
+  modalType = type;
+  editMode = null;
+  document.getElementById('modalTitle').textContent = 'Add ' + (type === 'report' ? 'Report' : 'Selection') + ' Layer';
+  document.getElementById('reportFields').style.display = type === 'report' ? '' : 'none';
+  document.getElementById('selectionFields').style.display = type === 'selection' ? '' : 'none';
+  document.getElementById('deleteBtn').style.display = 'none';
+  clearForm();
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function editReportLayer(idx) {
+  modalType = 'report';
+  editMode = { type: 'report', index: idx };
+  var l = config.reportLayers[idx];
+  document.getElementById('modalTitle').textContent = 'Edit Report Layer';
+  document.getElementById('reportFields').style.display = '';
+  document.getElementById('selectionFields').style.display = 'none';
+  document.getElementById('deleteBtn').style.display = '';
+  document.getElementById('fTitle').value = l.title || '';
+  document.getElementById('fUrl').value = l.url || '';
+  document.getElementById('fCategory').value = l.category || 'special';
+  document.getElementById('fTier').value = String(l.tier || 1);
+  document.getElementById('fServiceType').value = l.serviceType || 'feature';
+  document.getElementById('fPlugin').value = l.summaryPlugin || '';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function editSelectionLayer(idx) {
+  modalType = 'selection';
+  editMode = { type: 'selection', index: idx };
+  var l = config.selectionLayers[idx];
+  document.getElementById('modalTitle').textContent = 'Edit Selection Layer';
+  document.getElementById('reportFields').style.display = 'none';
+  document.getElementById('selectionFields').style.display = '';
+  document.getElementById('deleteBtn').style.display = '';
+  document.getElementById('fTitle').value = l.title || '';
+  document.getElementById('fUrl').value = l.url || '';
+  document.getElementById('fGroup').value = l.group || '';
+  document.getElementById('fVisible').value = String(!!l.visible);
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  editMode = null;
+}
+
+function clearForm() {
+  ['fTitle', 'fUrl', 'fPlugin', 'fGroup'].forEach(function (id) { document.getElementById(id).value = ''; });
+  document.getElementById('fCategory').value = 'special';
+  document.getElementById('fTier').value = '1';
+  document.getElementById('fServiceType').value = 'feature';
+  document.getElementById('fVisible').value = 'false';
+}
+
+// ── Save / Delete ──
+async function saveLayer() {
+  var title = document.getElementById('fTitle').value.trim();
+  var url = document.getElementById('fUrl').value.trim();
+  if (!title || !url) { toast('Title and URL are required', true); return; }
+
+  if (modalType === 'report') {
+    var obj = {
+      title: title,
+      url: url,
+      tier: parseInt(document.getElementById('fTier').value) || 1,
+      category: document.getElementById('fCategory').value,
+      serviceType: document.getElementById('fServiceType').value
+    };
+    var plugin = document.getElementById('fPlugin').value.trim();
+    if (plugin) obj.summaryPlugin = plugin;
+
+    if (editMode && editMode.type === 'report') {
+      // Preserve any extra fields from original
+      var orig = config.reportLayers[editMode.index];
+      Object.keys(orig).forEach(function (k) { if (!(k in obj)) obj[k] = orig[k]; });
+      config.reportLayers[editMode.index] = obj;
+    } else {
+      config.reportLayers.push(obj);
+    }
+  } else {
+    var obj2 = {
+      title: title,
+      url: url,
+      visible: document.getElementById('fVisible').value === 'true',
+      group: document.getElementById('fGroup').value.trim() || 'default'
+    };
+    if (editMode && editMode.type === 'selection') {
+      config.selectionLayers[editMode.index] = obj2;
+    } else {
+      config.selectionLayers.push(obj2);
+    }
+  }
+
+  var action = editMode ? 'Update' : 'Add';
+  var layerType = modalType === 'report' ? 'report' : 'selection';
+  try {
+    document.getElementById('saveBtn').disabled = true;
+    await pushConfig(action + ' ' + layerType + ' layer: ' + title);
+    toast(action + 'd ' + title);
+    closeModal();
+    renderAll();
+  } catch (e) {
+    toast('Save failed: ' + e.message, true);
+  } finally {
+    document.getElementById('saveBtn').disabled = false;
+  }
+}
+
+async function deleteLayer() {
+  if (!editMode) return;
+  var title = '';
+  if (editMode.type === 'report') {
+    title = config.reportLayers[editMode.index].title;
+    if (!confirm('Delete report layer "' + title + '"?')) return;
+    config.reportLayers.splice(editMode.index, 1);
+  } else {
+    title = config.selectionLayers[editMode.index].title;
+    if (!confirm('Delete selection layer "' + title + '"?')) return;
+    config.selectionLayers.splice(editMode.index, 1);
+  }
+  try {
+    await pushConfig('Remove layer: ' + title);
+    toast('Deleted ' + title);
+    closeModal();
+    renderAll();
+  } catch (e) {
+    toast('Delete failed: ' + e.message, true);
+  }
+}
+
+async function saveConfig() {
+  // Save reference layer URL changes
+  var inputs = document.querySelectorAll('[data-ref]');
+  inputs.forEach(function (input) {
+    config.referenceLayers[input.dataset.ref] = input.value.trim();
+  });
+  try {
+    await pushConfig('Update reference layer URLs');
+    toast('Reference layers updated');
+    renderAll();
+  } catch (e) {
+    toast('Save failed: ' + e.message, true);
+  }
+}
+
+// ── Health Check ──
+async function runHealthCheck() {
+  var allLayers = (config.reportLayers || []).concat(config.selectionLayers || []);
+  var tbody = document.getElementById('healthTbody');
+  var progress = document.getElementById('healthProgress');
+  tbody.innerHTML = '';
+
+  // Build rows
+  allLayers.forEach(function (l, i) {
+    var row = document.createElement('tr');
+    row.id = 'health-' + i;
+    row.innerHTML = '<td>' + esc(l.title) + '</td><td class="url-cell">' + esc(l.url) + '</td>'
+      + '<td><span class="health-dot checking" id="hd-' + i + '"></span></td><td id="hr-' + i + '">…</td>';
+    tbody.appendChild(row);
+  });
+
+  var done = 0;
+  var total = allLayers.length;
+  progress.textContent = '0 / ' + total;
+
+  // Ping each (capped concurrency)
+  var queue = allLayers.map(function (l, i) { return { url: l.url, i: i }; });
+  var concurrency = 6;
+  var running = 0;
+  var qi = 0;
+
+  function next() {
+    while (running < concurrency && qi < queue.length) {
+      (function (item) {
+        running++;
+        var testUrl = item.url.replace(/\/?$/, '') + '?f=json';
+        var start = Date.now();
+        fetch(testUrl, { mode: 'cors' })
+          .then(function (r) {
+            var ms = Date.now() - start;
+            var dot = document.getElementById('hd-' + item.i);
+            var res = document.getElementById('hr-' + item.i);
+            if (r.ok) {
+              dot.className = 'health-dot ok';
+              res.textContent = r.status + ' (' + ms + 'ms)';
+            } else {
+              dot.className = 'health-dot err';
+              res.textContent = r.status + ' (' + ms + 'ms)';
+            }
+          })
+          .catch(function (e) {
+            var dot = document.getElementById('hd-' + item.i);
+            var res = document.getElementById('hr-' + item.i);
+            dot.className = 'health-dot err';
+            res.textContent = 'Error';
+          })
+          .finally(function () {
+            running--;
+            done++;
+            progress.textContent = done + ' / ' + total;
+            next();
+          });
+      })(queue[qi]);
+      qi++;
+    }
+  }
+  next();
+}
+
+// ── Utilities ──
+function esc(s) {
+  if (s == null) return '';
+  var d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+function toast(msg, isError) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(function () { el.className = 'toast'; }, 4000);
+}
+
+// Close modal on overlay click
+document.getElementById('modalOverlay').addEventListener('click', function (e) {
+  if (e.target === this) closeModal();
+});
+</script>
+</body>
+</html>

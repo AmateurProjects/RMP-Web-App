@@ -1,0 +1,53 @@
+name: Refresh R2 Metadata Cache
+
+on:
+  # Weekly schedule (every Monday at 06:00 UTC)
+  schedule:
+    - cron: "0 6 * * 1"
+
+  # Re-probe when config.json changes on main
+  push:
+    branches: [main]
+    paths: [config.json]
+
+  # Manual trigger from Actions tab
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger Worker refresh
+        env:
+          WORKER_URL: ${{ secrets.METADATA_WORKER_URL }}
+          REFRESH_SECRET: ${{ secrets.METADATA_REFRESH_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$WORKER_URL" ] || [ -z "$REFRESH_SECRET" ]; then
+            echo "::error::Missing METADATA_WORKER_URL or METADATA_REFRESH_SECRET secrets"
+            exit 1
+          fi
+
+          RESPONSE=$(curl -sf -w "\n%{http_code}" \
+            -X POST "${WORKER_URL}/refresh" \
+            -H "X-Refresh-Secret: ${REFRESH_SECRET}" \
+            -H "Content-Type: application/json")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::error::Refresh failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "### Metadata Refresh Results" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo "$BODY" | python3 -m json.tool >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

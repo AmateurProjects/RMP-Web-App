@@ -348,7 +348,10 @@ define([
         if (timeoutMs === undefined) timeoutMs = 1200;
         const view = S.view;
         if (!view) return Promise.resolve();
-        if (view.stationary) return Promise.resolve();
+        if (view.stationary) {
+            // Already stationary — short settle buffer instead of full timeout
+            return new Promise(r => setTimeout(r, 150));
+        }
 
         return new Promise(resolve => {
             const t = window.setTimeout(() => { try { h.remove(); } catch (e) { } resolve(); }, timeoutMs);
@@ -356,7 +359,8 @@ define([
                 if (s) {
                     window.clearTimeout(t);
                     try { h.remove(); } catch (e) { }
-                    resolve();
+                    // Small settle buffer after stationary is reached
+                    setTimeout(resolve, 150);
                 }
             });
         });
@@ -502,7 +506,7 @@ define([
         // Brief wait for tab visibility (with timeout to avoid hanging)
         await waitForTabVisible(tabWaitTimeout);
 
-        await waitForViewStationary(1500);
+        await waitForViewStationary(800);
 
         // Force a render frame so the canvas is up-to-date
         await new Promise(r => requestAnimationFrame(r));

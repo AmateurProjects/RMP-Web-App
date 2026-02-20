@@ -264,7 +264,7 @@ define([
                         setVisibilityForScreenshot(temp);
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                         await view.goTo(fixedExtent, { animate: false });
-                        await waitForViewStationary(2500);
+                        await waitForViewStationary(800);
 
                         var ss = await takeScreenshotSafe(view, { format: "png", quality: 100, width: width });
                         if (!ss || !ss.dataUrl) throw new Error("Screenshot failed");

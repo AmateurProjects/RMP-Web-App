@@ -410,7 +410,7 @@ function setBusy(isBusy) {
     let aoiSourcePlssTool = null; // "township" | "section" | "intersected" | null
     let aoiSourceLayerUrl = null;      // URL of the selection layer used to pick AOI (select mode)
     let plssParcelLayerUrl = null;     // URL of PLSS Intersected (UI will call "Parcel")
-    let plssStateLayerUrl = "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Public_Land_Survey_System_view/FeatureServer/0"; // Living Atlas State Boundary
+    let plssStateLayerUrl = null; // Set from config.referenceLayers.plssStateBoundary at init
     let aoiSourceObjectId = null;      // ObjectID of the clicked AOI polygon (select mode)
     let aoiSourceObjectIdField = null; // ObjectID field name for that layer
     let aoiSourceFeature = null;       // ✅ cached clicked feature (attributes for AOI Source card)
@@ -681,6 +681,14 @@ function setActiveTab(tabName) {
         buckets["uncategorized"] = [];
         for (const item of (reportItems || [])) {
             const title = (item.title || "");
+            // 1. Prefer explicit category from config (O(1) lookup)
+            const cfgEntry = layerCfgByUrl?.get(String(item.url || ""));
+            const cfgCategory = cfgEntry?.cfg?.category;
+            if (cfgCategory && PERMIT_BUCKETS[cfgCategory]) {
+                buckets[cfgCategory].push(item);
+                continue;
+            }
+            // 2. Fallback: regex title matching for layers without a category field
             let placed = false;
             for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
                 if (bd.patterns.some(p => p.test(title))) { buckets[bk].push(item); placed = true; break; }
@@ -863,7 +871,8 @@ function setActiveTab(tabName) {
         clearTimeout(wizLocationDebounce);
         wizLocationDebounce = setTimeout(async () => {
             try {
-                const url = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest?text=" + encodeURIComponent(query) + "&maxSuggestions=5&f=json";
+                const geocodeBase = config.referenceLayers?.geocodeService || "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer";
+                const url = geocodeBase + "/suggest?text=" + encodeURIComponent(query) + "&maxSuggestions=5&f=json";
                 const data = await fetchJson(url);
                 const suggestions = (data && data.suggestions) ? data.suggestions : [];
                 if (!suggestions.length) {
@@ -885,7 +894,7 @@ function setActiveTab(tabName) {
                             if (wizLocationInput) wizLocationInput.value = txt;
                             wizLocationResults.classList.add("hidden");
                             try {
-                                const gUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?SingleLine=" + encodeURIComponent(txt) + "&magicKey=" + encodeURIComponent(mk) + "&outSR=4326&f=json";
+                                const gUrl = (config.referenceLayers?.geocodeService || "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer") + "/findAddressCandidates?SingleLine=" + encodeURIComponent(txt) + "&magicKey=" + encodeURIComponent(mk) + "&outSR=4326&f=json";
                                 const gData = await fetchJson(gUrl);
                                 const c = gData && gData.candidates && gData.candidates[0];
                                 if (c && c.location) {
@@ -1776,7 +1785,28 @@ async function checkServiceStatusBackground() {
     const items = getConfiguredServices(config);
     const timeoutMs = config?.services?.timeoutMs ?? 8000;
 
-    // ✅ Parallel: all service pings are independent
+    // ── Try R2 metadata cache first (single fetch vs N pings) ──
+    const workerUrl = config?.metadataWorkerUrl;
+    if (workerUrl) {
+        try {
+            const cached = await fetchJsonWithTimeout(workerUrl + "/metadata", 6000, { noCache: true });
+            if (cached && cached.layers) {
+                for (const [url, meta] of Object.entries(cached.layers)) {
+                    serviceStatus.set(url, meta.status || "DOWN");
+                    if (meta.serviceDescription) {
+                        serviceStatus.set(url + "::desc", meta.serviceDescription);
+                    }
+                }
+                renderLayerToggles(map);
+                console.log(`[metadata-cache] Loaded ${Object.keys(cached.layers).length} layers from R2 (refreshed ${cached.lastRefresh})`);
+                return; // cache hit — skip direct pings
+            }
+        } catch (e) {
+            console.warn("[metadata-cache] R2 cache unavailable, falling back to direct pings:", e.message);
+        }
+    }
+
+    // ── Fallback: parallel direct pings ──
     const results = await Promise.allSettled(
         items.map(async (it) => {
             const pjsonUrl = normalizePjsonUrl(it.url);
@@ -2294,7 +2324,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         const COVERAGE_TIMEOUT_MS = config.report?.coverageTimeoutMs ?? 30000;
         
         try {
-            layerRef = new FeatureLayer({ url: t.url });
+            layerRef = queryEngine.getCachedLayer(t.url);
             await layerRef.load({ signal: abortSignal });
             
             if (isReportCanceled(myOp)) return null;
@@ -2331,6 +2361,20 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             }
         }
 
+        // Build an export query for report generation so we don't have to re-query
+        let exportQuery = null;
+        if (hasCoverage && layerRef) {
+            try {
+                exportQuery = layerRef.createQuery();
+                exportQuery.geometry = reportGeom;
+                exportQuery.spatialRelationship = "intersects";
+                exportQuery.outFields = ["*"];
+                exportQuery.returnGeometry = false;
+            } catch (e) {
+                exportQuery = null;
+            }
+        }
+
         const reportEntry = {
             title: t.title,
             url: t.url,
@@ -2338,7 +2382,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             count: 0, // Feature count computed during report generation
             rows: [],
             _layer: layerRef,
-            _exportQuery: null,
+            _exportQuery: exportQuery,
             fullRows: null
         };
 
@@ -2710,13 +2754,16 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         config = await fetchJson("./config.json");
         layerCfgByUrl = buildLayerCfgIndex(config);
 
+        // Resolve reference layer URLs from config
+        plssStateLayerUrl = config.referenceLayers?.plssStateBoundary || "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Public_Land_Survey_System_view/FeatureServer/0";
+
         setLoadingState("Initializing map...", 20);
 
         map = new EsriMap({ basemap: config.map?.basemap || "gray-vector" });
 
         // --- Always-on basemap overlay: BLM SMA (BLM Only) ---
         const smaBlmOnly = new TileLayer({
-            url: "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer",
+            url: config.referenceLayers?.smaBLMOnly || "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer",
             title: "SMA (BLM only)",
             opacity: 0.8,      // tweak to taste
             visible: true
@@ -2764,7 +2811,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // State boundaries on the overview minimap for geographic context
         const overviewStateBoundaries = new FeatureLayer({
-            url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0",
+            url: config.referenceLayers?.usaStatesGeneralized || "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0",
             title: "__overviewStates",
             outFields: [],
             labelsVisible: false,

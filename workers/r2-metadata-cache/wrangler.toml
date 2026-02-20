@@ -1,0 +1,21 @@
+name = "rmp-metadata-cache"
+main = "src/index.js"
+compatibility_date = "2025-12-01"
+
+# ── R2 bucket binding ──
+# Replace <YOUR_BUCKET_NAME> with the actual bucket name you created in the Cloudflare dashboard.
+[[r2_buckets]]
+binding = "METADATA_BUCKET"
+bucket_name = "<YOUR_BUCKET_NAME>"
+
+# ── Environment variables (set via `wrangler secret put`) ──
+# REFRESH_SECRET  – shared secret for the POST /refresh endpoint
+# GITHUB_REPO     – e.g. "AmateurProjects/RMP-Web-App"
+# GITHUB_BRANCH   – e.g. "main"
+# CONFIG_PATH     – e.g. "config.json"
+
+[vars]
+GITHUB_REPO   = "AmateurProjects/RMP-Web-App"
+GITHUB_BRANCH = "main"
+CONFIG_PATH   = "config.json"
+CORS_ORIGIN   = "*"

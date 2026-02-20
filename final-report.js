@@ -11,8 +11,9 @@
  *   const { buildFinalReportHtml, viewFinalReport, ... } = fr;
  */
 define([
-    "app/config-helpers"
-], function (configHelpers) {
+    "app/config-helpers",
+    "app/summary-engine"
+], function (configHelpers, summaryEngineModule) {
     "use strict";
 
     const {
@@ -28,6 +29,7 @@ define([
     let ImageryLayer; // Esri constructor
     let FeatureLayer; // Esri constructor
     let geometryEngine; // Esri geometryEngine
+    let summaryEngine; // summary-engine API
 
     // Cached final report HTML (module-private)
     let cachedFinalReportHtml = null;
@@ -94,8 +96,17 @@ define([
         const buckets = {};
         for (const key of Object.keys(REPORT_BUCKETS)) buckets[key] = [];
         buckets["uncategorized"] = [];
+        const cfgByUrl = S.layerCfgByUrl;
         for (const item of (items || [])) {
             const title = (item.title || "");
+            // 1. Prefer explicit category from config (O(1) lookup)
+            const cfgEntry = cfgByUrl?.get(String(item.url || ""));
+            const cfgCategory = cfgEntry?.cfg?.category;
+            if (cfgCategory && REPORT_BUCKETS[cfgCategory]) {
+                buckets[cfgCategory].push(item);
+                continue;
+            }
+            // 2. Fallback: regex title matching for layers without a category field
             let placed = false;
             for (const [bk, bd] of Object.entries(REPORT_BUCKETS)) {
                 if (bd.patterns.some(p => p.test(title))) { buckets[bk].push(item); placed = true; break; }
@@ -276,726 +287,12 @@ define([
     }
 
     // ────────────────────────────────────────────
-    // generateLayerAttributeSummary  (~900 lines)
+    // generateLayerAttributeSummary
+    // Delegates to summary-engine.js (plugin + generic auto-classifier).
     // ────────────────────────────────────────────
     function generateLayerAttributeSummary(item) {
-        if (!item) return "";
-
-        const title = (item.title || "").toLowerCase();
-        const displayTitle = escapeHtml(item.title || "Layer");
-        const headerLabel = `${displayTitle} Layer Highlights`;
-        const rows  = item.fullRows || item.rows || [];
-        if (!rows.length) return "";
-
-        let summaryHtml = "";
-
-        // ── BLM National Visual Resource Inventory Classes ──
-        if (title.includes("visual resource inventory") || title.includes("vri")) {
-            const vriClassCounts   = new Map();
-            const scenicRatingCounts = new Map();
-            for (const row of rows) {
-                const vriClass = row.VRI_CLASS_CODE || row.VRI_CLASS || row.CLASS_CODE || "";
-                if (vriClass) vriClassCounts.set(vriClass, (vriClassCounts.get(vriClass) || 0) + 1);
-                const scenicRating = row.SL_OVRL_RT || row.SCENIC_QUALITY || row.SQ_RATING || "";
-                if (scenicRating) scenicRatingCounts.set(scenicRating, (scenicRatingCounts.get(scenicRating) || 0) + 1);
-            }
-            if (vriClassCounts.size > 0 || scenicRatingCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (vriClassCounts.size > 0) {
-                    const classItems = Array.from(vriClassCounts.entries())
-                        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-                        .map(([cls, count]) => `${escapeHtml(cls)} (${count})`)
-                        .join(", ");
-                    summaryHtml += `<tr><td>VRI Class Codes</td><td>${classItems}</td></tr>`;
-                }
-                if (scenicRatingCounts.size > 0) {
-                    const ratingItems = Array.from(scenicRatingCounts.entries())
-                        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-                        .map(([rating, count]) => `${escapeHtml(rating)} (${count})`)
-                        .join(", ");
-                    summaryHtml += `<tr><td>Scenic Quality Ratings</td><td>${ratingItems}</td></tr>`;
-                }
-            }
-        }
-
-        // ── USFWS Critical Habitat ──
-        if (title.includes("critical habitat")) {
-            const speciesCounts = new Map();
-            const statusCounts  = new Map();
-            for (const row of rows) {
-                const species = row.COMNAME || row.SCINAME || row.SPECIES || "";
-                if (species) speciesCounts.set(species, (speciesCounts.get(species) || 0) + 1);
-                const status = row.STATUS || row.LISTING_STATUS || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-            }
-            if (speciesCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                const speciesItems = Array.from(speciesCounts.entries())
-                    .sort((a, b) => b[1] - a[1]).slice(0, 10)
-                    .map(([sp, count]) => `${escapeHtml(sp)} (${count})`)
-                    .join(", ");
-                summaryHtml += `<tr><td>Species</td><td>${speciesItems}${speciesCounts.size > 10 ? " ..." : ""}</td></tr>`;
-            }
-        }
-
-        // ── BLM Grazing Allotments ──
-        if (title.includes("grazing allotment")) {
-            const allotmentNames = new Set();
-            for (const row of rows) {
-                const name = row.ALLOT_NAME || row.ALLOTMENT_NAME || row.NAME || "";
-                if (name) allotmentNames.add(name);
-            }
-            if (allotmentNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                const names = Array.from(allotmentNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                summaryHtml += `<tr><td>Allotment Names</td><td>${names}${allotmentNames.size > 10 ? " ..." : ""}</td></tr>`;
-            }
-        }
-
-        // ── BLM Wilderness Areas / WSA ──
-        if (title.includes("wilderness")) {
-            const areaNames = new Set();
-            for (const row of rows) {
-                const name = row.NLCS_NAME || row.WSA_NAME || row.NAME || row.UNIT_NAME || "";
-                if (name) areaNames.add(name);
-            }
-            if (areaNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                const names = Array.from(areaNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                summaryHtml += `<tr><td>Area Names</td><td>${names}${areaNames.size > 10 ? " ..." : ""}</td></tr>`;
-            }
-        }
-
-        // ── BLM ACEC ──
-        if (title.includes("acec") || title.includes("critical environmental concern")) {
-            const acecNames = new Set();
-            for (const row of rows) {
-                const name = row.ACEC_NAME || row.NAME || row.UNIT_NAME || "";
-                if (name) acecNames.add(name);
-            }
-            if (acecNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                const names = Array.from(acecNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                summaryHtml += `<tr><td>ACEC Names</td><td>${names}${acecNames.size > 10 ? " ..." : ""}</td></tr>`;
-            }
-        }
-
-        // ── Wild Horse and Burro Areas ──
-        if (title.includes("wild horse") || title.includes("burro")) {
-            const herdNames = new Set();
-            for (const row of rows) {
-                const name = row.HA_NAME || row.HMA_NAME || row.NAME || "";
-                if (name) herdNames.add(name);
-            }
-            if (herdNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                const names = Array.from(herdNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                summaryHtml += `<tr><td>Herd Area Names</td><td>${names}${herdNames.size > 10 ? " ..." : ""}</td></tr>`;
-            }
-        }
-
-        // ── Ungulate Migration ──
-        if (title.includes("ungulate") || title.includes("migration")) {
-            const speciesCounts = new Map();
-            const useCounts     = new Map();
-            for (const row of rows) {
-                const species = row.SPECIES || row.COMMON_NAME || "";
-                if (species) speciesCounts.set(species, (speciesCounts.get(species) || 0) + 1);
-                const use = row.USE_TYPE || row.SEASON || row.MOVEMENT_TYPE || "";
-                if (use) useCounts.set(use, (useCounts.get(use) || 0) + 1);
-            }
-            if (speciesCounts.size > 0 || useCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (speciesCounts.size > 0) {
-                    const speciesItems = Array.from(speciesCounts.entries())
-                        .map(([sp, count]) => `${escapeHtml(sp)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Species</td><td>${speciesItems}</td></tr>`;
-                }
-                if (useCounts.size > 0) {
-                    const useItems = Array.from(useCounts.entries())
-                        .map(([u, count]) => `${escapeHtml(u)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Use Type / Season</td><td>${useItems}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM MLRS LUA ROW (Rights of Way) ──
-        if (title.includes("mlrs") && (title.includes("row") || title.includes("lua"))) {
-            const authTypes    = new Map();
-            const statusCounts = new Map();
-            const caseNumbers  = new Set();
-            for (const row of rows) {
-                const authType = row.AUTH_TYPE || row.AUTHORIZATION_TYPE || row.TYPE || "";
-                if (authType) authTypes.set(authType, (authTypes.get(authType) || 0) + 1);
-                const status = row.CASE_STATUS || row.STATUS || row.AUTH_STATUS || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-                const caseNo = row.CASE_NR || row.SERIAL_NR || row.CASE_NUMBER || "";
-                if (caseNo) caseNumbers.add(caseNo);
-            }
-            if (authTypes.size > 0 || statusCounts.size > 0 || caseNumbers.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (authTypes.size > 0) {
-                    const items = Array.from(authTypes.entries())
-                        .map(([t, count]) => `${escapeHtml(t)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Authorization Types</td><td>${items}</td></tr>`;
-                }
-                if (statusCounts.size > 0) {
-                    const items = Array.from(statusCounts.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
-                }
-                if (caseNumbers.size > 0 && caseNumbers.size <= 10) {
-                    const items = Array.from(caseNumbers).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Case Numbers</td><td>${items}</td></tr>`;
-                } else if (caseNumbers.size > 10) {
-                    summaryHtml += `<tr><td>Case Numbers</td><td>${caseNumbers.size} cases</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM National Land Use Plans ──
-        if (title.includes("land use plan") || title.includes("revision") && title.includes("development")) {
-            const planNames   = new Set();
-            const statusCounts = new Map();
-            const epLinks     = new Set();
-            const nepaNumbers = new Set();
-            const rodYears    = new Set();
-            for (const row of rows) {
-                const name = row.LUPName || row.LUPNAME || row.PLAN_NAME || row.PLAN_NM ||
-                             row.RMP_NAME || row.NAME || row.LUP_NAME || "";
-                if (name) planNames.add(name);
-                const status = row.Status || row.STATUS || row.PLAN_STATUS ||
-                               row.APPROVAL_STATUS || row.LUP_STATUS || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-                const epLink = row.ePLink || row.EPLINK || row.EP_LINK || row.EPLANNING_LINK || "";
-                if (epLink) epLinks.add(epLink);
-                const nepaNum = row.NEPAnum || row.NEPANUM || row.NEPA_NUM || row.NEPA_NUMBER || "";
-                if (nepaNum) nepaNumbers.add(nepaNum);
-                const rodYear = row.RODyear || row.RODYEAR || row.ROD_YEAR || row.ROD_YR || "";
-                if (rodYear) rodYears.add(String(rodYear));
-            }
-            if (planNames.size > 0 || statusCounts.size > 0 || epLinks.size > 0 || nepaNumbers.size > 0 || rodYears.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (planNames.size > 0) {
-                    const names = Array.from(planNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>LUP Name</td><td>${names}${planNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (statusCounts.size > 0) {
-                    const items = Array.from(statusCounts.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
-                }
-                if (epLinks.size > 0) {
-                    const links = Array.from(epLinks).slice(0, 5).map(link => {
-                        const escaped = escapeHtml(link);
-                        return `<a href="${escaped}" target="_blank">${escaped.length > 50 ? escaped.substring(0, 50) + "..." : escaped}</a>`;
-                    }).join("<br>");
-                    summaryHtml += `<tr><td>ePlanning Link</td><td>${links}${epLinks.size > 5 ? "<br>..." : ""}</td></tr>`;
-                }
-                if (nepaNumbers.size > 0) {
-                    const nums = Array.from(nepaNumbers).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>NEPA Number</td><td>${nums}${nepaNumbers.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (rodYears.size > 0) {
-                    const years = Array.from(rodYears).sort().map(y => escapeHtml(y)).join(", ");
-                    summaryHtml += `<tr><td>ROD Year</td><td>${years}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM National Conservation Areas (NLCS) ──
-        if (title.includes("nlcs") || title.includes("conservation area") || title.includes("national monument")) {
-            const areaNames    = new Set();
-            const designations = new Map();
-            for (const row of rows) {
-                const name = row.NLCS_NAME || row.NCA_NAME || row.NM_NAME || row.NAME || row.UNIT_NAME || "";
-                if (name) areaNames.add(name);
-                const desig = row.DESIGNATION || row.NLCS_TYPE || row.TYPE || "";
-                if (desig) designations.set(desig, (designations.get(desig) || 0) + 1);
-            }
-            if (areaNames.size > 0 || designations.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (areaNames.size > 0) {
-                    const names = Array.from(areaNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Area Names</td><td>${names}${areaNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (designations.size > 0) {
-                    const items = Array.from(designations.entries())
-                        .map(([d, count]) => `${escapeHtml(d)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Designation Type</td><td>${items}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM Locatable Mineral Allocations ──
-        if (title.includes("locatable") || title.includes("mineral allocation")) {
-            const allocations  = new Map();
-            const statusCounts = new Map();
-            for (const row of rows) {
-                const alloc = row.LOC_ALLOC || row.ALLOCATION || row.ALLOC_TYPE || row.MINERAL_ALLOCATION || "";
-                if (alloc) allocations.set(alloc, (allocations.get(alloc) || 0) + 1);
-                const status = row.STATUS || row.ALLOC_STATUS || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-            }
-            if (allocations.size > 0 || statusCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (allocations.size > 0) {
-                    const items = Array.from(allocations.entries())
-                        .map(([a, count]) => `${escapeHtml(a)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Allocation Types</td><td>${items}</td></tr>`;
-                }
-                if (statusCounts.size > 0) {
-                    const items = Array.from(statusCounts.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM Timber Allocations ──
-        if (title.includes("timber")) {
-            const allocations  = new Map();
-            const statusCounts = new Map();
-            for (const row of rows) {
-                const alloc = row.TIMBER_ALLOC || row.ALLOCATION || row.ALLOC_TYPE || row.HARVEST_TYPE || "";
-                if (alloc) allocations.set(alloc, (allocations.get(alloc) || 0) + 1);
-                const status = row.STATUS || row.ALLOC_STATUS || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-            }
-            if (allocations.size > 0 || statusCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (allocations.size > 0) {
-                    const items = Array.from(allocations.entries())
-                        .map(([a, count]) => `${escapeHtml(a)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Allocation Types</td><td>${items}</td></tr>`;
-                }
-                if (statusCounts.size > 0) {
-                    const items = Array.from(statusCounts.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
-                }
-            }
-        }
-
-        // ── USFWS Regions ──
-        if (title.includes("usfws") && title.includes("region")) {
-            const regionNames = new Set();
-            for (const row of rows) {
-                const region = row.REGNAME || row.REGION_NAME || row.REGION || row.NAME || "";
-                if (region) regionNames.add(region);
-            }
-            if (regionNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                const names = Array.from(regionNames).map(n => escapeHtml(n)).join(", ");
-                summaryHtml += `<tr><td>Regions</td><td>${names}</td></tr>`;
-            }
-        }
-
-        // ── BLM Grazing Pasture ──
-        if (title.includes("grazing pasture") || title.includes("pasture polygon")) {
-            const pastureNames   = new Set();
-            const allotmentNames = new Set();
-            for (const row of rows) {
-                const pasture = row.PASTURE_NAME || row.PAST_NAME || row.NAME || "";
-                if (pasture) pastureNames.add(pasture);
-                const allotment = row.ALLOT_NAME || row.ALLOTMENT_NAME || "";
-                if (allotment) allotmentNames.add(allotment);
-            }
-            if (pastureNames.size > 0 || allotmentNames.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (pastureNames.size > 0) {
-                    const names = Array.from(pastureNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Pasture Names</td><td>${names}${pastureNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (allotmentNames.size > 0) {
-                    const names = Array.from(allotmentNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Allotment Names</td><td>${names}${allotmentNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM Oil and Gas Leases ──
-        if (title.includes("oil") && title.includes("gas")) {
-            const statusCounts   = new Map();
-            const typeCounts     = new Map();
-            const caseNumbers    = new Set();
-            const lesseeNames    = new Set();
-            const commodityCounts = new Map();
-            for (const row of rows) {
-                const status = row.CASE_STATUS || row.LEASE_STATUS || row.STATUS ||
-                               row.CASE_STAT || row.STAT || row.DISP_STATUS ||
-                               row.CASE_TYP || row.AUTH_STAT || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-                const type = row.LEASE_TYPE || row.AUTH_TYPE || row.TYPE ||
-                             row.CASE_TYPE || row.TYP || row.DISP_TYPE ||
-                             row.AUTH_TYP || row.CASETYPE || "";
-                if (type) typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
-                const caseNo = row.CASE_NR || row.SERIAL_NR || row.LEASE_NUMBER ||
-                               row.CASE_NO || row.SERIAL_NO || row.CASENR ||
-                               row.SERIALNR || row.CASE_ID || row.AUTH_NR || "";
-                if (caseNo) caseNumbers.add(caseNo);
-                const lessee = row.HOLDER_NAME || row.LESSEE || row.LESSEE_NAME ||
-                               row.HOLDER || row.COMPANY || row.OPERATOR ||
-                               row.CUSTOMER_NAME || row.CUST_NAME || "";
-                if (lessee) lesseeNames.add(lessee);
-                const commodity = row.COMMODITY || row.CMDTY || row.RESOURCE ||
-                                  row.MINERAL || row.PRODUCT || "";
-                if (commodity) commodityCounts.set(commodity, (commodityCounts.get(commodity) || 0) + 1);
-            }
-            if (statusCounts.size > 0 || typeCounts.size > 0 || caseNumbers.size > 0 ||
-                lesseeNames.size > 0 || commodityCounts.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (statusCounts.size > 0) {
-                    const items = Array.from(statusCounts.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Lease Status</td><td>${items}</td></tr>`;
-                }
-                if (typeCounts.size > 0) {
-                    const items = Array.from(typeCounts.entries())
-                        .map(([t, count]) => `${escapeHtml(t)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Lease Type</td><td>${items}</td></tr>`;
-                }
-                if (commodityCounts.size > 0) {
-                    const items = Array.from(commodityCounts.entries())
-                        .map(([c, count]) => `${escapeHtml(c)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Commodity</td><td>${items}</td></tr>`;
-                }
-                if (lesseeNames.size > 0) {
-                    const names = Array.from(lesseeNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Lessee/Holder</td><td>${names}${lesseeNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (caseNumbers.size > 0 && caseNumbers.size <= 10) {
-                    const items = Array.from(caseNumbers).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Case/Serial Numbers</td><td>${items}</td></tr>`;
-                } else if (caseNumbers.size > 10) {
-                    summaryHtml += `<tr><td>Case/Serial Numbers</td><td>${caseNumbers.size} leases</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM National Recreation Sites ──
-        if (title.includes("recreation site") || title.includes("recreation_site")) {
-            const siteNames     = new Set();
-            const siteTypes     = new Map();
-            const feeCounts     = new Map();
-            const activityTypes = new Set();
-            for (const row of rows) {
-                const name = row.SITE_NAME || row.REC_SITE_NAME || row.NAME ||
-                             row.SITENAME || row.SITE_NM || row.REC_NAME || "";
-                if (name) siteNames.add(name);
-                const type = row.SITE_TYPE || row.REC_SITE_TYPE || row.TYPE ||
-                             row.SITETYPE || row.REC_TYPE || row.FACILITY_TYPE || "";
-                if (type) siteTypes.set(type, (siteTypes.get(type) || 0) + 1);
-                const fee = row.FEE_YN || row.FEE || row.FEE_STATUS ||
-                            row.USER_FEE || row.FEES || "";
-                if (fee) feeCounts.set(fee, (feeCounts.get(fee) || 0) + 1);
-                const activity = row.ACTIVITIES || row.ACTIVITY || row.REC_ACTIVITY ||
-                                 row.PRIMARY_ACTIVITY || row.USE_TYPE || "";
-                if (activity) activityTypes.add(activity);
-            }
-            if (siteNames.size > 0 || siteTypes.size > 0 || feeCounts.size > 0 || activityTypes.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (siteNames.size > 0) {
-                    const names = Array.from(siteNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Site Names</td><td>${names}${siteNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (siteTypes.size > 0) {
-                    const items = Array.from(siteTypes.entries())
-                        .map(([t, count]) => `${escapeHtml(t)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Site Types</td><td>${items}</td></tr>`;
-                }
-                if (feeCounts.size > 0) {
-                    const items = Array.from(feeCounts.entries())
-                        .map(([f, count]) => `${escapeHtml(f)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Fee Status</td><td>${items}</td></tr>`;
-                }
-                if (activityTypes.size > 0) {
-                    const activities = Array.from(activityTypes).slice(0, 10).map(a => escapeHtml(a)).join(", ");
-                    summaryHtml += `<tr><td>Activities</td><td>${activities}${activityTypes.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM LWCF ──
-        if (title.includes("lwcf") || title.includes("land and water conservation") || title.includes("conservation fund")) {
-            const projectNames = new Set();
-            const statusCounts = new Map();
-            const purposeCounts = new Map();
-            const fiscalYears   = new Set();
-            for (const row of rows) {
-                const name = row.PROJECT_NAME || row.PROJ_NAME || row.NAME ||
-                             row.TRACT_NAME || row.LWCF_NAME || row.UNIT_NAME || "";
-                if (name) projectNames.add(name);
-                const status = row.STATUS || row.PROJ_STATUS || row.PROJECT_STATUS ||
-                               row.LWCF_STATUS || row.ACQ_STATUS || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-                const purpose = row.PURPOSE || row.LWCF_PURPOSE || row.USE ||
-                                row.PROJECT_TYPE || row.PROJ_TYPE || row.ACQ_TYPE || "";
-                if (purpose) purposeCounts.set(purpose, (purposeCounts.get(purpose) || 0) + 1);
-                const fy = row.FISCAL_YEAR || row.FY || row.YEAR || row.ACQ_YEAR || "";
-                if (fy) fiscalYears.add(fy);
-            }
-            if (projectNames.size > 0 || statusCounts.size > 0 || purposeCounts.size > 0 || fiscalYears.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (projectNames.size > 0) {
-                    const names = Array.from(projectNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Project/Tract Names</td><td>${names}${projectNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (purposeCounts.size > 0) {
-                    const items = Array.from(purposeCounts.entries())
-                        .map(([p, count]) => `${escapeHtml(p)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Purpose/Type</td><td>${items}</td></tr>`;
-                }
-                if (statusCounts.size > 0) {
-                    const items = Array.from(statusCounts.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
-                }
-                if (fiscalYears.size > 0) {
-                    const years = Array.from(fiscalYears).sort().slice(0, 10).map(y => escapeHtml(String(y))).join(", ");
-                    summaryHtml += `<tr><td>Fiscal Years</td><td>${years}${fiscalYears.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM ePlanning Projects ──
-        if (title.includes("eplanning") || title.includes("epl_comment") || title.includes("nepa")) {
-            const projectNames = new Set();
-            const statusCounts = new Map();
-            const typeCounts   = new Map();
-            const nepaNumbers  = new Set();
-            for (const row of rows) {
-                const name = row.PROJECT_NAME || row.PROJ_NAME || row.NAME || "";
-                if (name) projectNames.add(name);
-                const status = row.NEPA_STATUS || row.PROJECT_STATUS || row.STATUS || "";
-                if (status) statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-                const type = row.PROJECT_TYPE || row.NEPA_TYPE || row.TYPE || "";
-                if (type) typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
-                const nepaNo = row.NEPA_NUMBER || row.NEPA_NO || row.DOI_NUMBER || "";
-                if (nepaNo) nepaNumbers.add(nepaNo);
-            }
-            if (projectNames.size > 0 || statusCounts.size > 0 || typeCounts.size > 0 || nepaNumbers.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (projectNames.size > 0) {
-                    const names = Array.from(projectNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Project Names</td><td>${names}${projectNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (typeCounts.size > 0) {
-                    const items = Array.from(typeCounts.entries())
-                        .map(([t, count]) => `${escapeHtml(t)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Project Type</td><td>${items}</td></tr>`;
-                }
-                if (statusCounts.size > 0) {
-                    const items = Array.from(statusCounts.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>NEPA Status</td><td>${items}</td></tr>`;
-                }
-                if (nepaNumbers.size > 0 && nepaNumbers.size <= 10) {
-                    const items = Array.from(nepaNumbers).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>NEPA Numbers</td><td>${items}</td></tr>`;
-                } else if (nepaNumbers.size > 10) {
-                    summaryHtml += `<tr><td>NEPA Numbers</td><td>${nepaNumbers.size} projects</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM Fire Perimeters ──
-        if (title.includes("fire perimeter")) {
-            const fireNames      = new Set();
-            const causeCounts    = new Map();
-            const discoveryYears = new Map();
-            const adminStates    = new Map();
-            const totalAcres     = [];
-            const complexNames   = new Set();
-            for (const row of rows) {
-                const name = row.INCDNT_NM || "";
-                if (name) fireNames.add(name);
-                const cause = row.FIRE_CAUSE_NM || "";
-                if (cause) causeCounts.set(cause, (causeCounts.get(cause) || 0) + 1);
-                const yr = row.FIRE_DSCVR_CY || "";
-                if (yr) discoveryYears.set(String(yr), (discoveryYears.get(String(yr)) || 0) + 1);
-                const adminSt = row.ADMIN_ST || "";
-                if (adminSt) adminStates.set(adminSt, (adminStates.get(adminSt) || 0) + 1);
-                const acres = parseFloat(row.GIS_ACRES || row.TOTAL_RPT_ACRES_NR || 0);
-                if (acres > 0) totalAcres.push(acres);
-                const cmplx = row.CMPLX_NM || "";
-                if (cmplx) complexNames.add(cmplx);
-            }
-            if (fireNames.size > 0 || causeCounts.size > 0 || discoveryYears.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (fireNames.size > 0) {
-                    const names = Array.from(fireNames).slice(0, 15).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Fire Names</td><td>${names}${fireNames.size > 15 ? " ..." : ""}</td></tr>`;
-                }
-                if (causeCounts.size > 0) {
-                    const items = Array.from(causeCounts.entries())
-                        .map(([c, count]) => `${escapeHtml(c)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Fire Cause</td><td>${items}</td></tr>`;
-                }
-                if (discoveryYears.size > 0) {
-                    const sorted = Array.from(discoveryYears.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-                    const items = sorted.slice(0, 15)
-                        .map(([y, count]) => `${escapeHtml(y)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Discovery Years</td><td>${items}${sorted.length > 15 ? " ..." : ""}</td></tr>`;
-                }
-                if (adminStates.size > 0) {
-                    const items = Array.from(adminStates.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Admin State</td><td>${items}</td></tr>`;
-                }
-                if (totalAcres.length > 0) {
-                    const sum = totalAcres.reduce((a, b) => a + b, 0);
-                    summaryHtml += `<tr><td>Total Burned Acres</td><td>${formatNumber(sum, 1)} (${totalAcres.length} fires)</td></tr>`;
-                }
-                if (complexNames.size > 0) {
-                    const names = Array.from(complexNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Fire Complexes</td><td>${names}${complexNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-            }
-        }
-
-        // ── BLM Administrative Units ──
-        if (title.includes("administrative unit") || title.includes("admin unit") || title.includes("adminunit")) {
-            const unitNames   = new Set();
-            const orgTypes    = new Map();
-            const adminStates = new Map();
-            const parentNames = new Set();
-            const stateUrls   = new Set();
-            const cityLabels  = new Set();
-            for (const row of rows) {
-                const name = row.ADMU_NAME || row.Label_Full_Name || row.Label || "";
-                if (name) unitNames.add(name);
-                const orgType = row.BLM_ORG_TYPE || "";
-                if (orgType) orgTypes.set(orgType, (orgTypes.get(orgType) || 0) + 1);
-                const adminSt = row.ADMIN_ST || "";
-                if (adminSt) adminStates.set(adminSt, (adminStates.get(adminSt) || 0) + 1);
-                const parent = row.PARENT_NAME || "";
-                if (parent) parentNames.add(parent);
-                const stUrl = row.ADMU_ST_URL || "";
-                if (stUrl) stateUrls.add(stUrl);
-                const city = row.City_Label || "";
-                if (city) cityLabels.add(city);
-            }
-            if (unitNames.size > 0 || orgTypes.size > 0 || adminStates.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (unitNames.size > 0) {
-                    const names = Array.from(unitNames).slice(0, 15).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Unit Names</td><td>${names}${unitNames.size > 15 ? " ..." : ""}</td></tr>`;
-                }
-                if (orgTypes.size > 0) {
-                    const items = Array.from(orgTypes.entries())
-                        .map(([t, count]) => `${escapeHtml(t)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Organization Type</td><td>${items}</td></tr>`;
-                }
-                if (adminStates.size > 0) {
-                    const items = Array.from(adminStates.entries())
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Admin State</td><td>${items}</td></tr>`;
-                }
-                if (parentNames.size > 0) {
-                    const names = Array.from(parentNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Parent Office</td><td>${names}${parentNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (cityLabels.size > 0) {
-                    const cities = Array.from(cityLabels).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Office Location</td><td>${cities}${cityLabels.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (stateUrls.size > 0) {
-                    const urls = Array.from(stateUrls).slice(0, 5).map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join("<br/>");
-                    summaryHtml += `<tr><td>State Office URL</td><td>${urls}</td></tr>`;
-                }
-            }
-        }
-
-        // ── Generic fallback ──
-        if (!summaryHtml && rows.length > 0) {
-            const genericNames  = new Set();
-            const genericStatus = new Map();
-            const genericTypes  = new Map();
-            const genericUrls   = new Map(); // fieldLabel → Set of URLs
-            const namePatterns   = /^(.*_)?(NAME|NM|TITLE|LABEL|DESCRIPTION|DESC)(_.*)?$/i;
-            const statusPatterns = /^(.*_)?(STATUS|STAT|STATE|CONDITION)(_.*)?$/i;
-            const typePatterns   = /^(.*_)?(TYPE|TYP|CLASS|CATEGORY|CAT|KIND)(_.*)?$/i;
-            const urlPattern     = /^https?:\/\//i;
-            for (const row of rows) {
-                for (const [key, val] of Object.entries(row)) {
-                    if (val == null || val === "" || typeof val === "number") continue;
-                    const strVal = String(val).trim();
-                    if (!strVal || strVal.length > 500) continue;
-                    if (urlPattern.test(strVal)) {
-                        const label = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                        if (!genericUrls.has(label)) genericUrls.set(label, new Set());
-                        genericUrls.get(label).add(strVal);
-                    } else if (strVal.length <= 200) {
-                        if (namePatterns.test(key)) genericNames.add(strVal);
-                        else if (statusPatterns.test(key)) genericStatus.set(strVal, (genericStatus.get(strVal) || 0) + 1);
-                        else if (typePatterns.test(key)) genericTypes.set(strVal, (genericTypes.get(strVal) || 0) + 1);
-                    }
-                }
-            }
-            if (genericNames.size > 0 || genericStatus.size > 0 || genericTypes.size > 0 || genericUrls.size > 0) {
-                summaryHtml += `<tr><td colspan="2" style="padding-top:12px;"><b>${headerLabel}</b></td></tr>`;
-                if (genericNames.size > 0) {
-                    const names = Array.from(genericNames).slice(0, 10).map(n => escapeHtml(n)).join(", ");
-                    summaryHtml += `<tr><td>Names</td><td>${names}${genericNames.size > 10 ? " ..." : ""}</td></tr>`;
-                }
-                if (genericTypes.size > 0) {
-                    const items = Array.from(genericTypes.entries()).slice(0, 10)
-                        .map(([t, count]) => `${escapeHtml(t)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Types</td><td>${items}</td></tr>`;
-                }
-                if (genericStatus.size > 0) {
-                    const items = Array.from(genericStatus.entries()).slice(0, 10)
-                        .map(([s, count]) => `${escapeHtml(s)} (${count})`).join(", ");
-                    summaryHtml += `<tr><td>Status</td><td>${items}</td></tr>`;
-                }
-                if (genericUrls.size > 0) {
-                    for (const [label, urlSet] of genericUrls) {
-                        const links = Array.from(urlSet).slice(0, 5)
-                            .map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`)
-                            .join("<br/>");
-                        summaryHtml += `<tr><td>${escapeHtml(label)}</td><td>${links}${urlSet.size > 5 ? "<br/>..." : ""}</td></tr>`;
-                    }
-                }
-            }
-        }
-
-        // ── Append any URL/link values found across ALL rows (for non-generic sections too) ──
-        if (summaryHtml && rows.length > 0) {
-            const urlPattern = /^https?:\/\//i;
-            const collectedUrls = new Map(); // fieldLabel → Set of URLs
-            for (const row of rows) {
-                for (const [key, val] of Object.entries(row)) {
-                    if (val == null || val === "") continue;
-                    const strVal = String(val).trim();
-                    if (!strVal || strVal.length > 500) continue;
-                    if (urlPattern.test(strVal)) {
-                        const label = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                        if (!collectedUrls.has(label)) collectedUrls.set(label, new Set());
-                        collectedUrls.get(label).add(strVal);
-                    }
-                }
-            }
-            // Only append if there are URLs not already shown (check if summaryHtml already contains them)
-            if (collectedUrls.size > 0) {
-                let urlHtml = "";
-                for (const [label, urlSet] of collectedUrls) {
-                    // Skip if these URLs are already present in the summary
-                    const firstUrl = Array.from(urlSet)[0];
-                    if (summaryHtml.includes(escapeHtml(firstUrl))) continue;
-                    const links = Array.from(urlSet).slice(0, 5)
-                        .map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`)
-                        .join("<br/>");
-                    urlHtml += `<tr><td>${escapeHtml(label)}</td><td>${links}${urlSet.size > 5 ? "<br/>..." : ""}</td></tr>`;
-                }
-                if (urlHtml) {
-                    summaryHtml += `<tr><td colspan="2" style="padding-top:8px;"><b>Links</b></td></tr>`;
-                    summaryHtml += urlHtml;
-                }
-            }
-        }
-
-        return summaryHtml;
+        if (summaryEngine) return summaryEngine.generate(item);
+        return "";
     }
 
     // ────────────────────────────────────────────
@@ -1008,12 +305,21 @@ define([
         const layersWithHits = reportItems.filter(function (x) { return (x.count || 0) > 0; });
         const totalHits = reportItems.reduce(function (s, x) { return s + (x.count || 0); }, 0);
 
-        // Categorize findings
+        // Categorize findings — use config category field first, title regex fallback
         var specialDesignations = [];
         var environmentalConcerns = [];
         var existingAuthorizations = [];
         var landUsePlans = [];
         var landStatus = [];
+
+        // Map config category values to the local bucket arrays
+        var CATEGORY_MAP = {
+            "special":        specialDesignations,
+            "environmental":  environmentalConcerns,
+            "authorizations": existingAuthorizations,
+            "land-use":       landUsePlans,
+            "land-status":    landStatus
+        };
 
         for (var idx = 0; idx < layersWithHits.length; idx++) {
             var item = layersWithHits[idx];
@@ -1021,7 +327,19 @@ define([
             var count = item.count || 0;
             var entry = { name: item.title, count: count };
 
-            if (title.includes("acec") || title.includes("critical environmental concern")) {
+            // Try config-level category first
+            var catBucket = null;
+            if (S && S.layerCfgByUrl && item.url) {
+                var cfgEntry = S.layerCfgByUrl.get(item.url);
+                var cat = cfgEntry && (cfgEntry.cfg || cfgEntry).category;
+                if (cat && CATEGORY_MAP[cat]) {
+                    catBucket = CATEGORY_MAP[cat];
+                }
+            }
+
+            if (catBucket) {
+                catBucket.push(entry);
+            } else if (title.includes("acec") || title.includes("critical environmental concern")) {
                 specialDesignations.push(entry);
             } else if (title.includes("wilderness")) {
                 specialDesignations.push(entry);
@@ -2609,7 +1927,7 @@ define([
     function _getStateBoundaryLayer() {
         if (!_stateBoundaryLayer) {
             _stateBoundaryLayer = new FeatureLayer({
-                url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0",
+                url: S.config?.referenceLayers?.usaStatesGeneralized || "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0",
                 title: "__reportStateBoundaries",
                 outFields: [],
                 labelsVisible: true,
@@ -2642,7 +1960,7 @@ define([
     function _getCountyBoundaryLayer() {
         if (!_countyBoundaryLayer) {
             _countyBoundaryLayer = new FeatureLayer({
-                url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Counties_Generalized_Boundaries/FeatureServer/0",
+                url: S.config?.referenceLayers?.usaCountiesGeneralized || "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Counties_Generalized_Boundaries/FeatureServer/0",
                 title: "__reportCountyBoundaries",
                 outFields: [],
                 labelsVisible: true,
@@ -4160,12 +3478,12 @@ ${getA11yWidgetBlock()}
                 try {
                     // Switch to imagery basemap
                     view.map.basemap = imageryBasemapId;
-                    await new Promise(r => setTimeout(r, 1500));
-                    await waitForViewStationary(2500);
+                    await new Promise(r => setTimeout(r, 500));
+                    await waitForViewStationary(800);
 
                     if (fixedExtent) {
                         await view.goTo(fixedExtent, { animate: false });
-                        await waitForViewStationary(1500);
+                        await waitForViewStationary(800);
                     }
 
                     // Process each layer
@@ -4200,7 +3518,7 @@ ${getA11yWidgetBlock()}
                                     await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
                                 }
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
-                                await waitForViewStationary(1500);
+                                await waitForViewStationary(800);
                                 // Refresh mask so outer ring matches the current view extent
                                 updateAoiMask(true);
                                 await waitForTabVisible(5000);
@@ -4276,25 +3594,24 @@ ${getA11yWidgetBlock()}
                             await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                             await waitForTabVisible(5000);
 
+                            // Fire coverage stats in parallel with screenshot capture
+                            const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            const coveragePromise = isPolygonLayer
+                                ? computeLayerCoverageStats(item, selectionGeom).catch(function () { return null; })
+                                : Promise.resolve(null);
+
                             const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
 
                             // Clean up temp layer
                             view.map.remove(tempLayer);
 
-                            // Calculate coverage stats
-                            const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            // Collect deferred coverage result
                             let acresCovered = 0;
                             let pctCovered = 0;
-                            if (isPolygonLayer) {
-                                try {
-                                    const stats = await computeLayerCoverageStats(item, selectionGeom);
-                                    if (stats) {
-                                        acresCovered = stats.acresCovered || 0;
-                                        pctCovered = stats.pctAoiCovered || 0;
-                                    }
-                                } catch (e) {
-                                    // Stats failed, skip
-                                }
+                            const covStats = await coveragePromise;
+                            if (covStats) {
+                                acresCovered = covStats.acresCovered || 0;
+                                pctCovered = covStats.pctAoiCovered || 0;
                             }
 
                             const narrativeHtml = buildLayerNarrative({
@@ -4562,8 +3879,8 @@ ${getA11yWidgetBlock()}
 
                 try {
                     view.map.basemap = imageryBasemapId;
-                    await new Promise(r => setTimeout(r, 2000));
-                    await waitForViewStationary(3500);
+                    await new Promise(r => setTimeout(r, 500));
+                    await waitForViewStationary(800);
                 } catch (e) {
                     console.warn("Failed to switch to imagery basemap:", e);
                 }
@@ -4610,7 +3927,7 @@ ${getA11yWidgetBlock()}
                             else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
                             // Re-check that layer has finished rendering at the new extent
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
-                            await waitForViewStationary(1500);
+                            await waitForViewStationary(800);
                             // Refresh mask so outer ring matches the current view extent
                             updateAoiMask(true);
 
@@ -4697,23 +4014,26 @@ ${getA11yWidgetBlock()}
                         else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
                         // Re-check that layer has finished rendering at the new extent
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
-                        await waitForViewStationary(1500);
+                        await waitForViewStationary(800);
                         // Refresh mask so outer ring matches the current view extent
                         updateAoiMask(true);
+
+                        // Fire coverage stats in parallel with screenshot capture
+                        const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                        const coveragePromise = isPolygonLayer
+                            ? computeLayerCoverageStats(item, selectionGeom).catch(function () { return null; })
+                            : Promise.resolve(null);
 
                         const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                         if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
 
-                        // Determine geometry class for this layer
-                        const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
-
-                        // Only compute coverage stats for polygon layers
+                        // Collect deferred coverage result
                         let acresCovered = 0;
                         let pctCovered   = 0;
-                        if (isPolygonLayer) {
-                            const cov = await computeLayerCoverageStats(item, selectionGeom);
-                            acresCovered = cov ? cov.acresCovered : 0;
-                            pctCovered   = cov ? cov.pctAoiCovered : 0;
+                        const covStats = await coveragePromise;
+                        if (covStats) {
+                            acresCovered = covStats.acresCovered || 0;
+                            pctCovered   = covStats.pctAoiCovered || 0;
                         }
 
                         const layerAttrSummary = generateLayerAttributeSummary(item);
@@ -5029,12 +4349,12 @@ ${getA11yWidgetBlock()}
                 try {
                     // Switch to imagery basemap
                     view.map.basemap = imageryBasemapId;
-                    await new Promise(r => setTimeout(r, 1500));
-                    await waitForViewStationary(2500);
+                    await new Promise(r => setTimeout(r, 500));
+                    await waitForViewStationary(800);
 
                     if (fixedExtent) {
                         await view.goTo(fixedExtent, { animate: false });
-                        await waitForViewStationary(1500);
+                        await waitForViewStationary(800);
                     }
 
                     // Process each layer
@@ -5065,7 +4385,7 @@ ${getA11yWidgetBlock()}
                                     await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
                                 }
                                 await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
-                                await waitForViewStationary(1500);
+                                await waitForViewStationary(800);
                                 // Refresh mask so outer ring matches the current view extent
                                 updateAoiMask(true);
                                 await waitForTabVisible(5000);
@@ -5154,6 +4474,12 @@ ${getA11yWidgetBlock()}
 
                             await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
 
+                            // Fire coverage stats in parallel with screenshot capture
+                            const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            const coveragePromise = isPolygonLayer
+                                ? computeLayerCoverageStats(item, selectionGeom).catch(function () { return null; })
+                                : Promise.resolve(null);
+
                             const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                             const dataUrl = ss || null;
 
@@ -5161,20 +4487,13 @@ ${getA11yWidgetBlock()}
                             view.map.remove(tempLayer);
                             mapsGenerated++;
 
-                            // Calculate coverage stats
-                            const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            // Collect deferred coverage result
                             let acresCovered = 0;
                             let pctCovered = 0;
-                            if (isPolygonLayer) {
-                                try {
-                                    const stats = await computeLayerCoverageStats(item, selectionGeom);
-                                    if (stats) {
-                                        acresCovered = stats.acresCovered || 0;
-                                        pctCovered = stats.pctAoiCovered || 0;
-                                    }
-                                } catch (e) {
-                                    // Stats failed, skip
-                                }
+                            const covStats = await coveragePromise;
+                            if (covStats) {
+                                acresCovered = covStats.acresCovered || 0;
+                                pctCovered = covStats.pctAoiCovered || 0;
                             }
 
                             // Build per-feature table
@@ -5522,6 +4841,9 @@ ${getA11yWidgetBlock()}
         geometryEngine = deps.geometryEngine;
         _setStatus     = deps.setStatus || _setStatus;
         finalReportStatus = deps.finalReportStatus || null;
+
+        // Initialize summary engine (loaded as AMD dep)
+        summaryEngine  = summaryEngineModule.init(state);
 
         return {
             // Pure helpers
