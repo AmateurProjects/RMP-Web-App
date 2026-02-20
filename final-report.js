@@ -1769,6 +1769,8 @@ define([
                     const pjson = await fetchJsonWithTimeout(pjsonUrl, 5000);
                     const desc = pickServiceDescription(pjson) || "";
                     if (desc) S.serviceStatus.set(url + "::desc", desc);
+                    // Service responded from the browser — mark it UP regardless of R2 cache
+                    S.serviceStatus.set(url, "UP");
                     return { url, desc };
                 } catch (e) {
                     return { url, desc: "" };
@@ -3552,7 +3554,7 @@ ${getA11yWidgetBlock()}
                         try {
                             // === Deferred feature query (screening only checked coverage) ===
                             let featureCount = item.count || 0;
-                            if (!item._exportQuery && item.url) {
+                            if (featureCount === 0 && item.url) {
                                 report.updateProgress("Building report...", `Querying features: ${layerTitle}`);
                                 try {
                                     const qr = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
@@ -3967,7 +3969,7 @@ ${getA11yWidgetBlock()}
 
                     // === Deferred feature query (screening only checked coverage) ===
                     let featureCount = item.count || 0;
-                    if (!item._exportQuery && item.url) {
+                    if (featureCount === 0 && item.url) {
                         _setStatus(`building final report\u2026 (querying ${item.title})`);
                         try {
                             const qr = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
@@ -4428,8 +4430,8 @@ ${getA11yWidgetBlock()}
                             let featureCount = item.count || 0;
                             let featureRows = item.rows || [];
                             
-                            if (!item._exportQuery && item.url) {
-                                // Need to query for features
+                            if (featureCount === 0 && item.url) {
+                                // Need to query for features (deferred from screening)
                                 onStep(`Querying features: ${layerTitle}`);
                                 try {
                                     queryResult = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
