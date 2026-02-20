@@ -409,7 +409,6 @@ define([
                         allSampleFeatures.push(f);
                         if (fOid != null) existingOids.add(fOid);
                     }
-                    }
                 }
             }
         }
