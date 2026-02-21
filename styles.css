@@ -560,13 +560,13 @@ html, body {
 
   /* ── Overview map: smaller & tighter to corner ── */
   #overviewDiv {
-    width: 100px;
-    height: 75px;
+    width: 100px !important;
+    height: 75px !important;
   }
   #overviewLabel {
-    font-size: 0;
-    padding: 0;
-    display: none;
+    font-size: 0 !important;
+    padding: 0 !important;
+    display: none !important;
   }
 
   /* ── Hide Esri zoom widget on mobile (pinch-to-zoom is sufficient) ── */
@@ -1587,11 +1587,37 @@ th{
 }
 
 /* ====== Color-Vision filter classes (CSS-class approach for iOS Safari compat) ====== */
-body.cv-protanopia    { -webkit-filter: url(#cv-protanopia)    !important; filter: url(#cv-protanopia)    !important; }
-body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia)  !important; filter: url(#cv-deuteranopia)  !important; }
-body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia)    !important; filter: url(#cv-tritanopia)    !important; }
-body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia) !important; filter: url(#cv-achromatopsia) !important; }
-body.cv-highcontrast  { -webkit-filter: contrast(1.8) brightness(0.85) !important; filter: contrast(1.8) brightness(0.85) !important; }
+/*
+ * Color-vision filters – use native CSS filter functions for iOS Safari
+ * compatibility.  SVG url(#id) filters are silently ignored on some
+ * mobile WebKit versions, so we approximate with CSS-only primitives.
+ *
+ * Protanopia   (red-blind):  shift reds toward amber/brown
+ * Deuteranopia (green-blind): similar warm shift, desaturated greens
+ * Tritanopia   (blue-blind):  shift blues toward cyan/teal
+ * Achromatopsia (total):      full grayscale
+ * High contrast:              boost contrast + dim brightness
+ */
+body.cv-protanopia {
+  -webkit-filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
+  filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
+}
+body.cv-deuteranopia {
+  -webkit-filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
+  filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
+}
+body.cv-tritanopia {
+  -webkit-filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
+  filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
+}
+body.cv-achromatopsia {
+  -webkit-filter: grayscale(100%) !important;
+  filter: grayscale(100%) !important;
+}
+body.cv-highcontrast {
+  -webkit-filter: contrast(1.8) brightness(0.85) !important;
+  filter: contrast(1.8) brightness(0.85) !important;
+}
 
 /* ====== Esri Overview Map ====== */
 #overviewDiv {

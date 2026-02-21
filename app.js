@@ -140,13 +140,17 @@ require([
     function scrollPanelToBottom(targetEl) {
         const panel = document.getElementById("panel");
         if (!panel) return;
-        requestAnimationFrame(() => {
-            if (targetEl) {
-                targetEl.scrollIntoView({ behavior: "smooth", block: "end" });
-            } else {
-                panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
-            }
-        });
+        // Use a small timeout so the DOM fully renders before measuring scroll height.
+        // requestAnimationFrame alone can fire before layout completes on mobile Safari.
+        setTimeout(() => {
+            requestAnimationFrame(() => {
+                if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: "smooth", block: "end" });
+                } else {
+                    panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
+                }
+            });
+        }, 80);
     }
 
     function setStatus(msg) {
@@ -722,8 +726,18 @@ function setActiveTab(tabName) {
         [wizardStep1, wizardStep2, wizardStep3].forEach((panel, idx) => {
             if (panel) panel.classList.toggle("active", idx + 1 === step);
         });
-        // Auto-scroll the panel so the newly shown step content is visible
-        scrollPanelToBottom();
+        // Auto-scroll: for step 3 (results), scroll to top of results;
+        // for other steps, scroll panel to bottom so new content is visible.
+        if (step === 3) {
+            const step3El = document.getElementById("wizardStep3");
+            if (step3El) {
+                setTimeout(() => {
+                    step3El.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 100);
+            }
+        } else {
+            scrollPanelToBottom();
+        }
     }
 
     // Swipe slide index mapping
@@ -1055,6 +1069,19 @@ function setActiveTab(tabName) {
             slides.forEach((slide, i) => {
                 slide.classList.toggle("active", i === slideIndex);
             });
+        }
+        
+        // Scroll the panel so the top of step 3 content is visible after switching buckets
+        const panel = document.getElementById("panel");
+        if (panel) {
+            setTimeout(() => {
+                const step3 = document.getElementById("wizardStep3");
+                if (step3) {
+                    step3.scrollIntoView({ behavior: "smooth", block: "start" });
+                } else {
+                    panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
+                }
+            }, 100);
         }
         
         // Wire up back buttons (on first click into a category)
