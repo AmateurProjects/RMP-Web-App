@@ -76,27 +76,31 @@ define([
     }
 
     /**
-     * Thicken the symbology of a loaded FeatureLayer for clearer report maps.
-     * - Polygon layers: ensures outline width >= MIN_POLYGON_OUTLINE (default 4pt)
-     * - Polyline layers: ensures line width >= MIN_LINE_WIDTH (default 3pt)
-     * - Point layers: left unchanged (markers are already visible)
-     * Preserves the service's original colors and symbology; only overrides widths.
+     * Enhance the symbology of a loaded FeatureLayer for clearer report maps.
+     * - Polygon layers: outline width >= 6pt, fill alpha reduced to 40%
+     * - Polyline layers: line width >= 5pt
+     * - Point layers: marker size >= 14pt
+     * Preserves the service's original colors and symbology; only overrides
+     * widths, sizes, and polygon fill opacity.
      * @param {FeatureLayer} layer — a loaded FeatureLayer with a renderer
-     * @param {string} geomType — geometry type string from the service (e.g. "esriGeometryPolygon")
+     * @param {string} geomType — geometry type string from the service
      */
     function thickenLayerSymbology(layer, geomType) {
         if (!layer || !layer.renderer || !geomType) return;
         const gt = String(geomType).toLowerCase();
         const isPolygon  = gt.includes("polygon");
         const isPolyline = gt.includes("polyline") || gt.includes("line");
-        if (!isPolygon && !isPolyline) return;
+        const isPoint    = gt.includes("point");
+        if (!isPolygon && !isPolyline && !isPoint) return;
 
         try {
             const r = layer.renderer.clone();
-            const MIN_POLYGON_OUTLINE = 4;
-            const MIN_LINE_WIDTH      = 3;
+            const MIN_POLYGON_OUTLINE = 6;
+            const MIN_LINE_WIDTH      = 5;
+            const MIN_POINT_SIZE      = 14;
+            const FILL_ALPHA_FACTOR   = 0.4; // reduce polygon fill to 40% opacity
 
-            function thickenSymbol(sym) {
+            function enhanceSymbol(sym) {
                 if (!sym) return;
 
                 if (isPolygon) {
@@ -106,23 +110,94 @@ define([
                     } else {
                         sym.outline = { color: [0, 0, 0, 0.8], width: MIN_POLYGON_OUTLINE };
                     }
+                    // Reduce fill opacity (keep outlines opaque)
+                    if (sym.color) {
+                        if (typeof sym.color.a === "number") {
+                            // ArcGIS Color object (a is 0–1)
+                            sym.color.a = Math.min(sym.color.a, 1) * FILL_ALPHA_FACTOR;
+                        } else if (Array.isArray(sym.color) && sym.color.length >= 4) {
+                            // Plain array [r,g,b,a]  — a may be 0–1 or 0–255
+                            const a = sym.color[3];
+                            sym.color[3] = (a <= 1)
+                                ? a * FILL_ALPHA_FACTOR
+                                : Math.round(a * FILL_ALPHA_FACTOR);
+                        }
+                    }
                 } else if (isPolyline) {
-                    // Thicken line width (SimpleLineSymbol stores width directly on the symbol)
                     if (sym.width != null) {
                         sym.width = Math.max(sym.width, MIN_LINE_WIDTH);
+                    }
+                } else if (isPoint) {
+                    if (sym.size != null) {
+                        sym.size = Math.max(sym.size, MIN_POINT_SIZE);
                     }
                 }
             }
 
-            if (r.symbol)         thickenSymbol(r.symbol);
-            if (r.defaultSymbol)  thickenSymbol(r.defaultSymbol);
-            if (r.uniqueValueInfos)  r.uniqueValueInfos.forEach(uv => thickenSymbol(uv.symbol));
-            if (r.classBreakInfos)   r.classBreakInfos.forEach(cb => thickenSymbol(cb.symbol));
+            if (r.symbol)         enhanceSymbol(r.symbol);
+            if (r.defaultSymbol)  enhanceSymbol(r.defaultSymbol);
+            if (r.uniqueValueInfos)  r.uniqueValueInfos.forEach(uv => enhanceSymbol(uv.symbol));
+            if (r.classBreakInfos)   r.classBreakInfos.forEach(cb => enhanceSymbol(cb.symbol));
 
             layer.renderer = r;
         } catch (e) {
-            console.warn("[thickenLayerSymbology] Could not thicken symbology for layer:", e);
+            console.warn("[thickenLayerSymbology] Could not enhance symbology for layer:", e);
         }
+    }
+
+    /**
+     * Create a FeatureLayer overlay that renders a backward-diagonal (\) purple
+     * hash pattern on top of polygon data. Used for report layer maps.
+     * @param {string} url — same URL as the data layer
+     * @param {string|null} definitionExpression — same filter
+     * @returns {FeatureLayer}
+     */
+    function createReportHashOverlay(url, definitionExpression) {
+        const overlay = new FeatureLayer({
+            url: url,
+            outFields: [],
+            visible: true,
+            minScale: 0,
+            maxScale: 0,
+            renderer: {
+                type: "simple",
+                symbol: {
+                    type: "simple-fill",
+                    color: [138, 43, 226, 1],      // opaque purple hash lines
+                    style: "backward-diagonal",     // upper-right → lower-left
+                    outline: { color: [0, 0, 0, 0], width: 0 }
+                }
+            }
+        });
+        if (definitionExpression) overlay.definitionExpression = definitionExpression;
+        return overlay;
+    }
+
+    /**
+     * Create a PLSS Township grid layer with transparent fill (borders/labels only).
+     * Returns null if the plssTownship URL is not configured.
+     * @returns {FeatureLayer|null}
+     */
+    function createPlssTownshipLayer() {
+        const plssUrl = S.config?.referenceLayers?.plssTownship;
+        if (!plssUrl) return null;
+        return new FeatureLayer({
+            url: plssUrl,
+            title: "__reportPLSSTownship",
+            outFields: [],
+            visible: true,
+            renderer: {
+                type: "simple",
+                symbol: {
+                    type: "simple-fill",
+                    color: [0, 0, 0, 0],           // fully transparent fill
+                    outline: {
+                        color: [180, 180, 180, 0.8],
+                        width: 1
+                    }
+                }
+            }
+        });
     }
 
     // ── AOI Layer Management ─────────────────────────────────────────
@@ -823,6 +898,8 @@ define([
         getLayerGeometryType,
         makeRendererOpaque,
         thickenLayerSymbology,
+        createReportHashOverlay,
+        createPlssTownshipLayer,
 
         // AOI layer
         ensureAoiOnTop,

@@ -1224,7 +1224,8 @@ async function loadSamplePreview(url) {
   content.innerHTML = buildSampleTableHtml(result);
 }
 
-
+// ── Health Checks ──
+function checkLayerHealth(layers, renderFn, btnId) {
   var btn = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking...'; }
 

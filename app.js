@@ -3985,12 +3985,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
     const options = menu.querySelectorAll(".a11y-option");
 
-    // Data-URI SVG filters — works on iOS Safari where url(#local-id) does NOT
+    // In-document SVG filter references (iOS Safari requires filters embedded in the DOM;
+    // data-URI SVG filters are silently ignored on mobile WebKit).
     var CV_FILTERS = {
-        protanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.567 0.433 0 0 0 0.558 0.442 0 0 0 0 0.242 0.758 0 0 0 0 0 1 0'/></filter></svg>#f\")",
-        deuteranopia:  "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.625 0.375 0 0 0 0.7 0.3 0 0 0 0 0.3 0.7 0 0 0 0 0 1 0'/></filter></svg>#f\")",
-        tritanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.95 0.05 0 0 0 0 0.433 0.567 0 0 0 0.475 0.525 0 0 0 0 0 1 0'/></filter></svg>#f\")",
-        achromatopsia: "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0 0 0 1 0'/></filter></svg>#f\")",
+        protanopia:    "url(#cv-protanopia)",
+        deuteranopia:  "url(#cv-deuteranopia)",
+        tritanopia:    "url(#cv-tritanopia)",
+        achromatopsia: "url(#cv-achromatopsia)",
         highcontrast:  "contrast(1.8) brightness(0.85)"
     };
 

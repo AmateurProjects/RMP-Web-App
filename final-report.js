@@ -40,6 +40,48 @@ define([
     let _setStatus = () => {};
 
     // ────────────────────────────────────────────
+    // Report-map overlay helpers (PLSS Township grid + hash pattern)
+    // ────────────────────────────────────────────
+
+    /**
+     * Add PLSS Township grid and (for polygons) a hash-pattern overlay layer
+     * to the map for a report-layer screenshot.
+     * @returns {{ hashOverlay: FeatureLayer|null, plssTownship: FeatureLayer|null }}
+     */
+    async function _addReportOverlays(view, tempLayer, tempGeomType, url, defExpr) {
+        const { createReportHashOverlay, createPlssTownshipLayer, waitForLayerReadyToCapture } = mapUtils;
+        const isPoly = tempGeomType && String(tempGeomType).toLowerCase().includes("polygon");
+
+        let hashOverlay = null;
+        if (isPoly) {
+            hashOverlay = createReportHashOverlay(url, defExpr || null);
+            view.map.add(hashOverlay);
+            try { await hashOverlay.when(); } catch (_) {}
+        }
+
+        const plssTownship = createPlssTownshipLayer();
+        if (plssTownship) {
+            // Insert below the data layer so grid lines sit behind the data
+            const idx = view.map.layers.indexOf(tempLayer);
+            view.map.add(plssTownship, idx >= 0 ? idx : undefined);
+            try { await plssTownship.when(); } catch (_) {}
+        }
+
+        return { hashOverlay, plssTownship };
+    }
+
+    async function _waitForOverlays(view, overlays) {
+        const { waitForLayerReadyToCapture } = mapUtils;
+        if (overlays.hashOverlay)  await waitForLayerReadyToCapture(overlays.hashOverlay,  view, { timeoutMs: 5000 });
+        if (overlays.plssTownship) await waitForLayerReadyToCapture(overlays.plssTownship, view, { timeoutMs: 5000 });
+    }
+
+    function _removeOverlays(view, overlays) {
+        if (overlays.hashOverlay)  try { view.map.remove(overlays.hashOverlay);  } catch (_) {}
+        if (overlays.plssTownship) try { view.map.remove(overlays.plssTownship); } catch (_) {}
+    }
+
+    // ────────────────────────────────────────────
     // IndexedDB report storage (persist reports for sharing via URL)
     // ────────────────────────────────────────────
     const REPORT_DB_NAME = "RmpReports";
@@ -3351,7 +3393,7 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
         } = mapUtils;
 
         const {
@@ -3586,6 +3628,9 @@ ${getA11yWidgetBlock()}
                             updateAoiMask(true);
                             await waitForTabVisible(5000);
 
+                            // Wait for overlay layers to render
+                            await _waitForOverlays(view, overlays);
+
                             // Fire coverage stats in parallel with screenshot capture
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
                             const coveragePromise = isPolygonLayer
@@ -3596,6 +3641,7 @@ ${getA11yWidgetBlock()}
 
                             // Clean up temp layer
                             view.map.remove(tempLayer);
+                            _removeOverlays(view, overlays);
 
                             // Collect deferred coverage result
                             let acresCovered = 0;
@@ -3713,7 +3759,7 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
         } = mapUtils;
 
         const {
@@ -3983,8 +4029,7 @@ ${getA11yWidgetBlock()}
                         url: item.url,
                         title: item.title,
                         outFields: ["*"],
-                        visible: true,
-                        opacity: 0.8
+                        visible: true
                     };
                     const temp = new FeatureLayer(tempOpts);
 
@@ -4000,6 +4045,9 @@ ${getA11yWidgetBlock()}
                     // Thicken borders while preserving the service's original symbology
                     thickenLayerSymbology(temp, tempGeomType);
 
+                    // Add PLSS Township grid + hash overlay for polygon layers
+                    const overlays = await _addReportOverlays(view, temp, tempGeomType, item.url, temp.definitionExpression || null);
+
                     try {
                         setVisibilityForScreenshot(temp);
                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
@@ -4010,6 +4058,9 @@ ${getA11yWidgetBlock()}
                         await waitForViewStationary(800);
                         // Refresh mask so outer ring matches the current view extent
                         updateAoiMask(true);
+
+                        // Wait for overlay layers to render
+                        await _waitForOverlays(view, overlays);
 
                         // Fire coverage stats in parallel with screenshot capture
                         const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
@@ -4060,6 +4111,7 @@ ${getA11yWidgetBlock()}
                         `;
                     } finally {
                         try { view.map.remove(temp); } catch (e) { }
+                        _removeOverlays(view, overlays);
                         restoreVisibility();
                     }
                     } // end layer loop
@@ -4226,7 +4278,7 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
         } = mapUtils;
 
         const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, SQM_PER_ACRE } = queryEngine;
@@ -4464,6 +4516,13 @@ ${getA11yWidgetBlock()}
                             // Thicken borders while preserving service's original symbology
                             thickenLayerSymbology(tempLayer, tempGeomType);
 
+                            // Ensure layer draws at any zoom
+                            tempLayer.minScale = 0;
+                            tempLayer.maxScale = 0;
+
+                            // Add PLSS Township grid + hash overlay for polygon layers
+                            const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression);
+
                             setVisibilityForScreenshot(tempLayer);
 
                             await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
@@ -4477,6 +4536,9 @@ ${getA11yWidgetBlock()}
                             // Refresh mask so outer ring matches the current view extent
                             updateAoiMask(true);
 
+                            // Wait for overlay layers to render
+                            await _waitForOverlays(view, overlays);
+
                             // Fire coverage stats in parallel with screenshot capture
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
                             const coveragePromise = isPolygonLayer
@@ -4488,6 +4550,7 @@ ${getA11yWidgetBlock()}
 
                             // Clean up temp layer
                             view.map.remove(tempLayer);
+                            _removeOverlays(view, overlays);
                             mapsGenerated++;
 
                             // Collect deferred coverage result

@@ -750,7 +750,25 @@
 
   </aside>
 
-  <!-- Accessibility floating menu (filters applied via data-URI SVGs for iOS Safari compat) -->
+  <!-- Inline SVG filters for color-vision simulation (iOS Safari requires in-document filters) -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <defs>
+      <filter id="cv-protanopia">
+        <feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="cv-deuteranopia">
+        <feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="cv-tritanopia">
+        <feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="cv-achromatopsia">
+        <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0 0 0 1 0"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- Accessibility floating menu -->
   <div id="a11yWidget" class="a11y-widget" role="region" aria-label="Accessibility options">
     <button id="a11yToggleBtn" class="a11y-toggle" aria-haspopup="true" aria-expanded="false" title="Accessibility options">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
