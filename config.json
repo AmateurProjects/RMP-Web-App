@@ -596,7 +596,7 @@
     },
     {
       "title": "USGS PAD-US Protected Areas (Fee)",
-      "url": "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/PADUS_Fee/FeatureServer",
+      "url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Fee_Managers_PADUS/FeatureServer",
       "useServiceRenderer": true,
       "tier": 2,
       "category": "land-status",
