@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg: #f7f8fa; --card: #fff; --border: #d4d8dd; --fg: #1e1e1e;
-    --muted: #5c6370; --accent: #1a472a; --accent-light: #2d6a3d;
+    --muted: #5c6370; --accent: #0f2e1a; --accent-light: #1a472a;
     --danger: #c62828; --warn: #e65100; --ok: #2e7d32;
     --table-header: #f0f2f5; --table-hover: #f8f9fb; --table-row-border: #eee;
     --warning-bg: #f59e0b;
@@ -15,7 +15,7 @@
   /* Dark theme */
   [data-theme="dark"] {
     --bg: #1a1a2e; --card: #16213e; --border: #2a3a5a; --fg: #e4e6eb;
-    --muted: #a0a8b8; --accent: #4ade80; --accent-light: #22c55e;
+    --muted: #a0a8b8; --accent: #38b865; --accent-light: #22c55e;
     --danger: #ef4444; --warn: #f59e0b; --ok: #22c55e;
     --table-header: #1e2a47; --table-hover: #1a2744; --table-row-border: #2a3a5a;
   }
@@ -154,6 +154,7 @@
   .health-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #bbb; }
   .health-dot.ok { background: var(--ok); }
   .health-dot.err { background: var(--danger); }
+  .health-dot.warn { background: #ff9800; }
   .health-dot.checking { background: #ffc107; animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
@@ -763,13 +764,20 @@ function renderReportTable() {
     if (isExpanded && hasSubs) {
       subs.forEach(function (sub) {
         var subUrl = l.url.replace(/\/?$/, '') + '/' + sub.id;
+        var subHealth = healthCache.get(subUrl);
+        var subHealthDot = healthDotHtml(subHealth);
+        var escapedSubUrl = esc(subUrl).replace(/'/g, "\\'");
+        var escapedSubName = esc(sub.name).replace(/'/g, "\\'");
+        var parentCat = esc(l.category || 'special').replace(/'/g, "\\'");
+        var parentTier = String(l.tier || 1);
+        var parentType = esc(l.serviceType || 'feature').replace(/'/g, "\\'");
         html += '<tr class="sublayer-row">';
-        html += '<td></td>';
+        html += '<td style="text-align:center">' + subHealthDot + '</td>';
         html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
         html += '<td colspan="2"><span style="color:var(--muted);font-size:11px">' + esc(sub.type || '') + '</span></td>';
         html += '<td></td>';
         html += '<td class="url-cell" title="' + esc(subUrl) + '">' + esc(subUrl) + '</td>';
-        html += '<td></td>';
+        html += '<td><button class="btn btn-outline btn-sm" onclick="addSublayerAsReport(\'' + escapedSubName + '\', \'' + escapedSubUrl + '\', \'' + parentCat + '\', \'' + parentTier + '\', \'' + parentType + '\')">+ Add</button></td>';
         html += '</tr>';
       });
     }
@@ -824,12 +832,17 @@ function renderSelectionTable() {
     if (isExpanded && hasSubs) {
       subs.forEach(function (sub) {
         var subUrl = l.url.replace(/\/?$/, '') + '/' + sub.id;
+        var subHealth = healthCache.get(subUrl);
+        var subHealthDot = healthDotHtml(subHealth);
+        var escapedSubUrl = esc(subUrl).replace(/'/g, "\\'");
+        var escapedSubName = esc(sub.name).replace(/'/g, "\\'");
+        var parentGroup = esc(l.group || 'default').replace(/'/g, "\\'");
         html += '<tr class="sublayer-row">';
-        html += '<td></td>';
+        html += '<td style="text-align:center">' + subHealthDot + '</td>';
         html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
         html += '<td colspan="2"><span style="color:var(--muted);font-size:11px">' + esc(sub.type || '') + '</span></td>';
         html += '<td class="url-cell" title="' + esc(subUrl) + '">' + esc(subUrl) + '</td>';
-        html += '<td></td>';
+        html += '<td><button class="btn btn-outline btn-sm" onclick="addSublayerAsSelection(\'' + escapedSubName + '\', \'' + escapedSubUrl + '\', \'' + parentGroup + '\')">+ Add</button></td>';
         html += '</tr>';
       });
     }
@@ -848,6 +861,23 @@ function renderRefGrid() {
     html += '</div>';
   });
   document.getElementById('refGrid').innerHTML = html;
+}
+
+// ── Add sublayer as new layer ──
+function addSublayerAsReport(name, url, category, tier, serviceType) {
+  openLayerModal('report');
+  document.getElementById('fTitle').value = name;
+  document.getElementById('fUrl').value = url;
+  document.getElementById('fCategory').value = category || 'special';
+  document.getElementById('fTier').value = tier || '1';
+  document.getElementById('fServiceType').value = serviceType || 'feature';
+}
+
+function addSublayerAsSelection(name, url, group) {
+  openLayerModal('selection');
+  document.getElementById('fTitle').value = name;
+  document.getElementById('fUrl').value = url;
+  document.getElementById('fGroup').value = group || 'default';
 }
 
 // ── Modal ──
@@ -1007,10 +1037,36 @@ async function saveConfig() {
 // ── Health Check Helpers ──
 function healthDotHtml(health) {
   if (!health) return '<span class="health-dot" title="Not checked"></span>';
-  if (health.status === 'checking') return '<span class="health-dot checking" title="Checking..."></span>';
-  if (health.status === 'ok') return '<span class="health-dot ok" title="OK (' + health.ms + 'ms)"></span>';
-  if (health.status === 'err') return '<span class="health-dot err" title="' + esc(health.error || 'Error') + '"></span>';
+  if (health.status === 'checking') return '<span class="health-dot checking" title="Checking…"></span>';
+  if (health.status === 'ok') return '<span class="health-dot ok" title="✔ Metadata OK, Query OK (' + health.ms + 'ms)"></span>';
+  if (health.status === 'warn') return '<span class="health-dot warn" title="⚠ Metadata OK but query failed: ' + esc(health.error || 'unknown') + ' (' + health.ms + 'ms)"></span>';
+  if (health.status === 'err') return '<span class="health-dot err" title="✖ ' + esc(health.error || 'Error') + '"></span>';
   return '<span class="health-dot"></span>';
+}
+
+// Helper: run a feature query to verify a layer can actually return data
+function probeQuery(url) {
+  var base = url.replace(/\/?$/, '');
+  var isImage = /ImageServer\b/i.test(base);
+  var probeUrl;
+  if (isImage) {
+    // ImageServer: use /info/Statistics or simple identify; fall back to exportImage
+    probeUrl = base + '/query?where=1%3D1&returnCountOnly=true&f=json';
+  } else {
+    probeUrl = base + '/query?where=1%3D1&returnCountOnly=true&resultRecordCount=1&f=json';
+  }
+  return fetch(probeUrl, { mode: 'cors' })
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      if (data && data.error) {
+        throw new Error((data.error.code || '') + ': ' + (data.error.message || 'Query error'));
+      }
+      // For countOnly queries, success means the count property exists (even if 0)
+      return { ok: true };
+    });
 }
 
 async function checkLayerHealth(layers, renderFn, btnId) {
@@ -1046,26 +1102,51 @@ async function checkLayerHealth(layers, renderFn, btnId) {
             .then(function (r) {
               var ms = Date.now() - start;
               if (r.ok) {
-                healthCache.set(layer.url, { status: 'ok', ms: ms });
-                // Parse response to extract sublayers
+                // Parse response to check for ArcGIS error objects & extract sublayers
                 return r.json().then(function (data) {
-                  // MapServer/FeatureServer has "layers" array
+                  // ArcGIS often returns 200 with { error: {...} } for invalid endpoints
+                  if (data && data.error) {
+                    var errCode = data.error.code || '';
+                    var errMsg = data.error.message || 'ArcGIS error';
+                    healthCache.set(layer.url, { status: 'err', error: errCode + ': ' + errMsg, ms: ms });
+                    sublayerCache.set(layer.url, null);
+                    return;
+                  }
+                  // MapServer/FeatureServer with sublayers — delegate query test to sublayer checks
                   if (data.layers && Array.isArray(data.layers) && data.layers.length > 0) {
+                    healthCache.set(layer.url, { status: 'ok', ms: ms });
                     var subs = data.layers.map(function (sub) {
                       return { id: sub.id, name: sub.name, type: sub.type || sub.geometryType || 'layer' };
                     });
                     sublayerCache.set(layer.url, subs);
-                  } else if (data.services && Array.isArray(data.services)) {
-                    // Folder endpoint - has services
+                    expandedLayers.add(layer.url);
+                    checkSublayerHealth(layer.url, subs, renderFn);
+                    return;
+                  }
+                  if (data.services && Array.isArray(data.services)) {
+                    healthCache.set(layer.url, { status: 'ok', ms: ms });
                     var subs = data.services.map(function (svc) {
                       return { id: svc.name, name: svc.name.split('/').pop(), type: svc.type };
                     });
                     sublayerCache.set(layer.url, subs);
-                  } else {
-                    // No sublayers (single layer endpoint)
-                    sublayerCache.set(layer.url, null);
+                    expandedLayers.add(layer.url);
+                    checkSublayerHealth(layer.url, subs, renderFn);
+                    return;
                   }
-                }).catch(function () {
+                  // Single-layer endpoint (no sublayers) — run feature query probe
+                  sublayerCache.set(layer.url, null);
+                  return probeQuery(layer.url)
+                    .then(function () {
+                      var totalMs = Date.now() - start;
+                      healthCache.set(layer.url, { status: 'ok', ms: totalMs });
+                    })
+                    .catch(function (qErr) {
+                      var totalMs = Date.now() - start;
+                      healthCache.set(layer.url, { status: 'warn', error: qErr.message || 'Query probe failed', ms: totalMs });
+                    });
+                }).catch(function (parseErr) {
+                  // Response was 200 but not valid JSON (HTML error page)
+                  healthCache.set(layer.url, { status: 'err', error: 'Non-JSON response (possible error page)', ms: ms });
                   sublayerCache.set(layer.url, null);
                 });
               } else {
@@ -1108,6 +1189,58 @@ function checkReportHealth() {
 
 function checkSelectionHealth() {
   checkLayerHealth(config.selectionLayers || [], renderSelectionTable, 'checkSelectionHealthBtn');
+}
+
+// ── Sublayer Health Checks (metadata + query probe) ──
+function checkSublayerHealth(parentUrl, subs, renderFn) {
+  if (!subs || !subs.length) return;
+  var baseUrl = parentUrl.replace(/\/?$/, '');
+
+  function renderAll() {
+    if (typeof renderFn === 'function') renderFn();
+    else { renderReportTable(); renderSelectionTable(); }
+  }
+
+  subs.forEach(function (sub) {
+    var subUrl = baseUrl + '/' + sub.id;
+    var testUrl = subUrl + '?f=json';
+    healthCache.set(subUrl, { status: 'checking' });
+    var start = Date.now();
+    fetch(testUrl, { mode: 'cors' })
+      .then(function (r) {
+        var ms = Date.now() - start;
+        if (r.ok) {
+          return r.json().then(function (data) {
+            if (data && data.error) {
+              var errCode = data.error.code || '';
+              var errMsg = data.error.message || 'ArcGIS error';
+              healthCache.set(subUrl, { status: 'err', error: errCode + ': ' + errMsg, ms: ms });
+              return;
+            }
+            // Metadata OK — now run feature query probe
+            return probeQuery(subUrl)
+              .then(function () {
+                var totalMs = Date.now() - start;
+                healthCache.set(subUrl, { status: 'ok', ms: totalMs });
+              })
+              .catch(function (qErr) {
+                var totalMs = Date.now() - start;
+                healthCache.set(subUrl, { status: 'warn', error: qErr.message || 'Query probe failed', ms: totalMs });
+              });
+          }).catch(function () {
+            healthCache.set(subUrl, { status: 'err', error: 'Non-JSON response', ms: Date.now() - start });
+          });
+        } else {
+          healthCache.set(subUrl, { status: 'err', error: 'HTTP ' + r.status, ms: Date.now() - start });
+        }
+      })
+      .catch(function (e) {
+        healthCache.set(subUrl, { status: 'err', error: e.message || 'Network error' });
+      })
+      .finally(function () {
+        renderAll();
+      });
+  });
 }
 
 // ── Utilities ──
