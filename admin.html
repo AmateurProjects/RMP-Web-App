@@ -15,7 +15,7 @@
   /* Dark theme */
   [data-theme="dark"] {
     --bg: #1a1a2e; --card: #16213e; --border: #2a3a5a; --fg: #e4e6eb;
-    --muted: #a0a8b8; --accent: #38b865; --accent-light: #22c55e;
+    --muted: #a0a8b8; --accent: #14532d; --accent-light: #166534;
     --danger: #ef4444; --warn: #f59e0b; --ok: #22c55e;
     --table-header: #1e2a47; --table-hover: #1a2744; --table-row-border: #2a3a5a;
   }
@@ -23,7 +23,7 @@
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #1a1a2e; --card: #16213e; --border: #2a3a5a; --fg: #e4e6eb;
-      --muted: #a0a8b8; --accent: #4ade80; --accent-light: #22c55e;
+      --muted: #a0a8b8; --accent: #14532d; --accent-light: #166534;
       --danger: #ef4444; --warn: #f59e0b; --ok: #22c55e;
       --table-header: #1e2a47; --table-hover: #1a2744; --table-row-border: #2a3a5a;
     }
@@ -165,7 +165,7 @@
   }
   .modal-overlay.open { display: flex; }
   .modal {
-    background: var(--card); border-radius: 10px; width: 560px; max-width: 95vw;
+    background: var(--card); border-radius: 10px; width: 820px; max-width: 95vw;
     max-height: 90vh; overflow-y: auto; padding: 24px;
   }
   .modal h3 { margin-bottom: 16px; }
@@ -210,6 +210,18 @@
   }
   .expand-btn:hover { background: var(--table-hover); color: var(--accent); }
   .sublayer-badge { font-size: 10px; background: var(--border); color: var(--muted); padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
+
+  /* Sample data preview in modal */
+  .sample-preview { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .sample-preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .sample-preview-header .label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .sample-preview .sample-table-wrap { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+  .sample-preview table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: auto; }
+  .sample-preview th { position: sticky; top: 0; background: var(--table-header); padding: 6px 8px; text-align: left; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  .sample-preview td { padding: 4px 8px; border-bottom: 1px solid var(--table-row-border); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; font-family: monospace; font-size: 11px; }
+  .sample-preview tr:hover td { background: var(--table-hover); }
+  .sample-preview .sample-meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .sample-preview .sample-loading { font-size: 12px; color: var(--muted); padding: 12px 0; }
 </style>
 </head>
 <body>
@@ -344,7 +356,10 @@
     </div>
     <div class="form-row">
       <label>Service URL</label>
-      <input type="text" id="fUrl" placeholder="https://..."/>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="fUrl" placeholder="https://..." style="flex:1"/>
+        <button class="btn btn-outline btn-sm" type="button" onclick="loadSamplePreview()" title="Fetch sample rows from this service">🔍 Preview</button>
+      </div>
       <div class="hint">Full ArcGIS REST service endpoint URL</div>
     </div>
     <div id="reportFields">
@@ -397,6 +412,13 @@
           <option value="true">Yes</option>
         </select>
       </div>
+    </div>
+    <div class="sample-preview" id="samplePreview" style="display:none">
+      <div class="sample-preview-header">
+        <span class="label">Sample Data</span>
+        <button class="btn btn-outline btn-sm" type="button" onclick="loadSamplePreview()" title="Refresh sample">↻ Refresh</button>
+      </div>
+      <div id="samplePreviewContent"></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -871,6 +893,7 @@ function addSublayerAsReport(name, url, category, tier, serviceType) {
   document.getElementById('fCategory').value = category || 'special';
   document.getElementById('fTier').value = tier || '1';
   document.getElementById('fServiceType').value = serviceType || 'feature';
+  loadSamplePreview(url);
 }
 
 function addSublayerAsSelection(name, url, group) {
@@ -878,6 +901,7 @@ function addSublayerAsSelection(name, url, group) {
   document.getElementById('fTitle').value = name;
   document.getElementById('fUrl').value = url;
   document.getElementById('fGroup').value = group || 'default';
+  loadSamplePreview(url);
 }
 
 // ── Modal ──
@@ -889,6 +913,8 @@ function openLayerModal(type) {
   document.getElementById('selectionFields').style.display = type === 'selection' ? '' : 'none';
   document.getElementById('deleteBtn').style.display = 'none';
   clearForm();
+  document.getElementById('samplePreview').style.display = 'none';
+  document.getElementById('samplePreviewContent').innerHTML = '';
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -909,6 +935,7 @@ function editReportLayer(idx) {
   var hf = l.highlightFields;
   document.getElementById('fHighlightFields').value = Array.isArray(hf) ? hf.join(', ') : '';
   document.getElementById('modalOverlay').classList.add('open');
+  loadSamplePreview(l.url);
 }
 
 function editSelectionLayer(idx) {
@@ -924,10 +951,13 @@ function editSelectionLayer(idx) {
   document.getElementById('fGroup').value = l.group || '';
   document.getElementById('fVisible').value = String(!!l.visible);
   document.getElementById('modalOverlay').classList.add('open');
+  loadSamplePreview(l.url);
 }
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
+  // Cancel any in-flight sample data request
+  if (_sampleAbort) { try { _sampleAbort.abort(); } catch (e) {} }
   editMode = null;
 }
 
@@ -1069,7 +1099,132 @@ function probeQuery(url) {
     });
 }
 
-async function checkLayerHealth(layers, renderFn, btnId) {
+// ── Sample data preview for modal ──
+var _sampleAbort = null; // AbortController for canceling in-flight requests
+
+async function fetchSampleData(url, numRows) {
+  if (!numRows) numRows = 5;
+  var base = url.replace(/\/?$/, '');
+  var isImage = /ImageServer\b/i.test(base);
+  if (isImage) return { error: 'ImageServer layers do not support feature queries.' };
+
+  // Check if this is a MapServer parent (no sublayer number) — discover sublayers
+  var isMapParent = /MapServer\/?$/i.test(base) && !/MapServer\/\d+/i.test(base);
+  if (isMapParent) {
+    // Fetch the MapServer root to find sublayers
+    try {
+      var metaRes = await fetch(base + '?f=json', { mode: 'cors', signal: _sampleAbort?.signal });
+      if (!metaRes.ok) throw new Error('HTTP ' + metaRes.status);
+      var meta = await metaRes.json();
+      if (meta.error) throw new Error(meta.error.message || 'Service error');
+      if (meta.layers && meta.layers.length) {
+        // Query the first queryable sublayer
+        var firstSub = meta.layers[0];
+        base = base + '/' + firstSub.id;
+      } else {
+        return { error: 'MapServer has no sublayers.' };
+      }
+    } catch (e) {
+      return { error: 'Could not read MapServer metadata: ' + e.message };
+    }
+  }
+
+  // Fetch count first, then random sample using resultOffset
+  try {
+    // Get total count
+    var countUrl = base + '/query?where=1%3D1&returnCountOnly=true&f=json';
+    var countRes = await fetch(countUrl, { mode: 'cors', signal: _sampleAbort?.signal });
+    if (!countRes.ok) throw new Error('HTTP ' + countRes.status);
+    var countData = await countRes.json();
+    if (countData.error) throw new Error(countData.error.message || 'Query error');
+    var totalCount = countData.count ?? 0;
+    if (totalCount === 0) return { features: [], totalCount: 0, fields: [] };
+
+    // Pick a random offset to get "random" rows
+    var offset = totalCount > numRows ? Math.floor(Math.random() * (totalCount - numRows)) : 0;
+    var queryUrl = base + '/query?where=1%3D1&outFields=*&returnGeometry=false'
+      + '&resultRecordCount=' + numRows
+      + '&resultOffset=' + offset
+      + '&f=json';
+    var res = await fetch(queryUrl, { mode: 'cors', signal: _sampleAbort?.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+    if (data.error) throw new Error(data.error.message || 'Query error');
+
+    return {
+      features: data.features || [],
+      fields: data.fields || [],
+      totalCount: totalCount
+    };
+  } catch (e) {
+    if (e.name === 'AbortError') return { error: 'Canceled' };
+    return { error: e.message };
+  }
+}
+
+function buildSampleTableHtml(result) {
+  if (result.error) {
+    return '<div class="sample-loading" style="color:var(--warn)">\u26a0 ' + esc(result.error) + '</div>';
+  }
+  if (!result.features || !result.features.length) {
+    return '<div class="sample-loading">No features found in this layer.</div>';
+  }
+
+  var features = result.features;
+  var totalCount = result.totalCount || features.length;
+
+  // Determine field names from first feature attributes
+  var attrs0 = features[0].attributes || {};
+  var keys = Object.keys(attrs0);
+  if (!keys.length) return '<div class="sample-loading">No attribute fields.</div>';
+
+  // Build header row
+  var thHtml = keys.map(function (k) {
+    return '<th title="' + esc(k) + '">' + esc(k) + '</th>';
+  }).join('');
+
+  // Build data rows
+  var rowsHtml = features.map(function (f) {
+    var a = f.attributes || {};
+    var tds = keys.map(function (k) {
+      var raw = (a[k] == null) ? '' : String(a[k]);
+      return '<td title="' + esc(raw) + '">' + esc(raw) + '</td>';
+    }).join('');
+    return '<tr>' + tds + '</tr>';
+  }).join('');
+
+  var meta = '<div class="sample-meta">'
+    + 'Showing <strong>' + features.length + '</strong> of <strong>' + totalCount.toLocaleString() + '</strong> features'
+    + ' &middot; ' + keys.length + ' fields'
+    + '</div>';
+
+  return '<div class="sample-table-wrap">'
+    + '<table><thead><tr>' + thHtml + '</tr></thead>'
+    + '<tbody>' + rowsHtml + '</tbody></table>'
+    + '</div>' + meta;
+}
+
+async function loadSamplePreview(url) {
+  if (!url) url = document.getElementById('fUrl').value.trim();
+  var container = document.getElementById('samplePreview');
+  var content = document.getElementById('samplePreviewContent');
+  if (!url) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = '';
+  content.innerHTML = '<div class="sample-loading"><span class="health-dot checking" style="margin-right:6px;vertical-align:middle"></span>Loading sample data\u2026</div>';
+
+  // Cancel any previous in-flight request
+  if (_sampleAbort) { try { _sampleAbort.abort(); } catch (e) {} }
+  _sampleAbort = new AbortController();
+
+  var result = await fetchSampleData(url, 5);
+  content.innerHTML = buildSampleTableHtml(result);
+}
+
+
   var btn = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking...'; }
 

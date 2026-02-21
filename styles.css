@@ -1626,18 +1626,7 @@ th{
   display: none !important;
 }
 
-/* ====== Visual Report ====== */
-.visual-map-wrap {
-  margin-top: 10px;
-}
 
-.visual-map-img {
-  width: 100%;
-  height: auto;
-  display: block;
-  border-radius: 14px;
-  border: 1px solid #eee;
-}
 
 .result-table{
   table-layout: fixed;
@@ -1652,46 +1641,7 @@ th{
   white-space: nowrap;
 }
 
-/* Map tab: multi-map outputs */
-.visual-output-card{
-  border:1px solid #e7e7e7;
-  border-radius:14px;
-  padding:12px;
-  margin-top:10px;
-  background:#fff;
-}
 
-.visual-output-title{
-  font-weight:700;
-  margin-bottom:8px;
-}
-
-.visual-output-img{
-  width:100%;
-  height:auto;
-  border:1px solid #ddd;
-  border-radius:12px;
-  display:block;
-}
-
-.visual-output-meta{
-  margin-top:8px;
-  font-size:12px;
-  color:#444;
-}
-
-.visual-output-meta table{
-  width:100%;
-  border-collapse:collapse;
-}
-.visual-output-meta td{
-  padding:4px 0;
-  vertical-align:top;
-}
-.visual-output-meta td:first-child{
-  opacity:.75;
-  width:45%;
-}
 
 
 

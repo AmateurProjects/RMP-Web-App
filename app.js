@@ -5,7 +5,6 @@ require([
     "app/map-utils",
     "app/query-engine",
     "app/final-report",
-    "app/visual-report",
     "app/feature-picker",
     "app/search",
     "app/upload-aoi",
@@ -19,7 +18,7 @@ require([
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer",
     "esri/identity/IdentityManager"
-], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, visualReportModule, featurePickerModule, searchModule, uploadAoiModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer, esriId) {
+], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, featurePickerModule, searchModule, uploadAoiModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer, esriId) {
 
     // ── Suppress ArcGIS Online sign-in popup ──
     // All services used by this app are publicly shared; prevent the
@@ -94,16 +93,12 @@ require([
     const tabLayersBtn = document.getElementById("tabLayersBtn");
     const tabServicesBtn = document.getElementById("tabServicesBtn");
     const tabReportBtn = document.getElementById("tabReportBtn");
-    const tabVisualBtn = document.getElementById("tabVisualBtn");
     const tabFinalReportBtn = document.getElementById("tabFinalReportBtn");
 
     const tabLayersPanel = document.getElementById("tabLayersPanel");
     const tabServicesPanel = document.getElementById("tabServicesPanel");  
     const tabReportPanel = document.getElementById("tabReportPanel");      
-    const tabVisualPanel = document.getElementById("tabVisualPanel");      
     const tabReportFinalPanel = document.getElementById("tabReportFinalPanel");
-
-    // Visual report DOM managed by visual-report.js module
 
     // Final report DOM
     const viewReportBtn = document.getElementById("viewReportBtn");
@@ -482,15 +477,6 @@ function setBusy(isBusy) {
         buildReportInBackground, openCompletedReport
     } = finalReport;
 
-    // ── Initialize visual-report module with shared state + deps ──
-    const visualReport = visualReportModule.init(state, {
-        mapUtils, queryEngine, ImageryLayer, FeatureLayer, geometryEngine,
-        isReportCanceled
-    });
-    const {
-        setVisualStatus, clearVisualReport, renderVisualSummary, generateVisualReportData
-    } = visualReport;
-
     // ── Initialize feature-picker module with shared state + deps ──
     featurePickerModule.init(state, { GraphicsLayer, Graphic });
     const { showFeaturePicker, hideFeaturePicker } = featurePickerModule;
@@ -601,21 +587,18 @@ function setActiveTab(tabName) {
     const isLayers = (tabName === "layers");
     const isServices = (tabName === "services");
     const isReport = (tabName === "report");
-    const isVisual = (tabName === "visual");
     const isFinalReport = (tabName === "finalReport");
 
     // Panels
     if (tabLayersPanel) tabLayersPanel.classList.toggle("active", isLayers);
     if (tabServicesPanel) tabServicesPanel.classList.toggle("active", isServices);
     if (tabReportPanel) tabReportPanel.classList.toggle("active", isReport);
-    if (tabVisualPanel) tabVisualPanel.classList.toggle("active", isVisual);
     if (tabReportFinalPanel) tabReportFinalPanel.classList.toggle("active", isFinalReport);
 
     // Buttons
     if (tabLayersBtn) tabLayersBtn.classList.toggle("active", isLayers);
     if (tabServicesBtn) tabServicesBtn.classList.toggle("active", isServices);
     if (tabReportBtn) tabReportBtn.classList.toggle("active", isReport);
-    if (tabVisualBtn) tabVisualBtn.classList.toggle("active", isVisual);
     if (tabFinalReportBtn) tabFinalReportBtn.classList.toggle("active", isFinalReport);
 
     // Force MapView to re-measure + redraw after layout changes
@@ -1321,9 +1304,6 @@ function clearAll() {
     if (resultsEl) resultsEl.innerHTML = "";
     if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
-    
-    // Clear map outputs
-    clearVisualReport();
     
     // Clear final report
     setCachedFinalReportHtml(null);
@@ -2502,7 +2482,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         renderResults(cards.join(""));
         wireExportButtons();
         if (exportAllBtn) exportAllBtn.disabled = (lastReportRowsByLayer.length === 0);
-        renderVisualSummary();
     }
 }
 
@@ -2616,7 +2595,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
 
 
-    // setVisualStatus, renderVisualSummary, generateVisualReportData moved to visual-report.js
     // buildFinalReportHtml moved to final-report.js module
 
 
@@ -3229,11 +3207,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         });
 
         if (tabReportBtn) tabReportBtn.addEventListener("click", () => setActiveTab("report"));
-
-        if (tabVisualBtn) tabVisualBtn.addEventListener("click", () => {
-            setActiveTab("visual");
-            renderVisualSummary();
-        });
 
         if (tabFinalReportBtn) tabFinalReportBtn.addEventListener("click", () => {
             setActiveTab("finalReport");

@@ -16,7 +16,7 @@ Single-page ArcGIS JS API 4.30 application using AMD/Dojo modules. No build step
 | `query-engine.js` | Query execution, paging, coverage stats, per-feature tables |
 | `summary-engine.js` | **New** – Attribute summary generation with plugin overrides |
 | `final-report.js` | Report HTML generation (3 builders: progressive, final, background) |
-| `visual-report.js` | Per-layer screenshot generation for visual report |
+| `visual-report.js` | *(deprecated no-op stub — superseded by final-report.js)* |
 | `feature-picker.js` | Interactive feature selection |
 | `search.js` | Address/coordinate search |
 | `upload-aoi.js` | Shapefile/GeoJSON upload for AOI |
