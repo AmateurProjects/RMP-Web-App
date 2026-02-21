@@ -8,15 +8,23 @@
  * GET  /health            → returns { ok, lastRefresh, layerCount }
  * POST /refresh           → fetches ?f=json from every service in config.json, stores in R2
  *                           Requires header:  X-Refresh-Secret: <REFRESH_SECRET>
+ * POST /reports           → stores report HTML in R2, returns { id, url, expiresIn }
+ * GET  /reports/:id       → serves stored report HTML (public, expires after 30 days)
  *
  * R2 keys
  * ───────
  * metadata.json           → full blob:  { lastRefresh, layers: { [url]: { ... } } }
+ * reports/{id}.html       → shared report HTML documents
  */
 
 const R2_KEY = "metadata.json";
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_CONCURRENCY = 8;
+
+// ── Report sharing constants ─────────────────────────────────────────────────
+const REPORT_KEY_PREFIX = "reports/";
+const MAX_REPORT_SIZE = 50 * 1024 * 1024; // 50 MB
+const REPORT_TTL_DAYS = 30;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -149,6 +157,94 @@ async function probeService(url) {
 
 // ── Route handlers ───────────────────────────────────────────────────────────
 
+// ── Report sharing ───────────────────────────────────────────────────────────
+
+function generateReportId() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const arr = new Uint8Array(12);
+  crypto.getRandomValues(arr);
+  let id = "";
+  for (let i = 0; i < 12; i++) id += chars[arr[i] % chars.length];
+  return id;
+}
+
+async function handleStoreReport(request, env) {
+  const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
+  if (contentLength > MAX_REPORT_SIZE) {
+    return json({ error: "Report too large", maxBytes: MAX_REPORT_SIZE }, 413, env);
+  }
+
+  const html = await request.text();
+  if (!html || html.length < 100) {
+    return json({ error: "No report content provided" }, 400, env);
+  }
+
+  const id = generateReportId();
+  const key = REPORT_KEY_PREFIX + id + ".html";
+
+  await env.METADATA_BUCKET.put(key, html, {
+    httpMetadata: { contentType: "text/html; charset=utf-8" },
+    customMetadata: {
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + REPORT_TTL_DAYS * 86400000).toISOString(),
+    },
+  });
+
+  const baseUrl = new URL(request.url).origin;
+  return json({ id, url: `${baseUrl}/reports/${id}`, expiresIn: `${REPORT_TTL_DAYS} days` }, 201, env);
+}
+
+async function handleGetReport(reportId, env) {
+  // Sanitize ID
+  if (!/^[A-Za-z0-9]{6,20}$/.test(reportId)) {
+    return new Response(notFoundPage("Invalid report link."), {
+      status: 400,
+      headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(env) },
+    });
+  }
+
+  const key = REPORT_KEY_PREFIX + reportId + ".html";
+  const obj = await env.METADATA_BUCKET.get(key);
+
+  if (!obj) {
+    return new Response(notFoundPage("This report may have expired or the link may be incorrect."), {
+      status: 404,
+      headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(env) },
+    });
+  }
+
+  // Check TTL via custom metadata
+  const expiresAt = obj.customMetadata?.expiresAt;
+  if (expiresAt && new Date(expiresAt) < new Date()) {
+    // Expired — delete and return 404
+    await env.METADATA_BUCKET.delete(key);
+    return new Response(notFoundPage("This shared report has expired."), {
+      status: 404,
+      headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(env) },
+    });
+  }
+
+  const html = await obj.text();
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=86400",
+      ...corsHeaders(env),
+    },
+  });
+}
+
+function notFoundPage(message) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Report Not Found</title>
+<style>body{font-family:'Source Sans Pro',sans-serif;background:#f5f0e6;color:#2c2c2c;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
+.card{background:#fff;border-radius:12px;padding:48px;max-width:480px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.1);}
+h1{color:#1a472a;font-size:24px;margin:0 0 12px;}p{color:#5a5a5a;font-size:15px;line-height:1.6;}</style>
+</head><body><div class="card"><h1>Report Not Found</h1><p>${message}</p></div></body></html>`;
+}
+
+// ── Metadata handlers ────────────────────────────────────────────────────────
+
 async function handleGetMetadata(env) {
   const obj = await env.METADATA_BUCKET.get(R2_KEY);
   if (!obj) return json({ error: "No cached metadata yet. Trigger POST /refresh first." }, 404, env);
@@ -264,6 +360,16 @@ export default {
 
     if (request.method === "POST" && pathname === "/refresh") {
       return handleRefresh(request, env);
+    }
+
+    // ── Report sharing routes ──
+    if (request.method === "POST" && pathname === "/reports") {
+      return handleStoreReport(request, env);
+    }
+
+    if (request.method === "GET" && pathname.startsWith("/reports/")) {
+      const reportId = pathname.slice("/reports/".length);
+      return handleGetReport(reportId, env);
     }
 
     return json({ error: "Not found" }, 404, env);

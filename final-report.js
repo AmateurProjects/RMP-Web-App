@@ -82,6 +82,303 @@ define([
     }
 
     // ────────────────────────────────────────────
+    // AOI geometry → GeoJSON (for shapefile export in reports)
+    // ────────────────────────────────────────────
+    function aoiGeomToGeoJSON(geom) {
+        if (!geom) return null;
+        var type = geom.type || "";
+        var sr = geom.spatialReference || {};
+        var isWM = (sr.wkid === 102100 || sr.wkid === 3857 || sr.latestWkid === 3857);
+
+        function toWgs(x, y) {
+            if (!isWM) return [x, y];
+            var lng = (x / 20037508.34) * 180;
+            var lat = (180 / Math.PI) * (2 * Math.atan(Math.exp((y / 20037508.34) * 180 * Math.PI / 180)) - Math.PI / 2);
+            return [lng, lat];
+        }
+
+        if (type === "polygon" && geom.rings) {
+            return {
+                type: "Polygon",
+                coordinates: geom.rings.map(function (r) {
+                    return r.map(function (p) { return toWgs(p[0], p[1]); });
+                })
+            };
+        }
+        if (type === "polyline" && geom.paths) {
+            var paths = geom.paths.map(function (pa) {
+                return pa.map(function (p) { return toWgs(p[0], p[1]); });
+            });
+            return paths.length === 1
+                ? { type: "LineString", coordinates: paths[0] }
+                : { type: "MultiLineString", coordinates: paths };
+        }
+        if (type === "point") {
+            return { type: "Point", coordinates: toWgs(geom.x, geom.y) };
+        }
+        return null;
+    }
+
+    // ────────────────────────────────────────────
+    // CDN script tags for report package/share features
+    // ────────────────────────────────────────────
+    function getReportPackageCdnTags() {
+        return '<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"><\/script>\n' +
+               '    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js" crossorigin="anonymous"><\/script>';
+    }
+
+    // ────────────────────────────────────────────
+    // Inline JS for report packages (shapefile writer, download, share)
+    // NOTE: uses ES5 (var, no template literals) to avoid
+    //       breaking host template-literal interpolation.
+    // ────────────────────────────────────────────
+    function getReportPackageScript() {
+        return [
+'// ── Minimal shapefile writer (single-feature AOI) ──',
+'var _WGS84_PRJ = \'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]\';',
+'',
+'function _shpBbox(coords) {',
+'    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;',
+'    function scan(arr) {',
+'        if (typeof arr[0] === "number") {',
+'            if (arr[0] < xmin) xmin = arr[0]; if (arr[1] < ymin) ymin = arr[1];',
+'            if (arr[0] > xmax) xmax = arr[0]; if (arr[1] > ymax) ymax = arr[1];',
+'        } else { for (var i = 0; i < arr.length; i++) scan(arr[i]); }',
+'    }',
+'    scan(coords);',
+'    return [xmin, ymin, xmax, ymax];',
+'}',
+'',
+'function _writeShpFileHeader(dv, fileLenBytes, shpType, bbox) {',
+'    dv.setInt32(0, 9994, false);',
+'    dv.setInt32(24, fileLenBytes / 2, false);',
+'    dv.setInt32(28, 1000, true);',
+'    dv.setInt32(32, shpType, true);',
+'    dv.setFloat64(36, bbox[0], true); dv.setFloat64(44, bbox[1], true);',
+'    dv.setFloat64(52, bbox[2], true); dv.setFloat64(60, bbox[3], true);',
+'}',
+'',
+'function _buildDbf() {',
+'    var fieldName = "NAME", fieldLen = 30, fieldVal = "Area of Interest";',
+'    var headerLen = 32 + 32 + 1, recordLen = 1 + fieldLen;',
+'    var buf = new ArrayBuffer(headerLen + recordLen);',
+'    var dv = new DataView(buf);',
+'    dv.setUint8(0, 3);',
+'    var now = new Date();',
+'    dv.setUint8(1, now.getFullYear() - 1900);',
+'    dv.setUint8(2, now.getMonth() + 1);',
+'    dv.setUint8(3, now.getDate());',
+'    dv.setInt32(4, 1, true);',
+'    dv.setInt16(8, headerLen, true);',
+'    dv.setInt16(10, recordLen, true);',
+'    for (var fi = 0; fi < fieldName.length; fi++) dv.setUint8(32 + fi, fieldName.charCodeAt(fi));',
+'    dv.setUint8(43, 67);',
+'    dv.setUint8(48, fieldLen);',
+'    dv.setUint8(64, 0x0D);',
+'    dv.setUint8(65, 0x20);',
+'    for (var vi = 0; vi < fieldVal.length && vi < fieldLen; vi++) dv.setUint8(66 + vi, fieldVal.charCodeAt(vi));',
+'    for (var si = fieldVal.length; si < fieldLen; si++) dv.setUint8(66 + si, 0x20);',
+'    return buf;',
+'}',
+'',
+'function buildShapefileBuffers(geoJson) {',
+'    if (!geoJson) return null;',
+'    var type = geoJson.type, coords = geoJson.coordinates;',
+'    var bbox = _shpBbox(coords);',
+'    var shpBuf, shxBuf;',
+'',
+'    if (type === "Point") {',
+'        var shpLen = 128;',
+'        shpBuf = new ArrayBuffer(shpLen);',
+'        var dv = new DataView(shpBuf);',
+'        _writeShpFileHeader(dv, shpLen, 1, bbox);',
+'        dv.setInt32(100, 1, false); dv.setInt32(104, 10, false);',
+'        dv.setInt32(108, 1, true);',
+'        dv.setFloat64(112, coords[0], true); dv.setFloat64(120, coords[1], true);',
+'        shxBuf = new ArrayBuffer(108);',
+'        var sx = new DataView(shxBuf);',
+'        _writeShpFileHeader(sx, 108, 1, bbox);',
+'        sx.setInt32(100, 50, false); sx.setInt32(104, 10, false);',
+'    } else {',
+'        var shpType = (type === "Polygon" || type === "MultiPolygon") ? 5 : 3;',
+'        var rings;',
+'        if (type === "Polygon") { rings = coords; }',
+'        else if (type === "MultiPolygon") {',
+'            rings = [];',
+'            for (var mp = 0; mp < coords.length; mp++)',
+'                for (var mr = 0; mr < coords[mp].length; mr++) rings.push(coords[mp][mr]);',
+'        } else if (type === "LineString") { rings = [coords]; }',
+'        else { rings = coords; }',
+'        var numParts = rings.length, numPoints = 0;',
+'        for (var ri = 0; ri < rings.length; ri++) numPoints += rings[ri].length;',
+'        var contentBytes = 4 + 32 + 4 + 4 + (4 * numParts) + (16 * numPoints);',
+'        var shpLen = 100 + 8 + contentBytes;',
+'        shpBuf = new ArrayBuffer(shpLen);',
+'        var dv = new DataView(shpBuf);',
+'        _writeShpFileHeader(dv, shpLen, shpType, bbox);',
+'        var off = 100;',
+'        dv.setInt32(off, 1, false); off += 4;',
+'        dv.setInt32(off, contentBytes / 2, false); off += 4;',
+'        dv.setInt32(off, shpType, true); off += 4;',
+'        dv.setFloat64(off, bbox[0], true); off += 8;',
+'        dv.setFloat64(off, bbox[1], true); off += 8;',
+'        dv.setFloat64(off, bbox[2], true); off += 8;',
+'        dv.setFloat64(off, bbox[3], true); off += 8;',
+'        dv.setInt32(off, numParts, true); off += 4;',
+'        dv.setInt32(off, numPoints, true); off += 4;',
+'        var ptIdx = 0;',
+'        for (var pi = 0; pi < numParts; pi++) {',
+'            dv.setInt32(off, ptIdx, true); off += 4;',
+'            ptIdx += rings[pi].length;',
+'        }',
+'        for (var pri = 0; pri < rings.length; pri++) {',
+'            for (var pti = 0; pti < rings[pri].length; pti++) {',
+'                dv.setFloat64(off, rings[pri][pti][0], true); off += 8;',
+'                dv.setFloat64(off, rings[pri][pti][1], true); off += 8;',
+'            }',
+'        }',
+'        shxBuf = new ArrayBuffer(108);',
+'        var sx = new DataView(shxBuf);',
+'        _writeShpFileHeader(sx, 108, shpType, bbox);',
+'        sx.setInt32(100, 50, false); sx.setInt32(104, contentBytes / 2, false);',
+'    }',
+'    return { shp: shpBuf, shx: shxBuf, dbf: _buildDbf(), prj: _WGS84_PRJ };',
+'}',
+'',
+'// ── Download Report Package (ZIP with CSV + PDF + Shapefile) ──',
+'function downloadReportPackage() {',
+'    var btn = document.querySelector(".pkg-download-btn");',
+'    if (btn) { btn.disabled = true; btn.innerHTML = "\\u23F3 Building package\\u2026"; }',
+'',
+'    var csvBlocks = [];',
+'    if (typeof _exportData !== "undefined" && _exportData) {',
+'        _exportData.forEach(function(layer) {',
+'            if (!layer.rows || !layer.rows.length) return;',
+'            csvBlocks.push("\\n\\"=== " + layer.title.replace(/"/g, \'""\')',
+'                + " (" + layer.count + " features) ===\\"");',
+'            var keys = Object.keys(layer.rows[0]);',
+'            csvBlocks.push(keys.map(function(k){ return \'"\' + String(k).replace(/"/g,\'""\')',
+'                + \'"\'; }).join(","));',
+'            layer.rows.forEach(function(row) {',
+'                csvBlocks.push(keys.map(function(k){',
+'                    var v = row[k]; if (v == null) return "";',
+'                    return \'"\' + String(v).replace(/"/g,\'""\') + \'"\';',
+'                }).join(","));',
+'            });',
+'        });',
+'    }',
+'    var csv = csvBlocks.join("\\n");',
+'',
+'    var actBtns = document.querySelectorAll(".report-actions, .actions");',
+'    actBtns.forEach(function(el) { el.setAttribute("data-saved-display", el.style.display); el.style.display = "none"; });',
+'',
+'    var pdfProm;',
+'    if (typeof html2pdf !== "undefined") {',
+'        var el = document.querySelector(".cv-filter-wrap") || document.body;',
+'        pdfProm = html2pdf().set({',
+'            margin: [8, 8, 8, 8],',
+'            filename: "report.pdf",',
+'            image: { type: "jpeg", quality: 0.90 },',
+'            html2canvas: { scale: 1.5, useCORS: true, logging: false },',
+'            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },',
+'            pagebreak: { mode: ["css", "legacy"] }',
+'        }).from(el).outputPdf("arraybuffer");',
+'    } else { pdfProm = Promise.resolve(null); }',
+'',
+'    pdfProm.then(function(pdfBuf) {',
+'        actBtns.forEach(function(el) { el.style.display = el.getAttribute("data-saved-display") || ""; });',
+'        if (typeof JSZip === "undefined") {',
+'            alert("ZIP library not loaded. Please try again in a moment.");',
+'            if (btn) { btn.disabled = false; btn.innerHTML = "\\uD83D\\uDCE6 Download Report Package"; }',
+'            return;',
+'        }',
+'        var zip = new JSZip();',
+'        if (csv) zip.file("report_data.csv", csv);',
+'        if (pdfBuf) zip.file("report.pdf", pdfBuf);',
+'        if (typeof _aoiGeoJson !== "undefined" && _aoiGeoJson) {',
+'            var shpFiles = buildShapefileBuffers(_aoiGeoJson);',
+'            if (shpFiles) {',
+'                var shpFolder = zip.folder("aoi_shapefile");',
+'                shpFolder.file("aoi.shp", shpFiles.shp);',
+'                shpFolder.file("aoi.shx", shpFiles.shx);',
+'                shpFolder.file("aoi.dbf", shpFiles.dbf);',
+'                shpFolder.file("aoi.prj", shpFiles.prj);',
+'            }',
+'            zip.file("aoi.geojson", JSON.stringify({',
+'                type: "FeatureCollection",',
+'                features: [{ type: "Feature", properties: { name: "Area of Interest" }, geometry: _aoiGeoJson }]',
+'            }, null, 2));',
+'        }',
+'        return zip.generateAsync({ type: "blob" });',
+'    }).then(function(blob) {',
+'        if (!blob) return;',
+'        var url = URL.createObjectURL(blob);',
+'        var a = document.createElement("a");',
+'        a.href = url; a.download = "report_package.zip";',
+'        document.body.appendChild(a); a.click(); document.body.removeChild(a);',
+'        URL.revokeObjectURL(url);',
+'    }).catch(function(err) {',
+'        console.error("Package error:", err);',
+'        actBtns.forEach(function(el) { el.style.display = el.getAttribute("data-saved-display") || ""; });',
+'        alert("Failed to create report package: " + err.message);',
+'    }).finally(function() {',
+'        if (btn) { btn.disabled = false; btn.innerHTML = "\\uD83D\\uDCE6 Download Report Package"; }',
+'    });',
+'}',
+'',
+'// ── Share Report (upload to R2, get shareable link) ──',
+'function shareReport() {',
+'    var btn = document.querySelector(".share-report-btn");',
+'    if (btn) { btn.disabled = true; btn.innerHTML = "\\u23F3 Uploading\\u2026"; }',
+'    if (typeof _workerUrl === "undefined" || !_workerUrl) {',
+'        alert("Share service is not configured."); ',
+'        if (btn) { btn.disabled = false; btn.innerHTML = "\\uD83D\\uDD17 Share Report"; }',
+'        return;',
+'    }',
+'    var html = "<!doctype html>" + document.documentElement.outerHTML;',
+'    fetch(_workerUrl + "/reports", {',
+'        method: "POST",',
+'        headers: { "Content-Type": "text/html" },',
+'        body: html',
+'    }).then(function(res) {',
+'        if (!res.ok) throw new Error("Upload failed: " + res.status);',
+'        return res.json();',
+'    }).then(function(data) {',
+'        var overlay = document.createElement("div");',
+'        overlay.id = "shareOverlay";',
+'        overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;";',
+'        var card = document.createElement("div");',
+'        card.style.cssText = "background:#fff;border-radius:12px;padding:32px 36px;max-width:520px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.25);font-family:Source Sans Pro,sans-serif;";',
+'        card.innerHTML = \'<h3 style="margin:0 0 8px;color:#1a472a;font-size:20px;">Share Report Link</h3>\'',
+'            + \'<p style="margin:0 0 16px;font-size:13px;color:#666;">Anyone with this link can view this report (expires in \' + (data.expiresIn || "30 days") + \'):</p>\'',
+'            + \'<div style="display:flex;gap:8px;"><input id="shareUrlInput" type="text" value="\' + data.url + \'" readonly style="flex:1;padding:10px 12px;border:1px solid #ccc;border-radius:6px;font-size:13px;font-family:Consolas,Monaco,monospace;" />\'',
+'            + \'<button id="copyShareBtn" style="padding:10px 16px;background:#1a472a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;">Copy</button></div>\'',
+'            + \'<button id="closeShareBtn" style="margin-top:16px;padding:8px 20px;background:#eee;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Close</button>\';',
+'        overlay.appendChild(card);',
+'        document.body.appendChild(overlay);',
+'        document.getElementById("copyShareBtn").addEventListener("click", function() {',
+'            var inp = document.getElementById("shareUrlInput");',
+'            inp.select(); inp.setSelectionRange(0, 99999);',
+'            if (navigator.clipboard) { navigator.clipboard.writeText(inp.value); }',
+'            else { document.execCommand("copy"); }',
+'            this.textContent = "Copied!";',
+'            var self = this; setTimeout(function(){ self.textContent = "Copy"; }, 2000);',
+'        });',
+'        document.getElementById("closeShareBtn").addEventListener("click", function() {',
+'            overlay.remove();',
+'        });',
+'        overlay.addEventListener("click", function(e) { if (e.target === overlay) overlay.remove(); });',
+'    }).catch(function(err) {',
+'        console.error("Share error:", err);',
+'        alert("Failed to share report: " + err.message);',
+'    }).finally(function() {',
+'        if (btn) { btn.disabled = false; btn.innerHTML = "\\uD83D\\uDD17 Share Report"; }',
+'    });',
+'}',
+        ].join('\n');
+    }
+
+    // ────────────────────────────────────────────
     // IndexedDB report storage (persist reports for sharing via URL)
     // ────────────────────────────────────────────
     const REPORT_DB_NAME = "RmpReports";
@@ -525,7 +822,7 @@ define([
     // ────────────────────────────────────────────
     // buildFinalReportHtmlDoc – HTML template
     // ────────────────────────────────────────────
-    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, findingsSummaryHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml, reportId }) {
+    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, findingsSummaryHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml, reportId, exportDataJson, aoiGeoJsonStr, workerUrl }) {
         const safeTitle = escapeHtml(title || "Final Report");
         const reportIdMeta = reportId ? `<meta name="report-id" content="${escapeHtml(reportId)}" />` : '';
 
@@ -539,6 +836,7 @@ define([
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
             <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+            ${getReportPackageCdnTags()}
             <style>
                 :root{
                     --blm-green: #1a472a;
@@ -1323,6 +1621,7 @@ define([
                     .report-toc { break-inside: avoid; }
                     .back-to-top { display: none !important; }
                     .a11y-widget { display: none !important; }
+                    .actions { display: none !important; }
                     .interactive-table-wrapper .table-toolbar { display: none !important; }
                     .hidden-cols-bar { display: none !important; }
                     .col-hide-btn { display: none !important; }
@@ -1337,6 +1636,12 @@ define([
             </style>
             </head>
             <body>
+            <script>
+            var _exportData = ${exportDataJson || 'null'};
+            var _aoiGeoJson = ${aoiGeoJsonStr || 'null'};
+            var _workerUrl = "${escapeHtml(workerUrl || '')}";
+            ${getReportPackageScript()}
+            </script>
             <div class="cv-filter-wrap">
             <div class="report-header">
                 <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
@@ -1345,10 +1650,12 @@ define([
             </div>
             <div class="wrap">
                 <div class="actions">
-                    <a class="btn" href="javascript:window.print()">&#128424; Print / Save as PDF</a>
+                    <button class="btn pkg-download-btn" onclick="downloadReportPackage()">&#128230; Download Report Package</button>
+                    <button class="btn share-report-btn" onclick="shareReport()">&#128279; Share Report</button>
+                    <a class="btn" href="javascript:window.print()">&#128424; Print</a>
                     <button class="btn btn-bookmark" id="bookmarkReportBtn" title="Bookmark this report — reopens on this device/browser only">&#128278; Bookmark Report</button>
                 </div>
-                <div class="hint">Use your browser's print dialog to save as PDF. The bookmark saves a link to reopen this report on this device/browser only (valid for 7 days).</div>
+                <div class="hint">Download package includes PDF, CSV data, and AOI shapefile. Share creates a public link valid for 30 days.</div>
 
                 <!-- Table of Contents -->
                 <nav class="report-toc" aria-label="Report sections">
@@ -2620,6 +2927,7 @@ define([
                 transition: background 0.2s;
             }
             .export-btn:hover{ background: var(--blm-green-light); }
+            .export-btn:disabled{ opacity: 0.6; cursor: wait; }
             .report-actions{
                 display: flex;
                 gap: 12px;
@@ -2982,6 +3290,7 @@ define([
             @media print {
                 .report-actions { display: none; }
                 .export-btn { display: none; }
+                .actions { display: none !important; }
                 .a11y-widget { display: none !important; }
                 .interactive-table-wrapper .table-toolbar { display: none !important; }
                 .hidden-cols-bar { display: none !important; }
@@ -3017,14 +3326,23 @@ define([
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    ${getReportPackageCdnTags()}
     <style>${getReportStyles()}</style>
 </head>
 <body>
+    <script>
+    ${getReportPackageScript()}
+    </script>
     <div class="cv-filter-wrap">
     <header class="report-header">
         <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
         <h1>${escapeHtml(title)}</h1>
         <p class="meta">Generated: ${escapeHtml(createdAt)}${bucketLabel ? ` &bull; Category: ${escapeHtml(bucketLabel)}` : ''}</p>
+        <div class="report-actions" id="reportActions" style="display:none;">
+            <button class="export-btn pkg-download-btn" onclick="downloadReportPackage()">&#128230; Download Report Package</button>
+            <button class="export-btn share-report-btn" onclick="shareReport()">&#128279; Share Report</button>
+            <button class="export-btn" onclick="window.print()">&#128424; Print</button>
+        </div>
     </header>
     <main class="wrap">
         <div class="progress-banner" id="progressBanner">
@@ -3706,6 +4024,30 @@ ${getA11yWidgetBlock()}
             report.hideProgress();
             report.addFooter();
 
+            // === STEP 6: Inject export data & enable Download/Share toolbar ===
+            try {
+                if (report.win && !report.win.closed) {
+                    const _expData = targetLayers.map(layer => ({
+                        title: layer.title || "Unknown",
+                        count: layer.count || 0,
+                        rows: (layer.rows || []).slice(0, 100)
+                    }));
+                    const _expJson = JSON.stringify(_expData).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+                    const _aoiJson = JSON.stringify(aoiGeomToGeoJSON(selectionGeom) || null)
+                        .replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+                    const _wUrl = config.metadataWorkerUrl || '';
+
+                    const scriptEl = report.win.document.createElement('script');
+                    scriptEl.textContent = 'var _exportData = ' + _expJson + ';\n'
+                        + 'var _aoiGeoJson = ' + _aoiJson + ';\n'
+                        + 'var _workerUrl = "' + _wUrl.replace(/"/g, '\\"') + '";';
+                    report.win.document.body.appendChild(scriptEl);
+
+                    const actions = report.win.document.getElementById('reportActions');
+                    if (actions) { actions.style.display = ''; }
+                }
+            } catch (e) { console.warn("Could not inject report package data:", e); }
+
             // Auto-hide all-NULL columns now that content is fully loaded
             try {
                 if (report.win && !report.win.closed && report.win.autoHideNullColumns) {
@@ -4179,7 +4521,17 @@ ${getA11yWidgetBlock()}
                 findingsSummaryHtml,
                 aoiSectionHtml,
                 sectionsHtml,
-                dataSourcesHtml
+                dataSourcesHtml,
+                exportDataJson: JSON.stringify(
+                    (lastReportRowsByLayer || []).map(item => ({
+                        title: item.title || "Unknown",
+                        count: item.count || 0,
+                        rows: (item.rows || []).slice(0, 100)
+                    }))
+                ).replace(/</g, '\\u003c').replace(/>/g, '\\u003e'),
+                aoiGeoJsonStr: JSON.stringify(aoiGeomToGeoJSON(selectionGeom) || null)
+                    .replace(/</g, '\\u003c').replace(/>/g, '\\u003e'),
+                workerUrl: config.metadataWorkerUrl || ''
             });
 
             cachedFinalReportHtml = htmlDoc;
@@ -4653,6 +5005,9 @@ ${getA11yWidgetBlock()}
                 rows: (layer.rows || []).slice(0, 100) // Limit to 100 rows per layer for embedding
             }));
             const exportDataJson = JSON.stringify(exportData).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+            const bgAoiGeoJsonStr = JSON.stringify(aoiGeomToGeoJSON(selectionGeom) || null)
+                .replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+            const bgWorkerUrl = config.metadataWorkerUrl || '';
 
             const fullHtml = `<!doctype html>
 <html lang="en">
@@ -4663,6 +5018,7 @@ ${getA11yWidgetBlock()}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    ${getReportPackageCdnTags()}
     <style>${getReportStyles()}</style>
 </head>
 <body>
@@ -4672,38 +5028,16 @@ ${getA11yWidgetBlock()}
         <h1>${escapeHtml(reportTitle)}</h1>
         <p class="meta">Generated: ${escapeHtml(createdAt)}${bucketLabel ? ` &bull; Category: ${escapeHtml(bucketLabel)}` : ''}</p>
         <div class="report-actions">
-            <button class="export-btn" onclick="exportReportCsv()">📥 Export CSV</button>
-            <button class="export-btn" onclick="window.print()">🖨️ Print Report</button>
+            <button class="export-btn pkg-download-btn" onclick="downloadReportPackage()">&#128230; Download Report Package</button>
+            <button class="export-btn share-report-btn" onclick="shareReport()">&#128279; Share Report</button>
+            <button class="export-btn" onclick="window.print()">&#128424; Print</button>
         </div>
     </header>
     <script>
         var _exportData = ${exportDataJson};
-        function exportReportCsv() {
-            var blocks = [];
-            _exportData.forEach(function(layer) {
-                if (!layer.rows || !layer.rows.length) return;
-                blocks.push('\\n"=== ' + layer.title.replace(/"/g, '""') + ' (' + layer.count + ' features) ==="');
-                var keys = Object.keys(layer.rows[0]);
-                blocks.push(keys.map(function(k){ return '"' + String(k).replace(/"/g, '""') + '"'; }).join(','));
-                layer.rows.forEach(function(row) {
-                    blocks.push(keys.map(function(k){ 
-                        var v = row[k]; 
-                        if (v == null) return '';
-                        return '"' + String(v).replace(/"/g, '""') + '"';
-                    }).join(','));
-                });
-            });
-            var csv = blocks.join('\\n');
-            var blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = 'report_data.csv';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
+        var _aoiGeoJson = ${bgAoiGeoJsonStr};
+        var _workerUrl = "${escapeHtml(bgWorkerUrl)}";
+        ${getReportPackageScript()}
 
         // Toggle individual layer section visibility
         function toggleSection(btn) {
