@@ -23,7 +23,7 @@ const MAX_CONCURRENCY = 8;
 
 // ── Report sharing constants ─────────────────────────────────────────────────
 const REPORT_KEY_PREFIX = "reports/";
-const MAX_REPORT_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_REPORT_SIZE = 100 * 1024 * 1024; // 100 MB
 const REPORT_TTL_DAYS = 30;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

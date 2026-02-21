@@ -132,6 +132,23 @@ require([
       return (config.reportLayers || []).length;
     }
 
+    /**
+     * Smoothly scroll the side-panel so the latest content at the bottom is visible.
+     * Optionally pass a target element to scroll that specific element into view,
+     * otherwise scrolls the panel all the way to the bottom.
+     */
+    function scrollPanelToBottom(targetEl) {
+        const panel = document.getElementById("panel");
+        if (!panel) return;
+        requestAnimationFrame(() => {
+            if (targetEl) {
+                targetEl.scrollIntoView({ behavior: "smooth", block: "end" });
+            } else {
+                panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
+            }
+        });
+    }
+
     function setStatus(msg) {
         const text = "Status: " + msg;
         if (statusTextEl) statusTextEl.textContent = text;
@@ -705,6 +722,8 @@ function setActiveTab(tabName) {
         [wizardStep1, wizardStep2, wizardStep3].forEach((panel, idx) => {
             if (panel) panel.classList.toggle("active", idx + 1 === step);
         });
+        // Auto-scroll the panel so the newly shown step content is visible
+        scrollPanelToBottom();
     }
 
     // Swipe slide index mapping
@@ -824,6 +843,7 @@ function setActiveTab(tabName) {
                                 <div class="warn-detail">For faster results, consider selecting a smaller area.</div>
                             </div>`;
                         warningEl.classList.remove("hidden");
+                        scrollPanelToBottom(warningEl);
                     }
                 } else {
                     if (warningEl) warningEl.classList.add("hidden");
@@ -2992,9 +3012,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     drawBufPanel.classList.remove("hidden");
 
                     // Scroll the buffer options into view
-                    requestAnimationFrame(() => {
-                        drawBufPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                    });
+                    scrollPanelToBottom(drawBufPanel);
 
                     // Clear active preset
                     document.querySelectorAll(".draw-buf-preset").forEach(b => b.classList.remove("active"));
@@ -3398,6 +3416,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                         }
 
                         bufferPanel.classList.remove("hidden");
+                        scrollPanelToBottom(bufferPanel);
 
                         // Store result for the Apply/Skip handlers
                         bufferPanel._uploadResult = result;
@@ -3985,21 +4004,23 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
     const options = menu.querySelectorAll(".a11y-option");
 
-    // In-document SVG filter references (iOS Safari requires filters embedded in the DOM;
-    // data-URI SVG filters are silently ignored on mobile WebKit).
-    var CV_FILTERS = {
-        protanopia:    "url(#cv-protanopia)",
-        deuteranopia:  "url(#cv-deuteranopia)",
-        tritanopia:    "url(#cv-tritanopia)",
-        achromatopsia: "url(#cv-achromatopsia)",
-        highcontrast:  "contrast(1.8) brightness(0.85)"
-    };
+    // In-document SVG filter references — now applied via CSS classes on <body>
+    // (iOS Safari mobile silently ignores SVG url() filters set via inline JS styles;
+    // CSS-class rules in styles.css work correctly across all platforms.)
+
+    var CV_CLASSES = ["cv-protanopia", "cv-deuteranopia", "cv-tritanopia", "cv-achromatopsia", "cv-highcontrast"];
 
     function applyMode(mode) {
-        // Apply data-URI SVG filter directly to body style (iOS Safari compat)
-        var filterVal = (mode && mode !== "none" && CV_FILTERS[mode]) ? CV_FILTERS[mode] : "none";
-        document.body.style.webkitFilter = filterVal;
-        document.body.style.filter = filterVal;
+        // Remove all cv- classes then add the active one.
+        // CSS-class approach works reliably on iOS Safari (inline-style SVG url()
+        // filters are silently ignored on mobile WebKit).
+        CV_CLASSES.forEach(function (c) { document.body.classList.remove(c); });
+        if (mode && mode !== "none") {
+            document.body.classList.add("cv-" + mode);
+        }
+        // Clear any leftover inline filter styles from prior approach
+        document.body.style.webkitFilter = "";
+        document.body.style.filter = "";
         // Update aria-checked on menu items
         options.forEach(btn => {
             btn.setAttribute("aria-checked", btn.dataset.cv === mode ? "true" : "false");

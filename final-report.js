@@ -274,15 +274,33 @@ define([
 '',
 '    var pdfProm;',
 '    if (typeof html2pdf !== "undefined") {',
-'        var el = document.querySelector(".cv-filter-wrap") || document.body;',
+'        var pdfEl = document.querySelector(".cv-filter-wrap") || document.body;',
+'        var _savedFilter = pdfEl.style.filter || "";',
+'        var _savedWkFilter = pdfEl.style.webkitFilter || "";',
+'        pdfEl.style.filter = "none"; pdfEl.style.webkitFilter = "none";',
 '        pdfProm = html2pdf().set({',
 '            margin: [8, 8, 8, 8],',
 '            filename: "report.pdf",',
-'            image: { type: "jpeg", quality: 0.90 },',
-'            html2canvas: { scale: 1.5, useCORS: true, logging: false },',
+'            image: { type: "jpeg", quality: 0.85 },',
+'            html2canvas: {',
+'                scale: 1,',
+'                useCORS: true,',
+'                allowTaint: true,',
+'                logging: false,',
+'                backgroundColor: "#fdfcfa",',
+'                windowWidth: 980,',
+'                scrollY: -window.scrollY,',
+'                scrollX: 0',
+'            },',
 '            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },',
 '            pagebreak: { mode: ["css", "legacy"] }',
-'        }).from(el).outputPdf("arraybuffer");',
+'        }).from(pdfEl).outputPdf("arraybuffer").then(function(buf) {',
+'            pdfEl.style.filter = _savedFilter; pdfEl.style.webkitFilter = _savedWkFilter;',
+'            return buf;',
+'        }).catch(function(pdfErr) {',
+'            pdfEl.style.filter = _savedFilter; pdfEl.style.webkitFilter = _savedWkFilter;',
+'            throw pdfErr;',
+'        });',
 '    } else { pdfProm = Promise.resolve(null); }',
 '',
 '    pdfProm.then(function(pdfBuf) {',
@@ -817,6 +835,59 @@ define([
         paragraphs.push('<p><em>This screening report is generated automatically from publicly available geospatial datasets and is provided for informational and preliminary planning purposes only. It does not constitute a formal determination by the Bureau of Land Management, a legal opinion, or a guarantee of any permit outcome. The analysis is limited to datasets available through BLM and partner agency web services and does not account for site-specific conditions including, but not limited to: on-the-ground cultural or archaeological resources protected under the National Historic Preservation Act (54 U.S.C. &sect;300101 et seq.) and the Archaeological Resources Protection Act (16 U.S.C. &sect;470aa et seq.); unlisted candidate or sensitive species; Tribal treaty rights and trust responsibilities; state and local permitting requirements; or recent changes to Resource Management Plans. All findings should be verified through field investigation and coordination with appropriate BLM resource specialists. This report does not establish any rights or obligations under FLPMA (43 U.S.C. &sect;1701 et seq.), NEPA (42 U.S.C. &sect;4321 et seq.), or any other federal, state, or local law. Applicants are strongly encouraged to contact their local BLM field office for authoritative guidance prior to submitting permit applications, renewals, or protests.</em></p>');
 
         return paragraphs.join("\n");
+    }
+
+    // ────────────────────────────────────────────
+    // BLM Permits, Applications & Leases – Quick Reference
+    // ────────────────────────────────────────────
+    function getBlmPermitsSection() {
+        const permits = [
+            { category: "Right-of-Way (ROW)", form: "SF-299", title: "Application for Transportation and Utility Systems and Facilities on Federal Lands", url: "https://www.blm.gov/services/permits-and-leases/right-of-way", description: "Pipelines, transmission lines, roads, fiber optic, communication sites on BLM lands (43 CFR 2800)." },
+            { category: "Mineral Materials (Free Use / Sale)", form: "BLM Form 3604-1", title: "Free Use Application for Mineral Materials", url: "https://www.blm.gov/programs/energy-and-minerals/mining-and-minerals/mineral-materials", description: "Sand, gravel, stone, clay, and other common mineral materials (43 CFR 3600)." },
+            { category: "Fluid Minerals (Oil & Gas)", form: "BLM Form 3100-11", title: "Offer to Lease and Lease for Oil and Gas", url: "https://www.blm.gov/programs/energy-and-minerals/oil-and-gas/leasing", description: "Competitive and non-competitive oil and gas leases on Federal lands (43 CFR 3100)." },
+            { category: "Application for Permit to Drill (APD)", form: "BLM Form 3160-3", title: "Application for Permit to Drill or Re-enter", url: "https://www.blm.gov/programs/energy-and-minerals/oil-and-gas/operations-and-production/permitting", description: "Drilling operations on existing Federal oil and gas leases (43 CFR 3160)." },
+            { category: "Geothermal Leasing", form: "BLM Form 3200-9", title: "Offer to Lease Geothermal Resources", url: "https://www.blm.gov/programs/energy-and-minerals/renewable-energy/geothermal-energy", description: "Geothermal resource exploration and development on Federal lands (43 CFR 3200)." },
+            { category: "Solar & Wind Energy ROW", form: "SF-299", title: "Solar/Wind Energy Development Application", url: "https://www.blm.gov/programs/energy-and-minerals/renewable-energy", description: "Utility-scale solar and wind energy projects on BLM-managed lands (43 CFR 2800)." },
+            { category: "Land Use (Leases & Permits)", form: "BLM Form 2920-1", title: "Application for Land Use Authorization", url: "https://www.blm.gov/services/permits-and-leases", description: "Short- and long-term land use authorizations for uses not covered by ROW (43 CFR 2920)." },
+            { category: "Grazing Permit/Lease", form: "BLM Form 4130-1a", title: "Grazing Application/Permit/Lease", url: "https://www.blm.gov/programs/natural-resources/rangelands-and-grazing/grazing-administration", description: "Livestock grazing on BLM-administered rangelands (43 CFR 4100)." },
+            { category: "Recreation Use Permit", form: "BLM Form 2930-1", title: "Special Recreation Permit Application", url: "https://www.blm.gov/programs/recreation/permits-and-fees/special-recreation-permits", description: "Commercial, competitive, and organized group recreation events (43 CFR 2930)." },
+            { category: "Mining Claim (Locatable Minerals)", form: "BLM Form 3830-2", title: "Notice of Location / Mining Claim", url: "https://www.blm.gov/programs/energy-and-minerals/mining-and-minerals/locatable-minerals/mining-claims", description: "Filing and maintaining mining claims for gold, silver, copper, and other locatable minerals (43 CFR 3830)." },
+            { category: "Coal Leasing", form: "BLM Form 3400-12", title: "Application for Coal Lease", url: "https://www.blm.gov/programs/energy-and-minerals/coal", description: "Competitive coal leasing on Federal lands (43 CFR 3400)." },
+            { category: "Timber / Forest Products", form: "BLM Contract", title: "Forest Management / Timber Sale", url: "https://www.blm.gov/programs/natural-resources/forests-and-woodlands", description: "Commercial timber harvest, firewood permits, and forest product sales." },
+            { category: "Cultural Resource Use Permit", form: "ARPA Permit", title: "Archaeological Resources Protection Act Permit", url: "https://www.blm.gov/programs/cultural-heritage-and-paleontology", description: "Archaeological investigation on public lands (16 U.S.C. §470aa–mm)." },
+            { category: "Film & Photography Permit", form: "BLM Form 2920", title: "Commercial Filming or Photography Permit", url: "https://www.blm.gov/services/permits-and-leases/filming-photography", description: "Commercial filming and still photography requiring exclusive use of BLM lands (43 CFR 2920)." }
+        ];
+
+        let rows = '';
+        for (const p of permits) {
+            rows += `<tr>
+                <td style="font-weight:600;">${escapeHtml(p.category)}</td>
+                <td><code style="font-size:11px;background:var(--blm-tan);padding:2px 6px;border-radius:3px;">${escapeHtml(p.form)}</code></td>
+                <td>${escapeHtml(p.description)}</td>
+                <td style="text-align:center;"><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener" style="color:var(--blm-green);font-weight:600;text-decoration:none;">View&nbsp;&#8599;</a></td>
+            </tr>`;
+        }
+
+        return `
+            <h2 id="section-permits"><span class="section-num">6.</span> BLM Permits, Applications &amp; Leases</h2>
+            <p class="section-intro">Quick reference links for the most common Bureau of Land Management permit types, applications, and lease programs. Select the appropriate form based on the proposed use identified in the screening results above.</p>
+            <table class="data-sources-table" style="font-size:12px;">
+                <thead>
+                    <tr>
+                        <th style="width:22%;">Permit / Authorization</th>
+                        <th style="width:14%;">Form</th>
+                        <th style="width:46%;">Description</th>
+                        <th style="width:8%;">Link</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <p style="font-size:11px;color:var(--muted);margin-top:12px;">
+                <strong>Note:</strong> Contact your local <a href="https://www.blm.gov/office/national-office" target="_blank" rel="noopener" style="color:var(--blm-green);">BLM Field Office</a> 
+                for specific filing requirements, pre-application consultations, and current fee schedules. 
+                Forms and processes are subject to change; always verify with the authoritative source.
+            </p>
+        `;
     }
 
     // ────────────────────────────────────────────
@@ -1699,6 +1770,8 @@ define([
                 </div>
 
                 ${dataSourcesHtml || ""}
+
+                ${getBlmPermitsSection()}
                 
                 <div class="report-footer">
                     <div class="dept-name">Bureau of Land Management</div>
@@ -2548,7 +2621,7 @@ define([
                 }
             }
 
-            return canvas.toDataURL("image/png");
+            return canvas.toDataURL("image/jpeg", 0.92);
         }
 
         function loadImageFromDataUrl(dataUrl) {
@@ -3828,6 +3901,9 @@ ${getA11yWidgetBlock()}
                         await waitForViewStationary(800);
                     }
 
+                    // Deferred screenshots: skip capture when tab is hidden, retry at end
+                    const deferredScreenshots = [];
+
                     // Process each layer
                     for (let i = 0; i < mappableLayers.length; i++) {
                         if (!report.isOpen()) break;
@@ -3845,32 +3921,38 @@ ${getA11yWidgetBlock()}
                         // ImageServer layers — capture screenshot + elevation narrative
                         if (item.__isImageService) {
                             let dataUrl = null;
-                            const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
-                            if (item.__renderingRule) {
-                                imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
-                            }
-                            const tempImg = new ImageryLayer(imgLayerOpts);
-                            try {
-                                view.map.add(tempImg);
-                                await tempImg.when();
-                                setVisibilityForScreenshot(tempImg);
-                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                if (fixedExtent) {
-                                    await view.goTo(fixedExtent, { animate: false });
-                                } else {
-                                    await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                            let screenshotDeferred = false;
+
+                            if (!document.hidden) {
+                                const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
+                                if (item.__renderingRule) {
+                                    imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
                                 }
-                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
-                                await waitForViewStationary(800);
-                                // Refresh mask so outer ring matches the current view extent
-                                updateAoiMask(true);
-                                await waitForTabVisible(5000);
-                                dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                            } catch (e) {
-                                console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
-                            } finally {
-                                try { view.map.remove(tempImg); } catch (_) {}
-                                restoreVisibility();
+                                const tempImg = new ImageryLayer(imgLayerOpts);
+                                try {
+                                    view.map.add(tempImg);
+                                    await tempImg.when();
+                                    setVisibilityForScreenshot(tempImg);
+                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
+                                    if (fixedExtent) {
+                                        await view.goTo(fixedExtent, { animate: false });
+                                    } else {
+                                        await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    }
+                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
+                                    await waitForViewStationary(800);
+                                    updateAoiMask(true);
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                } catch (e) {
+                                    console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
+                                } finally {
+                                    try { view.map.remove(tempImg); } catch (_) {}
+                                    restoreVisibility();
+                                }
+                            } else {
+                                screenshotDeferred = true;
+                                deferredScreenshots.push({ layerId, layerTitle, item, isImageService: true, tempGeomType: null });
+                                console.log(`[report] Deferring screenshot for "${layerTitle}" (tab hidden)`);
                             }
 
                             let elevStats = null;
@@ -3884,8 +3966,13 @@ ${getA11yWidgetBlock()}
                                 isPolygon: false, isImagery: true, elevStats
                             });
 
+                            const mapHtml = dataUrl
+                                ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>`
+                                : screenshotDeferred
+                                    ? `<div class="map deferred-map" id="dm-${layerId}"><div class="sub" style="text-align:center;padding:24px;color:#7c6f5b;"><span style="font-size:24px;">&#9202;</span><br/>Map screenshot pending &mdash; return to the app tab</div></div>`
+                                    : '';
                             const sectionHtml = `
-                                ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : ''}
+                                ${mapHtml}
                                 ${narrativeHtml}
                             `;
                             report.replaceMapPlaceholder(layerId, sectionHtml);
@@ -3915,53 +4002,52 @@ ${getA11yWidgetBlock()}
                                 continue;
                             }
 
-                            // Create temp layer for screenshot - use service's native renderer
                             const tempGeomType = await getLayerGeometryType(item.url);
-
-                            const tempLayer = new FeatureLayer({
-                                url: item.url,
-                                outFields: ["*"],
-                                visible: false
-                            });
-                            view.map.add(tempLayer);
-                            tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
-                            
-                            // Wait for layer to load so service renderer is available
-                            try { await tempLayer.when(); } catch (e) { /* continue */ }
-                            
-                            // Thicken borders while preserving service's original symbology
-                            thickenLayerSymbology(tempLayer, tempGeomType);
-
-                            setVisibilityForScreenshot(tempLayer);
-
-                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                            if (fixedExtent) {
-                                await view.goTo(fixedExtent, { animate: false });
-                            } else {
-                                await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
-                            }
-                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                            await waitForViewStationary(800);
-                            // Refresh mask so outer ring matches the current view extent
-                            updateAoiMask(true);
-                            await waitForTabVisible(5000);
-
-                            // Wait for overlay layers to render
-                            await _waitForOverlays(view, overlays);
-
-                            // Fire coverage stats in parallel with screenshot capture
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+
+                            // Fire coverage stats early (REST query — works in background)
                             const coveragePromise = isPolygonLayer
                                 ? computeLayerCoverageStats(item, selectionGeom).catch(function () { return null; })
                                 : Promise.resolve(null);
 
-                            const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                            let dataUrl = null;
+                            let screenshotDeferred = false;
 
-                            // Clean up temp layer
-                            view.map.remove(tempLayer);
-                            _removeOverlays(view, overlays);
+                            if (!document.hidden) {
+                                // Tab visible — capture screenshot now
+                                const tempLayer = new FeatureLayer({
+                                    url: item.url,
+                                    outFields: ["*"],
+                                    visible: false
+                                });
+                                view.map.add(tempLayer);
+                                tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
+                                try { await tempLayer.when(); } catch (e) { /* continue */ }
+                                thickenLayerSymbology(tempLayer, tempGeomType);
+                                const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression);
 
-                            // Collect deferred coverage result
+                                setVisibilityForScreenshot(tempLayer);
+                                await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                                if (fixedExtent) {
+                                    await view.goTo(fixedExtent, { animate: false });
+                                } else {
+                                    await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                }
+                                await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                                await waitForViewStationary(800);
+                                updateAoiMask(true);
+                                await _waitForOverlays(view, overlays);
+                                dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                view.map.remove(tempLayer);
+                                _removeOverlays(view, overlays);
+                            } else {
+                                // Tab hidden — defer screenshot for later
+                                screenshotDeferred = true;
+                                deferredScreenshots.push({ layerId, layerTitle, item, isImageService: false, tempGeomType });
+                                console.log(`[report] Deferring screenshot for "${layerTitle}" (tab hidden)`);
+                            }
+
+                            // Collect coverage result (started earlier, works in background)
                             let acresCovered = 0;
                             let pctCovered = 0;
                             const covStats = await coveragePromise;
@@ -3981,8 +4067,13 @@ ${getA11yWidgetBlock()}
                                 : "";
 
                             // Build section HTML
+                            const mapHtml = dataUrl
+                                ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>`
+                                : screenshotDeferred
+                                    ? `<div class="map deferred-map" id="dm-${layerId}"><div class="sub" style="text-align:center;padding:24px;color:#7c6f5b;"><span style="font-size:24px;">&#9202;</span><br/>Map screenshot pending &mdash; return to the app tab</div></div>`
+                                    : '<div class="sub">Map generation failed</div>';
                             const sectionHtml = `
-                                ${dataUrl ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>` : '<div class="sub">Map generation failed</div>'}
+                                ${mapHtml}
                                 ${narrativeHtml}
                                 ${generateLayerAttributeSummary(item) ? `<table class="metaTbl">${generateLayerAttributeSummary(item)}</table>` : ''}
                                 ${perFeatureTableHtml}
@@ -3993,6 +4084,78 @@ ${getA11yWidgetBlock()}
                         } catch (e) {
                             console.warn(`Failed to generate map for ${layerTitle}:`, e);
                             report.replaceMapPlaceholder(layerId, `<div class="sub" style="color: #c62828;">Map generation failed: ${escapeHtml(e.message)}</div>`);
+                        }
+                    }
+
+                    // === Retry deferred screenshots (tab was hidden during initial pass) ===
+                    if (deferredScreenshots.length > 0 && report.isOpen()) {
+                        report.updateProgress("Screenshots pending\u2026",
+                            `${deferredScreenshots.length} map(s) need the tab to be visible. Please return to the screening app tab.`);
+                        await waitForTabVisible(300000);
+
+                        for (let di = 0; di < deferredScreenshots.length; di++) {
+                            const def = deferredScreenshots[di];
+                            if (!report.isOpen()) break;
+
+                            report.updateProgress("Capturing deferred maps\u2026",
+                                `Map ${di + 1}/${deferredScreenshots.length}: ${def.layerTitle}`);
+
+                            try {
+                                let retryDataUrl = null;
+                                if (def.isImageService) {
+                                    const imgOpts = { url: def.item.url, title: def.layerTitle, visible: true };
+                                    if (def.item.__renderingRule) imgOpts.renderingRule = { functionName: def.item.__renderingRule };
+                                    const tempImg = new ImageryLayer(imgOpts);
+                                    try {
+                                        view.map.add(tempImg);
+                                        await tempImg.when();
+                                        setVisibilityForScreenshot(tempImg);
+                                        await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
+                                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
+                                        await waitForViewStationary(800);
+                                        updateAoiMask(true);
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                    } finally {
+                                        try { view.map.remove(tempImg); } catch (_) {}
+                                        restoreVisibility();
+                                    }
+                                } else {
+                                    const tempLayer = new FeatureLayer({
+                                        url: def.item.url, outFields: ["*"], visible: false
+                                    });
+                                    view.map.add(tempLayer);
+                                    tempLayer.definitionExpression = def.item._exportQuery?.where || "1=1";
+                                    try { await tempLayer.when(); } catch (e) {}
+                                    thickenLayerSymbology(tempLayer, def.tempGeomType);
+                                    const overlays = await _addReportOverlays(view, tempLayer, def.tempGeomType, def.item.url, tempLayer.definitionExpression);
+                                    try {
+                                        setVisibilityForScreenshot(tempLayer);
+                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                                        await waitForViewStationary(800);
+                                        updateAoiMask(true);
+                                        await _waitForOverlays(view, overlays);
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                    } finally {
+                                        view.map.remove(tempLayer);
+                                        _removeOverlays(view, overlays);
+                                        restoreVisibility();
+                                    }
+                                }
+
+                                if (retryDataUrl && report.win && !report.win.closed) {
+                                    const el = report.win.document.getElementById('dm-' + def.layerId);
+                                    if (el) {
+                                        el.outerHTML = `<div class="map"><img src="${retryDataUrl}" alt="${escapeHtml(def.layerTitle)} map" /></div>`;
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn(`Deferred screenshot failed for ${def.layerTitle}:`, e);
+                            }
                         }
                     }
 
@@ -4021,6 +4184,7 @@ ${getA11yWidgetBlock()}
             // === STEP 5: Data Sources table and footer ===
             const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);
             report.appendContent(dataSourcesHtml);
+            report.appendContent(getBlmPermitsSection());
             report.hideProgress();
             report.addFooter();
 
@@ -4266,6 +4430,8 @@ ${getA11yWidgetBlock()}
                 }
 
                 // Iterate through buckets in order
+                const deferredScreenshots = [];
+
                 for (const bucketKey of BUCKET_ORDER) {
                     const bucketItems = bucketedTargets[bucketKey] || [];
                     if (!bucketItems.length) continue;
@@ -4289,60 +4455,70 @@ ${getA11yWidgetBlock()}
 
                     // ImageServer layers
                     if (item.__isImageService) {
-                        const imgLayerOpts = {
-                            url: item.url,
-                            title: item.title,
-                            visible: true
-                        };
-                        if (item.__renderingRule) {
-                            imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
+                        let dataUrl = null;
+                        let screenshotDeferred = false;
+                        const deferToken = `__DEFERRED_MAP_${globalLayerIndex}__`;
+
+                        if (!document.hidden) {
+                            const imgLayerOpts = {
+                                url: item.url,
+                                title: item.title,
+                                visible: true
+                            };
+                            if (item.__renderingRule) {
+                                imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
+                            }
+                            const temp = new ImageryLayer(imgLayerOpts);
+                            try { await temp.when(); } catch (e) { /* continue */ }
+                            view.map.add(temp);
+
+                            try {
+                                setVisibilityForScreenshot(temp);
+                                await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
+                                if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                                else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
+                                await waitForViewStationary(800);
+                                updateAoiMask(true);
+                                dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                            } finally {
+                                try { view.map.remove(temp); } catch (e) { }
+                                restoreVisibility();
+                            }
+                        } else {
+                            screenshotDeferred = true;
+                            deferredScreenshots.push({ token: deferToken, item, isImageService: true, tempGeomType: null });
+                            console.log(`[full-report] Deferring screenshot for "${item.title}" (tab hidden)`);
                         }
-                        const temp = new ImageryLayer(imgLayerOpts);
-                        try { await temp.when(); } catch (e) { /* continue */ }
-                        view.map.add(temp);
 
-                        try {
-                            setVisibilityForScreenshot(temp);
-                            await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
-                            if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                            else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
-                            // Re-check that layer has finished rendering at the new extent
-                            await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
-                            await waitForViewStationary(800);
-                            // Refresh mask so outer ring matches the current view extent
-                            updateAoiMask(true);
+                        const elevStats = await computeElevationStats(item.url, selectionGeom);
 
-                            const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                            if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
+                        const narrativeHtml = buildLayerNarrative({
+                            aoiAcres, featureCount: 0, layerTitle: item.title,
+                            acresCovered: 0, pctCovered: 0,
+                            isPolygon: false, isImagery: true, elevStats
+                        });
 
-                            const elevStats = await computeElevationStats(item.url, selectionGeom);
+                        const mapImgHtml = dataUrl
+                            ? `<img src="${dataUrl}" alt="${escapeHtml(item.title)}" style="width:100%; border-radius:8px;" />`
+                            : screenshotDeferred ? deferToken : '';
 
-                            const narrativeHtml = buildLayerNarrative({
-                                aoiAcres, featureCount: 0, layerTitle: item.title,
-                                acresCovered: 0, pctCovered: 0,
-                                isPolygon: false, isImagery: true, elevStats
-                            });
-
-                            sectionsHtml += `
-                              <div class="section layer-section page-break">
-                                <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
-                                <div class="section-collapse-wrap"><div class="section-collapse-inner">
-                                <div class="map">
-                                  <div class="map-zoom-controls">
-                                      <button class="zoom-in" title="Zoom in">+</button>
-                                      <button class="zoom-out" title="Zoom out">&minus;</button>
-                                      <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
-                                  </div>
-                                  <img src="${dataUrl}" alt="${escapeHtml(item.title)}" style="width:100%; border-radius:8px;" />
-                                </div>
-                                ${narrativeHtml}
-                                </div></div>
+                        sectionsHtml += `
+                          <div class="section layer-section page-break">
+                            <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
+                            <div class="section-collapse-wrap"><div class="section-collapse-inner">
+                            <div class="map">
+                              <div class="map-zoom-controls">
+                                  <button class="zoom-in" title="Zoom in">+</button>
+                                  <button class="zoom-out" title="Zoom out">&minus;</button>
+                                  <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
                               </div>
-                            `;
-                        } finally {
-                            try { view.map.remove(temp); } catch (e) { }
-                            restoreVisibility();
-                        }
+                              ${mapImgHtml}
+                            </div>
+                            ${narrativeHtml}
+                            </div></div>
+                          </div>
+                        `;
                         continue;
                     }
 
@@ -4367,97 +4543,168 @@ ${getA11yWidgetBlock()}
 
                     // FeatureServer layers
                     const tempGeomType = await getLayerGeometryType(item.url);
-                    const tempOpts = {
-                        url: item.url,
-                        title: item.title,
-                        outFields: ["*"],
-                        visible: true
-                    };
-                    const temp = new FeatureLayer(tempOpts);
+                    let dataUrl = null;
+                    let screenshotDeferred = false;
+                    const deferToken = `__DEFERRED_MAP_${globalLayerIndex}__`;
 
-                    // Always override scale to ensure layer draws at any zoom
-                    temp.minScale = 0;
-                    temp.maxScale = 0;
+                    if (!document.hidden) {
+                        const tempOpts = {
+                            url: item.url,
+                            title: item.title,
+                            outFields: ["*"],
+                            visible: true
+                        };
+                        const temp = new FeatureLayer(tempOpts);
+                        temp.minScale = 0;
+                        temp.maxScale = 0;
+                        view.map.add(temp);
+                        try { await temp.when(); } catch (e) { /* continue */ }
+                        thickenLayerSymbology(temp, tempGeomType);
+                        const overlays = await _addReportOverlays(view, temp, tempGeomType, item.url, temp.definitionExpression || null);
 
-                    view.map.add(temp);
-
-                    // Wait for the layer to load so its service renderer is available
-                    try { await temp.when(); } catch (e) { /* continue even if load fails */ }
-
-                    // Thicken borders while preserving the service's original symbology
-                    thickenLayerSymbology(temp, tempGeomType);
-
-                    // Add PLSS Township grid + hash overlay for polygon layers
-                    const overlays = await _addReportOverlays(view, temp, tempGeomType, item.url, temp.definitionExpression || null);
-
-                    try {
-                        setVisibilityForScreenshot(temp);
-                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
-                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
-                        // Re-check that layer has finished rendering at the new extent
-                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
-                        await waitForViewStationary(800);
-                        // Refresh mask so outer ring matches the current view extent
-                        updateAoiMask(true);
-
-                        // Wait for overlay layers to render
-                        await _waitForOverlays(view, overlays);
-
-                        // Fire coverage stats in parallel with screenshot capture
-                        const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
-                        const coveragePromise = isPolygonLayer
-                            ? computeLayerCoverageStats(item, selectionGeom).catch(function () { return null; })
-                            : Promise.resolve(null);
-
-                        const dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                        if (!dataUrl) throw new Error("Screenshot failed (no dataUrl).");
-
-                        // Collect deferred coverage result
-                        let acresCovered = 0;
-                        let pctCovered   = 0;
-                        const covStats = await coveragePromise;
-                        if (covStats) {
-                            acresCovered = covStats.acresCovered || 0;
-                            pctCovered   = covStats.pctAoiCovered || 0;
+                        try {
+                            setVisibilityForScreenshot(temp);
+                            await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
+                            if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                            else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                            await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
+                            await waitForViewStationary(800);
+                            updateAoiMask(true);
+                            await _waitForOverlays(view, overlays);
+                            dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                        } finally {
+                            try { view.map.remove(temp); } catch (e) { }
+                            _removeOverlays(view, overlays);
+                            restoreVisibility();
                         }
-
-                        const layerAttrSummary = generateLayerAttributeSummary(item);
-                        const perFeatureTableHtml = (item.count > 0)
-                            ? await buildPerFeatureTable(item, selectionGeom, globalLayerIndex)
-                            : "";
-
-                        const narrativeHtml = buildLayerNarrative({
-                            aoiAcres, featureCount: item.count || 0, layerTitle: item.title,
-                            acresCovered, pctCovered, isPolygon: isPolygonLayer
-                        });
-
-                        sectionsHtml += `
-                        <div class="section">
-                            <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
-                            <div class="section-collapse-wrap"><div class="section-collapse-inner">
-                            <div class="map">
-                                <div class="map-zoom-controls">
-                                    <button class="zoom-in" title="Zoom in">+</button>
-                                    <button class="zoom-out" title="Zoom out">&minus;</button>
-                                    <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
-                                </div>
-                                <img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>
-                            </div>
-                            ${narrativeHtml}
-                            ${layerAttrSummary ? `<table class="metaTbl">${layerAttrSummary}</table>` : ''}
-                            ${perFeatureTableHtml}
-                            </div></div>
-                        </div>
-                        <div class="pagebreak"></div>
-                        `;
-                    } finally {
-                        try { view.map.remove(temp); } catch (e) { }
-                        _removeOverlays(view, overlays);
-                        restoreVisibility();
+                    } else {
+                        screenshotDeferred = true;
+                        deferredScreenshots.push({ token: deferToken, item, isImageService: false, tempGeomType });
+                        console.log(`[full-report] Deferring screenshot for "${item.title}" (tab hidden)`);
                     }
+
+                    // Coverage stats, narratives, tables — all REST-based, work even when hidden
+                    const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                    let acresCovered = 0;
+                    let pctCovered   = 0;
+                    try {
+                        if (isPolygonLayer) {
+                            const covStats = await computeLayerCoverageStats(item, selectionGeom);
+                            if (covStats) {
+                                acresCovered = covStats.acresCovered || 0;
+                                pctCovered   = covStats.pctAoiCovered || 0;
+                            }
+                        }
+                    } catch (e) { /* coverage stats non-critical */ }
+
+                    const layerAttrSummary = generateLayerAttributeSummary(item);
+                    const perFeatureTableHtml = (item.count > 0)
+                        ? await buildPerFeatureTable(item, selectionGeom, globalLayerIndex)
+                        : "";
+
+                    const narrativeHtml = buildLayerNarrative({
+                        aoiAcres, featureCount: item.count || 0, layerTitle: item.title,
+                        acresCovered, pctCovered, isPolygon: isPolygonLayer
+                    });
+
+                    const mapImgHtml = dataUrl
+                        ? `<img src="${dataUrl}" alt="AOI + ${escapeHtml(item.title)}"/>`
+                        : screenshotDeferred ? deferToken : '';
+
+                    sectionsHtml += `
+                    <div class="section">
+                        <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(item.title)}</h3>
+                        <div class="section-collapse-wrap"><div class="section-collapse-inner">
+                        <div class="map">
+                            <div class="map-zoom-controls">
+                                <button class="zoom-in" title="Zoom in">+</button>
+                                <button class="zoom-out" title="Zoom out">&minus;</button>
+                                <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
+                            </div>
+                            ${mapImgHtml}
+                        </div>
+                        ${narrativeHtml}
+                        ${layerAttrSummary ? `<table class="metaTbl">${layerAttrSummary}</table>` : ''}
+                        ${perFeatureTableHtml}
+                        </div></div>
+                    </div>
+                    <div class="pagebreak"></div>
+                    `;
                     } // end layer loop
                 } // end bucket loop
+
+                // ── Retry deferred screenshots (tab was hidden during capture) ──
+                if (deferredScreenshots.length > 0) {
+                    console.log(`[full-report] ${deferredScreenshots.length} deferred screenshot(s) — waiting for tab visibility…`);
+                    await waitForTabVisible(300000); // wait up to 5 minutes
+
+                    for (const def of deferredScreenshots) {
+                        let retryDataUrl = null;
+                        try {
+                            if (def.isImageService) {
+                                const imgOpts = { url: def.item.url, title: def.item.title, visible: true };
+                                if (def.item.__renderingRule) {
+                                    imgOpts.renderingRule = { functionName: def.item.__renderingRule };
+                                }
+                                const temp = new ImageryLayer(imgOpts);
+                                try { await temp.when(); } catch (e) { /* continue */ }
+                                view.map.add(temp);
+                                try {
+                                    setVisibilityForScreenshot(temp);
+                                    await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
+                                    if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                                    else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
+                                    await waitForViewStationary(800);
+                                    updateAoiMask(true);
+                                    retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
+                                } finally {
+                                    try { view.map.remove(temp); } catch (e) { }
+                                    restoreVisibility();
+                                }
+                            } else {
+                                const tempOpts = { url: def.item.url, title: def.item.title, outFields: ["*"], visible: true };
+                                const temp = new FeatureLayer(tempOpts);
+                                temp.minScale = 0;
+                                temp.maxScale = 0;
+                                view.map.add(temp);
+                                try { await temp.when(); } catch (e) { /* continue */ }
+                                thickenLayerSymbology(temp, def.tempGeomType);
+                                const overlays = await _addReportOverlays(view, temp, def.tempGeomType, def.item.url, temp.definitionExpression || null);
+                                try {
+                                    setVisibilityForScreenshot(temp);
+                                    await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
+                                    if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                                    else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
+                                    await waitForViewStationary(800);
+                                    updateAoiMask(true);
+                                    await _waitForOverlays(view, overlays);
+                                    retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
+                                } finally {
+                                    try { view.map.remove(temp); } catch (e) { }
+                                    _removeOverlays(view, overlays);
+                                    restoreVisibility();
+                                }
+                            }
+
+                            if (retryDataUrl) {
+                                const altText = def.isImageService
+                                    ? escapeHtml(def.item.title)
+                                    : `AOI + ${escapeHtml(def.item.title)}`;
+                                const imgTag = `<img src="${retryDataUrl}" alt="${altText}" style="width:100%; border-radius:8px;" />`;
+                                sectionsHtml = sectionsHtml.replace(def.token, imgTag);
+                                console.log(`[full-report] Retry screenshot OK: "${def.item.title}"`);
+                            } else {
+                                sectionsHtml = sectionsHtml.replace(def.token, '<p style="color:#999;text-align:center;">⚠ Map screenshot unavailable</p>');
+                                console.warn(`[full-report] Retry screenshot failed for "${def.item.title}"`);
+                            }
+                        } catch (retryErr) {
+                            console.warn(`[full-report] Retry error for "${def.item.title}":`, retryErr);
+                            sectionsHtml = sectionsHtml.replace(def.token, '<p style="color:#999;text-align:center;">⚠ Map screenshot unavailable</p>');
+                        }
+                    }
+                }
 
                 // Restore original basemap
                 try {
@@ -4755,6 +5002,7 @@ ${getA11yWidgetBlock()}
                     }
 
                     // Process each layer
+                    const deferredScreenshots = [];
                     for (let i = 0; i < mappableLayers.length; i++) {
                         if (isCanceled()) throw new Error("Canceled");
 
@@ -4767,32 +5015,39 @@ ${getA11yWidgetBlock()}
                         // ImageServer layers — capture screenshot + elevation narrative
                         if (item.__isImageService) {
                             let dataUrl = null;
-                            const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
-                            if (item.__renderingRule) {
-                                imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
-                            }
-                            const tempImg = new ImageryLayer(imgLayerOpts);
-                            try {
-                                view.map.add(tempImg);
-                                await tempImg.when();
-                                setVisibilityForScreenshot(tempImg);
-                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                if (fixedExtent) {
-                                    await view.goTo(fixedExtent, { animate: false });
-                                } else {
-                                    await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                            let screenshotDeferred = false;
+                            const deferToken = `__BG_DEFERRED_MAP_${i}__`;
+
+                            if (!document.hidden) {
+                                const imgLayerOpts = { url: item.url, title: layerTitle, visible: true };
+                                if (item.__renderingRule) {
+                                    imgLayerOpts.renderingRule = { functionName: item.__renderingRule };
                                 }
-                                await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
-                                await waitForViewStationary(800);
-                                // Refresh mask so outer ring matches the current view extent
-                                updateAoiMask(true);
-                                await waitForTabVisible(5000);
-                                dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                            } catch (e) {
-                                console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
-                            } finally {
-                                try { view.map.remove(tempImg); } catch (_) {}
-                                restoreVisibility();
+                                const tempImg = new ImageryLayer(imgLayerOpts);
+                                try {
+                                    view.map.add(tempImg);
+                                    await tempImg.when();
+                                    setVisibilityForScreenshot(tempImg);
+                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
+                                    if (fixedExtent) {
+                                        await view.goTo(fixedExtent, { animate: false });
+                                    } else {
+                                        await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    }
+                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
+                                    await waitForViewStationary(800);
+                                    updateAoiMask(true);
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                } catch (e) {
+                                    console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
+                                } finally {
+                                    try { view.map.remove(tempImg); } catch (_) {}
+                                    restoreVisibility();
+                                }
+                            } else {
+                                screenshotDeferred = true;
+                                deferredScreenshots.push({ token: deferToken, item, layerTitle, isImageService: true, tempGeomType: null });
+                                console.log(`[bg-report] Deferring screenshot for "${layerTitle}" (tab hidden)`);
                             }
 
                             let elevStats = null;
@@ -4806,11 +5061,15 @@ ${getA11yWidgetBlock()}
                                 isPolygon: false, isImagery: true, elevStats
                             });
 
+                            const mapHtml = dataUrl
+                                ? `<div class="map"><div class="map-zoom-controls"><button class="zoom-in" title="Zoom in">+</button><button class="zoom-out" title="Zoom out">&minus;</button><button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button></div><img src="${dataUrl}" alt="${escapeHtml(layerTitle)}" style="width:100%; border-radius:8px;" /></div>`
+                                : screenshotDeferred ? deferToken : '';
+
                             contentParts.push(`
                                 <div class="section">
                                     <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
-                                    ${dataUrl ? `<div class="map"><div class="map-zoom-controls"><button class="zoom-in" title="Zoom in">+</button><button class="zoom-out" title="Zoom out">&minus;</button><button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button></div><img src="${dataUrl}" alt="${escapeHtml(layerTitle)}" style="width:100%; border-radius:8px;" /></div>` : ''}
+                                    ${mapHtml}
                                     ${narrativeHtml}
                                     </div></div>
                                 </div>
@@ -4821,19 +5080,16 @@ ${getA11yWidgetBlock()}
 
                         try {
                             // === Query for actual feature count and data ===
-                            // This is where feature intersection is computed (deferred from screening)
                             let queryResult = null;
                             let featureCount = item.count || 0;
                             let featureRows = item.rows || [];
                             
                             if (featureCount === 0 && item.url) {
-                                // Need to query for features (deferred from screening)
                                 onStep(`Querying features: ${layerTitle}`);
                                 try {
                                     queryResult = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
                                     featureCount = queryResult.count || 0;
                                     featureRows = queryResult.features ? queryResult.features.map(f => f.attributes) : [];
-                                    // Update item with query results for potential later use
                                     item.count = featureCount;
                                     item.rows = featureRows;
                                     item._layer = queryResult.layer;
@@ -4843,7 +5099,6 @@ ${getA11yWidgetBlock()}
                                 }
                             }
                             
-                            // Skip layers with no actual features
                             if (featureCount === 0) {
                                 sectionsComplete++;
                                 continue;
@@ -4851,70 +5106,68 @@ ${getA11yWidgetBlock()}
                             
                             onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                             
-                            // Create temp layer for screenshot - use service's native renderer
                             const tempGeomType = await getLayerGeometryType(item.url);
+                            let dataUrl = null;
+                            let screenshotDeferred = false;
+                            const deferToken = `__BG_DEFERRED_MAP_${i}__`;
 
-                            const tempLayer = new FeatureLayer({
-                                url: item.url,
-                                outFields: ["*"],
-                                visible: false
-                            });
-                            view.map.add(tempLayer);
-                            tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
-                            
-                            // Wait for layer to load so service renderer is available
-                            try { await tempLayer.when(); } catch (e) { /* continue */ }
-                            
-                            // Thicken borders while preserving service's original symbology
-                            thickenLayerSymbology(tempLayer, tempGeomType);
+                            if (!document.hidden) {
+                                const tempLayer = new FeatureLayer({
+                                    url: item.url,
+                                    outFields: ["*"],
+                                    visible: false
+                                });
+                                view.map.add(tempLayer);
+                                tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
+                                try { await tempLayer.when(); } catch (e) { /* continue */ }
+                                thickenLayerSymbology(tempLayer, tempGeomType);
+                                tempLayer.minScale = 0;
+                                tempLayer.maxScale = 0;
+                                const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression);
 
-                            // Ensure layer draws at any zoom
-                            tempLayer.minScale = 0;
-                            tempLayer.maxScale = 0;
-
-                            // Add PLSS Township grid + hash overlay for polygon layers
-                            const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression);
-
-                            setVisibilityForScreenshot(tempLayer);
-
-                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                            if (fixedExtent) {
-                                await view.goTo(fixedExtent, { animate: false });
+                                try {
+                                    setVisibilityForScreenshot(tempLayer);
+                                    await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                                    if (fixedExtent) {
+                                        await view.goTo(fixedExtent, { animate: false });
+                                    } else {
+                                        await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    }
+                                    await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                                    await waitForViewStationary(800);
+                                    updateAoiMask(true);
+                                    await _waitForOverlays(view, overlays);
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                } finally {
+                                    try { view.map.remove(tempLayer); } catch (e) { }
+                                    _removeOverlays(view, overlays);
+                                    restoreVisibility();
+                                }
+                                mapsGenerated++;
                             } else {
-                                await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                screenshotDeferred = true;
+                                deferredScreenshots.push({
+                                    token: deferToken, item, layerTitle,
+                                    isImageService: false, tempGeomType,
+                                    defExpr: item._exportQuery?.where || "1=1"
+                                });
+                                console.log(`[bg-report] Deferring screenshot for "${layerTitle}" (tab hidden)`);
                             }
-                            await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                            await waitForViewStationary(800);
-                            // Refresh mask so outer ring matches the current view extent
-                            updateAoiMask(true);
 
-                            // Wait for overlay layers to render
-                            await _waitForOverlays(view, overlays);
-
-                            // Fire coverage stats in parallel with screenshot capture
+                            // Coverage stats — REST-based, works even when hidden
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
-                            const coveragePromise = isPolygonLayer
-                                ? computeLayerCoverageStats(item, selectionGeom).catch(function () { return null; })
-                                : Promise.resolve(null);
-
-                            const ss = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
-                            const dataUrl = ss || null;
-
-                            // Clean up temp layer
-                            view.map.remove(tempLayer);
-                            _removeOverlays(view, overlays);
-                            mapsGenerated++;
-
-                            // Collect deferred coverage result
                             let acresCovered = 0;
                             let pctCovered = 0;
-                            const covStats = await coveragePromise;
-                            if (covStats) {
-                                acresCovered = covStats.acresCovered || 0;
-                                pctCovered = covStats.pctAoiCovered || 0;
-                            }
+                            try {
+                                if (isPolygonLayer) {
+                                    const covStats = await computeLayerCoverageStats(item, selectionGeom);
+                                    if (covStats) {
+                                        acresCovered = covStats.acresCovered || 0;
+                                        pctCovered = covStats.pctAoiCovered || 0;
+                                    }
+                                }
+                            } catch (e) { /* non-critical */ }
 
-                            // Build per-feature table
                             const perFeatureTableHtml = (featureCount > 0)
                                 ? await buildPerFeatureTable(item, selectionGeom, i)
                                 : "";
@@ -4924,8 +5177,11 @@ ${getA11yWidgetBlock()}
                                 acresCovered, pctCovered, isPolygon: isPolygonLayer
                             });
 
-                            // Build section HTML with hide button and zoom controls (matching old report)
                             const attrSummary = generateLayerAttributeSummary(item);
+                            const mapImgHtml = dataUrl
+                                ? `<img src="${dataUrl}" alt="AOI + ${escapeHtml(layerTitle)}"/>`
+                                : screenshotDeferred ? deferToken : '<div class="sub">Map generation failed</div>';
+
                             contentParts.push(`
                                 <div class="section">
                                     <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
@@ -4936,7 +5192,7 @@ ${getA11yWidgetBlock()}
                                             <button class="zoom-out" title="Zoom out">&minus;</button>
                                             <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
                                         </div>
-                                        ${dataUrl ? `<img src="${dataUrl}" alt="AOI + ${escapeHtml(layerTitle)}"/>` : '<div class="sub">Map generation failed</div>'}
+                                        ${mapImgHtml}
                                     </div>
                                     ${narrativeHtml}
                                     ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
@@ -4959,6 +5215,93 @@ ${getA11yWidgetBlock()}
                         }
 
                         onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
+                    }
+
+                    // ── Retry deferred screenshots (tab was hidden during capture) ──
+                    if (deferredScreenshots.length > 0) {
+                        console.log(`[bg-report] ${deferredScreenshots.length} deferred screenshot(s) — waiting for tab visibility…`);
+                        onStep(`Waiting for tab visibility to capture ${deferredScreenshots.length} deferred map(s)…`);
+                        await waitForTabVisible(300000);
+
+                        for (const def of deferredScreenshots) {
+                            if (isCanceled()) break;
+                            let retryDataUrl = null;
+                            try {
+                                if (def.isImageService) {
+                                    const imgOpts = { url: def.item.url, title: def.layerTitle, visible: true };
+                                    if (def.item.__renderingRule) {
+                                        imgOpts.renderingRule = { functionName: def.item.__renderingRule };
+                                    }
+                                    const temp = new ImageryLayer(imgOpts);
+                                    try {
+                                        view.map.add(temp);
+                                        await temp.when();
+                                        setVisibilityForScreenshot(temp);
+                                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
+                                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
+                                        await waitForViewStationary(800);
+                                        updateAoiMask(true);
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
+                                    } finally {
+                                        try { view.map.remove(temp); } catch (_) {}
+                                        restoreVisibility();
+                                    }
+                                } else {
+                                    const tempLayer = new FeatureLayer({
+                                        url: def.item.url, outFields: ["*"], visible: false
+                                    });
+                                    view.map.add(tempLayer);
+                                    tempLayer.definitionExpression = def.defExpr || "1=1";
+                                    try { await tempLayer.when(); } catch (e) { /* continue */ }
+                                    thickenLayerSymbology(tempLayer, def.tempGeomType);
+                                    tempLayer.minScale = 0;
+                                    tempLayer.maxScale = 0;
+                                    const overlays = await _addReportOverlays(view, tempLayer, def.tempGeomType, def.item.url, tempLayer.definitionExpression);
+                                    try {
+                                        setVisibilityForScreenshot(tempLayer);
+                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
+                                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
+                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
+                                        await waitForViewStationary(800);
+                                        updateAoiMask(true);
+                                        await _waitForOverlays(view, overlays);
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
+                                    } finally {
+                                        try { view.map.remove(tempLayer); } catch (e) { }
+                                        _removeOverlays(view, overlays);
+                                        restoreVisibility();
+                                    }
+                                }
+
+                                // Replace token in contentParts
+                                const replacement = retryDataUrl
+                                    ? `<img src="${retryDataUrl}" alt="${def.isImageService ? escapeHtml(def.layerTitle) : 'AOI + ' + escapeHtml(def.layerTitle)}" style="width:100%; border-radius:8px;" />`
+                                    : '<p style="color:#999;text-align:center;">⚠ Map screenshot unavailable</p>';
+                                for (let p = 0; p < contentParts.length; p++) {
+                                    if (contentParts[p].includes(def.token)) {
+                                        contentParts[p] = contentParts[p].replace(def.token, replacement);
+                                        break;
+                                    }
+                                }
+                                if (retryDataUrl) {
+                                    mapsGenerated++;
+                                    console.log(`[bg-report] Retry screenshot OK: "${def.layerTitle}"`);
+                                } else {
+                                    console.warn(`[bg-report] Retry screenshot failed for "${def.layerTitle}"`);
+                                }
+                            } catch (retryErr) {
+                                console.warn(`[bg-report] Retry error for "${def.layerTitle}":`, retryErr);
+                                for (let p = 0; p < contentParts.length; p++) {
+                                    if (contentParts[p].includes(def.token)) {
+                                        contentParts[p] = contentParts[p].replace(def.token, '<p style="color:#999;text-align:center;">⚠ Map screenshot unavailable</p>');
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                 } finally {
@@ -5199,6 +5542,7 @@ ${getA11yWidgetBlock()}
     <main class="wrap">
         ${contentParts.join('\n')}
         ${dataSourcesHtml}
+        ${getBlmPermitsSection()}
     </main>
     <footer class="report-footer">
         <p>This report is for informational purposes only and does not constitute a formal BLM determination.</p>

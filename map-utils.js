@@ -443,6 +443,11 @@ define([
 
     // ── Background-tab resilience ────────────────────────────────────
 
+    /** Check if the tab/page is currently hidden (not visible to the user). */
+    function isTabHidden() {
+        return document.hidden === true;
+    }
+
     /**
      * Returns a Promise that resolves as soon as the page is visible.
      * If the tab is already visible it resolves immediately.  Otherwise it
@@ -587,8 +592,8 @@ define([
         await new Promise(r => requestAnimationFrame(r));
 
         const ssOpts = {
-            format: "png",
-            quality: 100,
+            format: "jpg",
+            quality: 92,
             width: width,
             height: Math.round(width * 0.5625)
         };
@@ -915,6 +920,7 @@ define([
         waitForViewStationary,
 
         // Background-tab resilience
+        isTabHidden,
         waitForTabVisible,
         acquireWakeLock,
         releaseWakeLock,

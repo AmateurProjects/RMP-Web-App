@@ -560,8 +560,18 @@ html, body {
 
   /* ── Overview map: smaller & tighter to corner ── */
   #overviewDiv {
-    width: 130px;
-    height: 100px;
+    width: 100px;
+    height: 75px;
+  }
+  #overviewLabel {
+    font-size: 0;
+    padding: 0;
+    display: none;
+  }
+
+  /* ── Hide Esri zoom widget on mobile (pinch-to-zoom is sufficient) ── */
+  .esri-zoom {
+    display: none !important;
   }
 
   /* ── Tables: allow horizontal scroll, prevent clip ── */
@@ -1575,6 +1585,13 @@ th{
   color: var(--text-muted);
   font-family: 'Consolas', 'Monaco', monospace;
 }
+
+/* ====== Color-Vision filter classes (CSS-class approach for iOS Safari compat) ====== */
+body.cv-protanopia    { -webkit-filter: url(#cv-protanopia)    !important; filter: url(#cv-protanopia)    !important; }
+body.cv-deuteranopia  { -webkit-filter: url(#cv-deuteranopia)  !important; filter: url(#cv-deuteranopia)  !important; }
+body.cv-tritanopia    { -webkit-filter: url(#cv-tritanopia)    !important; filter: url(#cv-tritanopia)    !important; }
+body.cv-achromatopsia { -webkit-filter: url(#cv-achromatopsia) !important; filter: url(#cv-achromatopsia) !important; }
+body.cv-highcontrast  { -webkit-filter: contrast(1.8) brightness(0.85) !important; filter: contrast(1.8) brightness(0.85) !important; }
 
 /* ====== Esri Overview Map ====== */
 #overviewDiv {
