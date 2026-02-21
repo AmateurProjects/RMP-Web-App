@@ -1,5 +1,5 @@
 /**
- * rmp-metadata-cache  –  Cloudflare Worker
+ * permitting-web-app-cache  –  Cloudflare Worker
  *
  * Endpoints
  * ─────────

@@ -1,4 +1,4 @@
-name = "rmp-metadata-cache"
+name = "permitting-web-app-cache"
 main = "src/index.js"
 compatibility_date = "2025-12-01"
 
@@ -6,7 +6,7 @@ compatibility_date = "2025-12-01"
 # Replace <YOUR_BUCKET_NAME> with the actual bucket name you created in the Cloudflare dashboard.
 [[r2_buckets]]
 binding = "METADATA_BUCKET"
-bucket_name = "<YOUR_BUCKET_NAME>"
+bucket_name = "permitting-web-app-data"
 
 # ── Environment variables (set via `wrangler secret put`) ──
 # REFRESH_SECRET  – shared secret for the POST /refresh endpoint

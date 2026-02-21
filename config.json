@@ -595,7 +595,7 @@
       "serviceType": "map"
     }
   ],
-  "metadataWorkerUrl": "https://permitting-web-app-cache.joel-harrington.workers.dev",
+  "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
   "report": {
     "maxSampleFeaturesPerLayer": 25,
     "maxFieldsInTable": 8,

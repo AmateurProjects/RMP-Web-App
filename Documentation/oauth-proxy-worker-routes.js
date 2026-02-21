@@ -12,8 +12,8 @@
  * which the browser sends in the request body.
  *
  * ── How to add ──
- * Open your existing rmp-metadata-cache Worker in the Cloudflare Dashboard
- * (Workers & Pages → rmp-metadata-cache → Edit Code) and paste the handler
+ * Open your existing permitting-web-app-cache Worker in the Cloudflare Dashboard
+ * (Workers & Pages → permitting-web-app-cache → Edit Code) and paste the handler
  * block below at the TOP of your fetch() handler, before your existing
  * /metadata.json and /refresh routes.
  *
