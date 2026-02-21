@@ -9,6 +9,24 @@
     --bg: #f7f8fa; --card: #fff; --border: #d4d8dd; --fg: #1e1e1e;
     --muted: #5c6370; --accent: #1a472a; --accent-light: #2d6a3d;
     --danger: #c62828; --warn: #e65100; --ok: #2e7d32;
+    --table-header: #f0f2f5; --table-hover: #f8f9fb; --table-row-border: #eee;
+    --warning-bg: #f59e0b;
+  }
+  /* Dark theme */
+  [data-theme="dark"] {
+    --bg: #1a1a2e; --card: #16213e; --border: #2a3a5a; --fg: #e4e6eb;
+    --muted: #a0a8b8; --accent: #4ade80; --accent-light: #22c55e;
+    --danger: #ef4444; --warn: #f59e0b; --ok: #22c55e;
+    --table-header: #1e2a47; --table-hover: #1a2744; --table-row-border: #2a3a5a;
+  }
+  /* Auto dark mode based on system preference */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1a2e; --card: #16213e; --border: #2a3a5a; --fg: #e4e6eb;
+      --muted: #a0a8b8; --accent: #4ade80; --accent-light: #22c55e;
+      --danger: #ef4444; --warn: #f59e0b; --ok: #22c55e;
+      --table-header: #1e2a47; --table-hover: #1a2744; --table-row-border: #2a3a5a;
+    }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -35,9 +53,16 @@
   .auth-card .repo-row input { flex: 1; }
   .device-code {
     font-size: 36px; font-weight: 800; letter-spacing: 6px; font-family: 'Courier New', monospace;
-    color: var(--accent); margin: 16px 0; padding: 16px; background: #f0f7f2; border-radius: 8px;
+    color: var(--accent); margin: 16px 0; padding: 16px; background: var(--card); border-radius: 8px;
     border: 2px dashed var(--accent); user-select: all; -webkit-user-select: all;
   }
+
+  /* Theme toggle */
+  .theme-toggle {
+    background: transparent; border: 1px solid rgba(255,255,255,0.3); color: #fff;
+    padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 14px;
+  }
+  .theme-toggle:hover { background: rgba(255,255,255,0.1); }
   .auth-or {
     display: flex; align-items: center; gap: 12px; margin: 12px 0; color: var(--muted); font-size: 13px;
   }
@@ -55,7 +80,7 @@
   .btn-primary:hover { background: var(--accent-light); }
   .btn-danger { background: var(--danger); color: #fff; }
   .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--fg); }
-  .btn-outline:hover { background: #f0f0f0; }
+  .btn-outline:hover { background: var(--table-hover); }
   .btn-sm { padding: 4px 10px; font-size: 12px; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -80,15 +105,15 @@
 
   /* Toolbar */
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-  .toolbar input[type="text"] { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
-  .toolbar select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+  .toolbar input[type="text"] { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--card); color: var(--fg); }
+  .toolbar select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--card); color: var(--fg); }
 
   /* Layer table */
   .layer-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .layer-table th { text-align: left; padding: 10px 12px; background: #f0f2f5; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
-  .layer-table td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: middle; }
+  .layer-table th { text-align: left; padding: 10px 12px; background: var(--table-header); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .layer-table td { padding: 8px 12px; border-bottom: 1px solid var(--table-row-border); font-size: 13px; vertical-align: middle; }
   .layer-table tr:last-child td { border-bottom: none; }
-  .layer-table tr:hover td { background: #f8f9fb; }
+  .layer-table tr:hover td { background: var(--table-hover); }
   .layer-table .url-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: monospace; font-size: 11px; }
   .badge-cat {
     display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;
@@ -98,10 +123,32 @@
   .badge-authorizations { background: #fff3e0; color: #e65100; }
   .badge-land-use { background: #f3e5f5; color: #7b1fa2; }
   .badge-land-status { background: #fce4ec; color: #c62828; }
+  [data-theme="dark"] .badge-special { background: rgba(74,222,128,0.2); color: #4ade80; }
+  [data-theme="dark"] .badge-environmental { background: rgba(96,165,250,0.2); color: #60a5fa; }
+  [data-theme="dark"] .badge-authorizations { background: rgba(251,146,60,0.2); color: #fb923c; }
+  [data-theme="dark"] .badge-land-use { background: rgba(192,132,252,0.2); color: #c084fc; }
+  [data-theme="dark"] .badge-land-status { background: rgba(251,113,133,0.2); color: #fb7185; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .badge-special { background: rgba(74,222,128,0.2); color: #4ade80; }
+    :root:not([data-theme="light"]) .badge-environmental { background: rgba(96,165,250,0.2); color: #60a5fa; }
+    :root:not([data-theme="light"]) .badge-authorizations { background: rgba(251,146,60,0.2); color: #fb923c; }
+    :root:not([data-theme="light"]) .badge-land-use { background: rgba(192,132,252,0.2); color: #c084fc; }
+    :root:not([data-theme="light"]) .badge-land-status { background: rgba(251,113,133,0.2); color: #fb7185; }
+  }
   .badge-tier { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; font-size: 11px; font-weight: 700; background: #e0e0e0; }
   .badge-tier-1 { background: #c8e6c9; color: #1b5e20; }
   .badge-tier-2 { background: #fff9c4; color: #f57f17; }
   .badge-tier-3 { background: #ffcdd2; color: #b71c1c; }
+  [data-theme="dark"] .badge-tier { background: #3a4a6a; }
+  [data-theme="dark"] .badge-tier-1 { background: rgba(74,222,128,0.25); color: #4ade80; }
+  [data-theme="dark"] .badge-tier-2 { background: rgba(250,204,21,0.25); color: #facc15; }
+  [data-theme="dark"] .badge-tier-3 { background: rgba(248,113,113,0.25); color: #f87171; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .badge-tier { background: #3a4a6a; }
+    :root:not([data-theme="light"]) .badge-tier-1 { background: rgba(74,222,128,0.25); color: #4ade80; }
+    :root:not([data-theme="light"]) .badge-tier-2 { background: rgba(250,204,21,0.25); color: #facc15; }
+    :root:not([data-theme="light"]) .badge-tier-3 { background: rgba(248,113,113,0.25); color: #f87171; }
+  }
 
   /* Health dots */
   .health-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #bbb; }
@@ -123,13 +170,13 @@
   .modal h3 { margin-bottom: 16px; }
   .form-row { margin-bottom: 12px; }
   .form-row label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-  .form-row input, .form-row select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
-  .form-row .hint { font-size: 11px; color: #999; margin-top: 2px; }
+  .form-row input, .form-row select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: var(--card); color: var(--fg); }
+  .form-row .hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 
   /* Toast */
   .toast {
-    position: fixed; bottom: 20px; right: 20px; background: #333; color: #fff;
+    position: fixed; bottom: 20px; right: 20px; background: var(--accent); color: #fff;
     padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 200;
     opacity: 0; transform: translateY(10px); transition: all 0.3s;
   }
@@ -142,12 +189,26 @@
     background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;
   }
   .ref-card .ref-key { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-  .ref-card input { width: 100%; font-family: monospace; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .ref-card input { width: 100%; font-family: monospace; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--fg); }
+
+  /* Auth inputs */
+  .auth-card input { background: var(--card); color: var(--fg); }
 
   @media (max-width: 768px) {
     .ref-grid { grid-template-columns: 1fr; }
     .stats-bar { flex-direction: column; }
   }
+
+  /* Sublayer rows */
+  .sublayer-row td { background: var(--table-header); font-size: 12px; }
+  .sublayer-row td:first-child { padding-left: 32px; }
+  .sublayer-indent { display: inline-block; width: 16px; color: var(--muted); }
+  .expand-btn {
+    background: none; border: none; cursor: pointer; padding: 2px 6px; font-size: 12px;
+    color: var(--muted); border-radius: 4px;
+  }
+  .expand-btn:hover { background: var(--table-hover); color: var(--accent); }
+  .sublayer-badge { font-size: 10px; background: var(--border); color: var(--muted); padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
 </style>
 </head>
 <body>
@@ -156,6 +217,7 @@
   <h1>RMP Layer Admin</h1>
   <span class="badge" id="repoLabel">Not connected</span>
   <div style="flex:1"></div>
+  <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
   <button class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.3);display:none" id="logoutBtn" onclick="logout()">Logout</button>
 </header>
 
@@ -213,7 +275,6 @@
     <button class="tab-btn active" data-tab="report">Report Layers</button>
     <button class="tab-btn" data-tab="selection">Selection Layers</button>
     <button class="tab-btn" data-tab="reference">Reference Layers</button>
-    <button class="tab-btn" data-tab="health">Service Health</button>
   </div>
 
   <!-- Report Layers tab -->
@@ -236,10 +297,11 @@
         <option value="3">Tier 3</option>
       </select>
       <button class="btn btn-primary" onclick="openLayerModal('report')">+ Add Report Layer</button>
+      <button class="btn btn-outline" onclick="checkReportHealth()" id="checkReportHealthBtn">🔍 Check Health</button>
     </div>
     <table class="layer-table">
       <thead><tr>
-        <th>Title</th><th>Category</th><th>Tier</th><th>Type</th><th>URL</th><th style="width:80px"></th>
+        <th style="width:50px">Status</th><th>Title</th><th>Category</th><th>Tier</th><th>Type</th><th>URL</th><th style="width:80px"></th>
       </tr></thead>
       <tbody id="reportTbody"></tbody>
     </table>
@@ -250,10 +312,11 @@
     <div class="toolbar">
       <input type="text" id="searchSelection" placeholder="Search selection layers…" oninput="renderSelectionTable()"/>
       <button class="btn btn-primary" onclick="openLayerModal('selection')">+ Add Selection Layer</button>
+      <button class="btn btn-outline" onclick="checkSelectionHealth()" id="checkSelectionHealthBtn">🔍 Check Health</button>
     </div>
     <table class="layer-table">
       <thead><tr>
-        <th>Title</th><th>Group</th><th>Visible</th><th>URL</th><th style="width:80px"></th>
+        <th style="width:50px">Status</th><th>Title</th><th>Group</th><th>Visible</th><th>URL</th><th style="width:80px"></th>
       </tr></thead>
       <tbody id="selectionTbody"></tbody>
     </table>
@@ -268,17 +331,6 @@
     </div>
   </div>
 
-  <!-- Health tab -->
-  <div class="tab-panel" id="tab-health">
-    <div class="toolbar">
-      <button class="btn btn-primary" onclick="runHealthCheck()">Run Health Check</button>
-      <span id="healthProgress" style="font-size:13px;color:var(--muted)"></span>
-    </div>
-    <table class="layer-table">
-      <thead><tr><th>Layer</th><th>URL</th><th style="width:80px">Status</th><th style="width:100px">Response</th></tr></thead>
-      <tbody id="healthTbody"></tbody>
-    </table>
-  </div>
 </div>
 
 <!-- Layer add/edit modal -->
@@ -374,6 +426,58 @@ let ghBranch = 'main';
 let editMode = null;
 let modalType = 'report';
 let deviceFlowAbort = false;
+
+// Health status cache: url -> { status: 'ok'|'err'|'checking'|null, ms: number|null }
+const healthCache = new Map();
+
+// Sublayer cache: url -> [{ id, name, type }, ...] or null if no sublayers
+const sublayerCache = new Map();
+
+// Track which layers are expanded to show sublayers
+const expandedLayers = new Set();
+
+// ── Theme toggle ──
+function initTheme() {
+  const saved = localStorage.getItem('rmp_admin_theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+    updateThemeIcon(saved);
+  } else {
+    // Use system preference
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    updateThemeIcon(prefersDark ? 'dark' : 'light');
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  let newTheme;
+  
+  if (current === 'dark') {
+    newTheme = 'light';
+  } else if (current === 'light') {
+    newTheme = 'dark';
+  } else {
+    // No explicit theme set, toggle from system default
+    newTheme = prefersDark ? 'light' : 'dark';
+  }
+  
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('rmp_admin_theme', newTheme);
+  updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+  const btn = document.getElementById('themeToggle');
+  if (btn) {
+    btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    btn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+  }
+}
+
+// Initialize theme on load
+initTheme();
 
 // ── GitHub API helpers ──
 async function ghFetch(path, opts) {
@@ -635,17 +739,56 @@ function renderReportTable() {
   var html = '';
   filtered.forEach(function (item) {
     var l = item.layer;
+    var health = healthCache.get(l.url);
+    var healthDot = healthDotHtml(health);
+    var subs = sublayerCache.get(l.url);
+    var hasSubs = subs && subs.length > 0;
+    var isExpanded = expandedLayers.has(l.url);
+    var expandBtn = hasSubs 
+      ? '<button class="expand-btn" onclick="toggleSublayers(\'' + esc(l.url) + '\', \'report\')" title="' + (isExpanded ? 'Collapse' : 'Expand') + ' sublayers">' + (isExpanded ? '▼' : '▶') + '</button>'
+      : '<span style="display:inline-block;width:22px"></span>';
+    var subBadge = hasSubs ? '<span class="sublayer-badge">' + subs.length + ' sublayers</span>' : '';
+    
     html += '<tr>';
-    html += '<td><strong>' + esc(l.title) + '</strong></td>';
+    html += '<td style="text-align:center">' + healthDot + '</td>';
+    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + '</td>';
     html += '<td>' + catBadge(l.category) + '</td>';
     html += '<td>' + tierBadge(l.tier || 1) + '</td>';
     html += '<td>' + esc(l.serviceType || '—') + '</td>';
     html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
     html += '<td><button class="btn btn-outline btn-sm" onclick="editReportLayer(' + item.index + ')">Edit</button></td>';
     html += '</tr>';
+    
+    // Render sublayer rows if expanded
+    if (isExpanded && hasSubs) {
+      subs.forEach(function (sub) {
+        var subUrl = l.url.replace(/\/?$/, '') + '/' + sub.id;
+        html += '<tr class="sublayer-row">';
+        html += '<td></td>';
+        html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
+        html += '<td colspan="2"><span style="color:var(--muted);font-size:11px">' + esc(sub.type || '') + '</span></td>';
+        html += '<td></td>';
+        html += '<td class="url-cell" title="' + esc(subUrl) + '">' + esc(subUrl) + '</td>';
+        html += '<td></td>';
+        html += '</tr>';
+      });
+    }
   });
-  if (!filtered.length) html = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No layers match filters</td></tr>';
+  if (!filtered.length) html = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No layers match filters</td></tr>';
   document.getElementById('reportTbody').innerHTML = html;
+}
+
+function toggleSublayers(url, tableType) {
+  if (expandedLayers.has(url)) {
+    expandedLayers.delete(url);
+  } else {
+    expandedLayers.add(url);
+  }
+  if (tableType === 'report') {
+    renderReportTable();
+  } else {
+    renderSelectionTable();
+  }
 }
 
 function renderSelectionTable() {
@@ -658,14 +801,40 @@ function renderSelectionTable() {
   var html = '';
   filtered.forEach(function (item) {
     var l = item.layer;
+    var health = healthCache.get(l.url);
+    var healthDot = healthDotHtml(health);
+    var subs = sublayerCache.get(l.url);
+    var hasSubs = subs && subs.length > 0;
+    var isExpanded = expandedLayers.has(l.url);
+    var expandBtn = hasSubs 
+      ? '<button class="expand-btn" onclick="toggleSublayers(\'' + esc(l.url) + '\', \'selection\')" title="' + (isExpanded ? 'Collapse' : 'Expand') + ' sublayers">' + (isExpanded ? '▼' : '▶') + '</button>'
+      : '<span style="display:inline-block;width:22px"></span>';
+    var subBadge = hasSubs ? '<span class="sublayer-badge">' + subs.length + ' sublayers</span>' : '';
+    
     html += '<tr>';
-    html += '<td><strong>' + esc(l.title) + '</strong></td>';
+    html += '<td style="text-align:center">' + healthDot + '</td>';
+    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + '</td>';
     html += '<td>' + esc(l.group || '—') + '</td>';
     html += '<td>' + (l.visible ? 'Yes' : 'No') + '</td>';
     html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
     html += '<td><button class="btn btn-outline btn-sm" onclick="editSelectionLayer(' + item.index + ')">Edit</button></td>';
     html += '</tr>';
+    
+    // Render sublayer rows if expanded
+    if (isExpanded && hasSubs) {
+      subs.forEach(function (sub) {
+        var subUrl = l.url.replace(/\/?$/, '') + '/' + sub.id;
+        html += '<tr class="sublayer-row">';
+        html += '<td></td>';
+        html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
+        html += '<td colspan="2"><span style="color:var(--muted);font-size:11px">' + esc(sub.type || '') + '</span></td>';
+        html += '<td class="url-cell" title="' + esc(subUrl) + '">' + esc(subUrl) + '</td>';
+        html += '<td></td>';
+        html += '</tr>';
+      });
+    }
   });
+  if (!filtered.length) html = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No layers found</td></tr>';
   document.getElementById('selectionTbody').innerHTML = html;
 }
 
@@ -835,68 +1004,110 @@ async function saveConfig() {
   }
 }
 
-// ── Health Check ──
-async function runHealthCheck() {
-  var allLayers = (config.reportLayers || []).concat(config.selectionLayers || []);
-  var tbody = document.getElementById('healthTbody');
-  var progress = document.getElementById('healthProgress');
-  tbody.innerHTML = '';
+// ── Health Check Helpers ──
+function healthDotHtml(health) {
+  if (!health) return '<span class="health-dot" title="Not checked"></span>';
+  if (health.status === 'checking') return '<span class="health-dot checking" title="Checking..."></span>';
+  if (health.status === 'ok') return '<span class="health-dot ok" title="OK (' + health.ms + 'ms)"></span>';
+  if (health.status === 'err') return '<span class="health-dot err" title="' + esc(health.error || 'Error') + '"></span>';
+  return '<span class="health-dot"></span>';
+}
 
-  // Build rows
-  allLayers.forEach(function (l, i) {
-    var row = document.createElement('tr');
-    row.id = 'health-' + i;
-    row.innerHTML = '<td>' + esc(l.title) + '</td><td class="url-cell">' + esc(l.url) + '</td>'
-      + '<td><span class="health-dot checking" id="hd-' + i + '"></span></td><td id="hr-' + i + '">…</td>';
-    tbody.appendChild(row);
+async function checkLayerHealth(layers, renderFn, btnId) {
+  var btn = document.getElementById(btnId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking...'; }
+
+  // Mark all as checking
+  layers.forEach(function (l) {
+    healthCache.set(l.url, { status: 'checking' });
   });
-
-  var done = 0;
-  var total = allLayers.length;
-  progress.textContent = '0 / ' + total;
+  renderFn();
 
   // Ping each (capped concurrency)
-  var queue = allLayers.map(function (l, i) { return { url: l.url, i: i }; });
+  var queue = layers.slice();
   var concurrency = 6;
   var running = 0;
   var qi = 0;
+  var done = 0;
+  var total = layers.length;
 
-  function next() {
-    while (running < concurrency && qi < queue.length) {
-      (function (item) {
-        running++;
-        var testUrl = item.url.replace(/\/?$/, '') + '?f=json';
-        var start = Date.now();
-        fetch(testUrl, { mode: 'cors' })
-          .then(function (r) {
-            var ms = Date.now() - start;
-            var dot = document.getElementById('hd-' + item.i);
-            var res = document.getElementById('hr-' + item.i);
-            if (r.ok) {
-              dot.className = 'health-dot ok';
-              res.textContent = r.status + ' (' + ms + 'ms)';
-            } else {
-              dot.className = 'health-dot err';
-              res.textContent = r.status + ' (' + ms + 'ms)';
-            }
-          })
-          .catch(function (e) {
-            var dot = document.getElementById('hd-' + item.i);
-            var res = document.getElementById('hr-' + item.i);
-            dot.className = 'health-dot err';
-            res.textContent = 'Error';
-          })
-          .finally(function () {
-            running--;
-            done++;
-            progress.textContent = done + ' / ' + total;
-            next();
-          });
-      })(queue[qi]);
-      qi++;
-    }
+  function updateBtn() {
+    if (btn) btn.textContent = '⏳ ' + done + '/' + total;
   }
-  next();
+
+  return new Promise(function (resolve) {
+    function next() {
+      while (running < concurrency && qi < queue.length) {
+        (function (layer) {
+          running++;
+          var testUrl = layer.url.replace(/\/?$/, '') + '?f=json';
+          var start = Date.now();
+          fetch(testUrl, { mode: 'cors' })
+            .then(function (r) {
+              var ms = Date.now() - start;
+              if (r.ok) {
+                healthCache.set(layer.url, { status: 'ok', ms: ms });
+                // Parse response to extract sublayers
+                return r.json().then(function (data) {
+                  // MapServer/FeatureServer has "layers" array
+                  if (data.layers && Array.isArray(data.layers) && data.layers.length > 0) {
+                    var subs = data.layers.map(function (sub) {
+                      return { id: sub.id, name: sub.name, type: sub.type || sub.geometryType || 'layer' };
+                    });
+                    sublayerCache.set(layer.url, subs);
+                  } else if (data.services && Array.isArray(data.services)) {
+                    // Folder endpoint - has services
+                    var subs = data.services.map(function (svc) {
+                      return { id: svc.name, name: svc.name.split('/').pop(), type: svc.type };
+                    });
+                    sublayerCache.set(layer.url, subs);
+                  } else {
+                    // No sublayers (single layer endpoint)
+                    sublayerCache.set(layer.url, null);
+                  }
+                }).catch(function () {
+                  sublayerCache.set(layer.url, null);
+                });
+              } else {
+                healthCache.set(layer.url, { status: 'err', error: 'HTTP ' + r.status, ms: ms });
+                sublayerCache.set(layer.url, null);
+              }
+            })
+            .catch(function (e) {
+              healthCache.set(layer.url, { status: 'err', error: e.message || 'Network error' });
+              sublayerCache.set(layer.url, null);
+            })
+            .finally(function () {
+              running--;
+              done++;
+              updateBtn();
+              renderFn();
+              if (done === total) {
+                if (btn) { btn.disabled = false; btn.textContent = '🔍 Check Health'; }
+                resolve();
+              } else {
+                next();
+              }
+            });
+        })(queue[qi]);
+        qi++;
+      }
+    }
+    if (total === 0) {
+      if (btn) { btn.disabled = false; btn.textContent = '🔍 Check Health'; }
+      resolve();
+    } else {
+      next();
+    }
+  });
+}
+
+function checkReportHealth() {
+  checkLayerHealth(config.reportLayers || [], renderReportTable, 'checkReportHealthBtn');
+}
+
+function checkSelectionHealth() {
+  checkLayerHealth(config.selectionLayers || [], renderSelectionTable, 'checkSelectionHealthBtn');
 }
 
 // ── Utilities ──

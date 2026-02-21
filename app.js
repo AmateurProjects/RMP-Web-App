@@ -2242,6 +2242,37 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             };
         }
 
+        // 1b. Skip known-DOWN layers (from background health check) to avoid 30s timeouts
+        const cachedStatus = serviceStatus.get(t.url);
+        if (cachedStatus === "DOWN") {
+            console.log(`Skipping ${t.title} — marked DOWN by health check`);
+            if (modal) modal.addLog(`${t.title}: skipped (service unavailable)`, "warning");
+            return {
+                card: `
+          <div class="result-card">
+            <div class="result-head">
+              <div class="result-title">${escapeHtml(t.title)}</div>
+              <div class="badge" style="background: var(--warning-bg, #f59e0b); color: #fff;">skipped (down)</div>
+            </div>
+            <div class="small mono">
+              <a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">Service URL</a>
+            </div>
+            <div class="small" style="margin-top:4px; color: var(--muted);">Service was unavailable at check time — excluded from analysis</div>
+          </div>`,
+                reportEntry: {
+                    title: t.title,
+                    url: t.url,
+                    hasCoverage: false,
+                    count: 0,
+                    rows: [],
+                    _layer: null,
+                    _exportQuery: null,
+                    fullRows: null,
+                    __skippedDown: true
+                }
+            };
+        }
+
         // 2. ImageServer layers — fetch metadata
         if (t.__isImageService) {
             if (isReportCanceled(myOp)) return null;
