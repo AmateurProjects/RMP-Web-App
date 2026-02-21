@@ -448,7 +448,7 @@
     },
     {
       "title": "National Hydrography Dataset (NHD)",
-      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak",
       "tier": 2,
       "category": "environmental",
       "serviceType": "map"
