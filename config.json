@@ -24,47 +24,82 @@
         "type": "simple",
         "symbol": {
           "type": "simple-fill",
-          "color": [0, 120, 212, 0.10],
+          "color": [
+            0,
+            120,
+            212,
+            0.1
+          ],
           "outline": {
-            "color": [0, 120, 212, 0.95],
+            "color": [
+              0,
+              120,
+              212,
+              0.95
+            ],
             "width": 1.25
           }
         }
       },
-    "report": {
-      "type": "simple",
-      "symbol": {
-        "type": "simple-fill",
-        "color": [138, 43, 226, 0.20],
-        "style": "forward-diagonal",
-        "outline": {
-          "color": [138, 43, 226, 0.95],
-          "width": 2
+      "report": {
+        "type": "simple",
+        "symbol": {
+          "type": "simple-fill",
+          "color": [
+            138,
+            43,
+            226,
+            0.2
+          ],
+          "style": "forward-diagonal",
+          "outline": {
+            "color": [
+              138,
+              43,
+              226,
+              0.95
+            ],
+            "width": 2
+          }
         }
-      }
-    },
-    "reportPoint": {
-      "type": "simple",
-      "symbol": {
-        "type": "simple-marker",
-        "style": "circle",
-        "color": [138, 43, 226, 0.85],
-        "size": 10,
-        "outline": {
-          "color": [255, 255, 255, 1],
-          "width": 2
+      },
+      "reportPoint": {
+        "type": "simple",
+        "symbol": {
+          "type": "simple-marker",
+          "style": "circle",
+          "color": [
+            138,
+            43,
+            226,
+            0.85
+          ],
+          "size": 10,
+          "outline": {
+            "color": [
+              255,
+              255,
+              255,
+              1
+            ],
+            "width": 2
+          }
         }
-      }
-    },
-    "reportLine": {
-      "type": "simple",
-      "symbol": {
-        "type": "simple-line",
-        "color": [138, 43, 226, 0.95],
-        "width": 3,
-        "style": "solid"
-      }
-    },
+      },
+      "reportLine": {
+        "type": "simple",
+        "symbol": {
+          "type": "simple-line",
+          "color": [
+            138,
+            43,
+            226,
+            0.95
+          ],
+          "width": 3,
+          "style": "solid"
+        }
+      },
       "aoi": {
         "type": "simple",
         "symbol": {
@@ -348,7 +383,6 @@
       "category": "environmental",
       "serviceType": "image"
     },
-
     {
       "title": "BLM Mining Claims (Active)",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Not_Closed/FeatureServer",
@@ -386,7 +420,7 @@
     },
     {
       "title": "FEMA National Flood Hazard Layer (NFHL)",
-      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING",
       "tier": 1,
       "category": "environmental",
       "serviceType": "map"
@@ -398,7 +432,6 @@
       "category": "special",
       "serviceType": "feature"
     },
-
     {
       "title": "BLM Geothermal Leases",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Geothermal_Leases/FeatureServer",
@@ -455,7 +488,6 @@
       "category": "environmental",
       "serviceType": "feature"
     },
-
     {
       "title": "BLM Mining Claims (Closed)",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Closed/FeatureServer",
@@ -519,7 +551,6 @@
       "category": "land-use",
       "serviceType": "map"
     },
-
     {
       "title": "NHDPlus High Resolution",
       "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer",
