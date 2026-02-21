@@ -37,6 +37,8 @@
     background: var(--accent); color: #fff; padding: 12px 24px;
     display: flex; align-items: center; gap: 16px;
   }
+  [data-theme="dark"] header { background: #166534; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) header { background: #166534; } }
   header h1 { font-size: 18px; font-weight: 600; }
   header .badge { font-size: 11px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px; }
   .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
