@@ -8,6 +8,7 @@ require([
     "app/feature-picker",
     "app/search",
     "app/upload-aoi",
+    "app/permit-types",
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
@@ -18,7 +19,7 @@ require([
     "esri/layers/TileLayer",
     "esri/layers/ImageryLayer",
     "esri/identity/IdentityManager"
-], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, featurePickerModule, searchModule, uploadAoiModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer, esriId) {
+], function (configHelpers, mapUtilsModule, queryEngineModule, finalReportModule, featurePickerModule, searchModule, uploadAoiModule, permitTypesModule, EsriMap, MapView, FeatureLayer, GraphicsLayer, Sketch, Graphic, geometryEngine, TileLayer, ImageryLayer, esriId) {
 
     // ── Suppress ArcGIS Online sign-in popup ──
     // All services used by this app are publicly shared; prevent the
@@ -438,9 +439,17 @@ function setBusy(isBusy) {
     let lastReportRowsByLayer = []; // for export-all
     let reportLayerViews = new Map();
 
+    // ── Permit Types Module ──
+    const {
+        PERMIT_TYPES, PERMIT_TYPE_ORDER, CATEGORY_DEFS, CATEGORY_ORDER,
+        resolveCategory, filterLayersByPermitType, categorizeByPermitType,
+        categorizeIntoBuckets: _categorizeIntoBucketsShared
+    } = permitTypesModule;
+
     // ── Permitting Mode State ──
     let currentAppMode = "permit"; // "permit" | "advanced"
     let currentWizardStep = 1;
+    let selectedPermitType = null; // e.g. "oil-gas", "grazing", etc.
     let currentAoiMethod = null; // "search" | "permit" | "select" | "draw" | "upload"
     let currentInteractionMode = "select"; // PERF-TEST: tracks draw/select without modeSelect DOM
 
@@ -462,7 +471,8 @@ function setBusy(isBusy) {
         get alwaysVisibleLayers() { return alwaysVisibleLayers; },
         get serviceStatus() { return serviceStatus; },
         get selectionLayers() { return selectionLayers; },
-        get lastReportRowsByLayer() { return lastReportRowsByLayer; }
+        get lastReportRowsByLayer() { return lastReportRowsByLayer; },
+        get selectedPermitType() { return selectedPermitType; }
     };
 
     // ── Initialize map-utils module with shared state ──
@@ -637,70 +647,12 @@ function setActiveTab(tabName) {
     }
 
     // ──────────────────────────────────────────────────────────────
-    // PERMITTING MODE — Mode switching, wizard, AOI methods, buckets
+    // PERMITTING MODE — Mode switching, wizard, AOI methods, permit-type-driven buckets
     // ──────────────────────────────────────────────────────────────
 
-    const PERMIT_BUCKETS = {
-        "land-status": {
-            label: "Land Status & Authority", icon: "🏛️",
-            description: "Federal land ownership, administrative boundaries, tribal lands, and jurisdictional authority over BLM-managed lands.",
-            patterns: [/federal lands/i, /admin.*unit/i, /state boundar/i, /usfws.*region/i, /aoi source/i,
-                        /bia.*aian/i, /indian/i, /alaska.*native/i, /tribal/i, /surface.*ownership/i,
-                        /land use planning bound/i]
-        },
-        "land-use": {
-            label: "Land Use Plans & Allocations", icon: "📑",
-            description: "Resource Management Plans, timber and mineral allocations that may govern permitted activities in this area.",
-            patterns: [/land use plan/i, /revision.*development/i, /timber/i, /locatable.*mineral/i,
-                        /taylor grazing/i, /tga/i]
-        },
-        "special": {
-            label: "Special Designations", icon: "⭐",
-            description: "ACECs, wilderness, conservation lands, wild & scenic rivers, roadless areas, and other designations that may restrict or condition activities.",
-            patterns: [/acec/i, /critical environmental/i, /nlcs/i, /conservation area/i, /national monument/i,
-                        /wilderness/i, /wsa/i, /recreation site/i, /lwcf/i, /conservation fund/i, /visual resource/i,
-                        /wild.*scenic.*river/i, /roadless/i, /national forest bound/i, /national wildlife refuge/i, /nwr/i]
-        },
-        "environmental": {
-            label: "Environmental & ESA", icon: "🌿",
-            description: "Threatened and endangered species habitat, wetlands, hydrology, wildlife corridors, flood hazards, and fire history.",
-            patterns: [/critical habitat/i, /ungulate/i, /migration/i, /wild horse/i, /burro/i, /elevation/i, /fire perim/i,
-                        /wetland/i, /nwi/i, /riparian/i, /nhd/i, /hydrography/i, /watershed/i, /wbd/i,
-                        /flood/i, /nfhl/i, /fema/i, /sagebrush/i, /fiat/i, /danl/i, /disturbance/i,
-                        /at.risk.*species/i, /t\&e/i, /threatened/i]
-        },
-        "authorizations": {
-            label: "Existing Authorizations", icon: "📝",
-            description: "Active permits, leases, rights-of-way, mining claims, and other authorizations that currently overlap your project area.",
-            patterns: [/grazing allot/i, /grazing pasture/i, /oil.*gas/i, /mlrs.*row/i, /lua.*row/i, /eplanning/i, /plss.*parcel/i,
-                        /mining claim/i, /lua.*lease/i, /lua.*permit/i, /lua.*easem/i, /geothermal/i, /coal case/i,
-                        /oil shale/i, /non.energy/i, /mineral material/i, /locatable notice/i, /locatable plan/i,
-                        /participating area/i, /agreement/i, /gtlf/i, /road.*trail/i]
-        }
-    };
-
-    function categorizeIntoBuckets(reportItems) {
-        const buckets = {};
-        for (const key of Object.keys(PERMIT_BUCKETS)) buckets[key] = [];
-        buckets["uncategorized"] = [];
-        for (const item of (reportItems || [])) {
-            const title = (item.title || "");
-            // 1. Prefer explicit category from config (O(1) lookup)
-            const cfgEntry = layerCfgByUrl?.get(String(item.url || ""));
-            const cfgCategory = cfgEntry?.cfg?.category;
-            if (cfgCategory && PERMIT_BUCKETS[cfgCategory]) {
-                buckets[cfgCategory].push(item);
-                continue;
-            }
-            // 2. Fallback: regex title matching for layers without a category field
-            let placed = false;
-            for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
-                if (bd.patterns.some(p => p.test(title))) { buckets[bk].push(item); placed = true; break; }
-            }
-            if (!placed) buckets["uncategorized"].push(item);
-        }
-        return buckets;
-    }
+    // PERMIT_BUCKETS replaced — categorization logic now comes from permit-types.js.
+    // The legacy categorizeIntoBuckets is still available as _categorizeIntoBucketsShared
+    // for backward-compatible full-report (no permit type selected).
 
     // PERF-TEST: setAppMode simplified — always "permit", Advanced mode commented out
     function setAppMode(mode) {
@@ -930,33 +882,53 @@ function setActiveTab(tabName) {
         }, 350);
     }
 
-    function populatePermitBuckets() {
-        const buckets = categorizeIntoBuckets(lastReportRowsByLayer);
+    // Dynamic bucket slide index mapping (rebuilt per permit type)
+    let activeBucketSlideMap = {};
 
-        // Always start at the overview slide for fresh results
-        setActiveBucket('overview');
+    /**
+     * Populate screening results — dynamically builds bucket slides
+     * based on the currently-selected permit type's groups.
+     */
+    function populatePermitResults() {
+        const ptKey = selectedPermitType;
+        const ptDef = ptKey ? PERMIT_TYPES[ptKey] : null;
+        const groups = ptDef ? ptDef.groups : [];
 
-        // Overview bucket — compact dashboard
-        const overviewEl = document.getElementById("bucketOverview");
-        if (overviewEl) {
+        // Categorize using permit-type-aware function
+        const categorized = ptKey
+            ? categorizeByPermitType(lastReportRowsByLayer, ptKey, layerCfgByUrl)
+            : null;
+
+        // Build slide map: overview=0, then each group, then all-data
+        activeBucketSlideMap = { "overview": 0 };
+        groups.forEach((g, i) => { activeBucketSlideMap[g.key] = i + 1; });
+        activeBucketSlideMap["all-data"] = groups.length + 1;
+
+        // ── Build dynamic slide DOM ──
+        const track = document.getElementById("bucketSwipeTrack");
+        if (!track) return;
+
+        let slidesHtml = '';
+
+        // Slide 0: Overview dashboard
+        slidesHtml += '<div class="bucket-swipe-slide active" data-bucket="overview" id="bucketOverview">';
+        {
             const tl = lastReportRowsByLayer.length;
             const lwh = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
             let oh = '<div class="overview-dash">';
-
-            // ── Category status rows (traffic-light dashboard) ──
             oh += '<div class="overview-category-grid">';
-            for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
-                const items = buckets[bk] || [];
+            for (const g of groups) {
+                const items = (categorized && categorized.groups[g.key]) || [];
                 const layersWithFeatures = items.filter(it => it.hasCoverage).length;
                 const totalLayers = items.length;
                 const statusClass = layersWithFeatures > 0 ? 'findings' : 'clear';
-                const statusLabel = layersWithFeatures > 0 
-                    ? (layersWithFeatures + ' of ' + totalLayers + ' layer' + (totalLayers !== 1 ? 's' : '')) 
+                const statusLabel = layersWithFeatures > 0
+                    ? (layersWithFeatures + ' of ' + totalLayers + ' layer' + (totalLayers !== 1 ? 's' : ''))
                     : 'No features';
-                oh += '<button class="overview-cat-row ' + statusClass + '" type="button" data-goto-bucket="' + bk + '">';
+                oh += '<button class="overview-cat-row ' + statusClass + '" type="button" data-goto-bucket="' + g.key + '">';
                 oh += '<span class="overview-cat-indicator"></span>';
-                oh += '<span class="overview-cat-icon">' + bd.icon + '</span>';
-                oh += '<span class="overview-cat-label">' + escapeHtml(bd.label) + '</span>';
+                oh += '<span class="overview-cat-icon">' + g.icon + '</span>';
+                oh += '<span class="overview-cat-label">' + escapeHtml(g.label) + '</span>';
                 oh += '<span class="overview-cat-status">' + statusLabel + '</span>';
                 oh += '<span class="overview-cat-arrow">›</span>';
                 oh += '</button>';
@@ -970,77 +942,40 @@ function setActiveTab(tabName) {
             oh += '<span class="overview-cat-arrow">›</span>';
             oh += '</button>';
             oh += '</div>';
-
-            // ── Disclaimer ──
             oh += '<div class="overview-disclaimer"><strong>Important:</strong> These results show which layers have features intersecting your project area. Generate a report to see detailed analysis. Contact your local BLM field office for authoritative guidance.</div>';
             oh += '</div>';
-            overviewEl.innerHTML = oh;
-
-            // Wire up category row clicks to switch to that bucket tab
-            overviewEl.querySelectorAll('.overview-cat-row[data-goto-bucket]').forEach(btn => {
-                btn.addEventListener('click', () => setActiveBucket(btn.dataset.gotoBucket));
-            });
+            slidesHtml += oh;
         }
+        slidesHtml += '</div>';
 
-        // Summary in header card
-        const summaryEl = document.getElementById("permitResultsSummary");
-        if (summaryEl) {
-            const lwc = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
-            summaryEl.innerHTML = '<div class="small"><strong>' + lwc + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> layers have features in your project area. Generate a report for detailed analysis.</div>';
-        }
-
-        // Individual bucket panels
-        for (const [bk, bd] of Object.entries(PERMIT_BUCKETS)) {
-            const pid = "bucket" + bk.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
-            const pe = document.getElementById(pid);
-            if (!pe) continue;
-            const items = buckets[bk] || [];
-            // Back button to return to overview
-            let h = '<button class="bucket-back-btn" type="button" data-back-to-overview="true">‹ Back to Results</button>';
-            h += '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + bd.icon + ' ' + escapeHtml(bd.label) + '</div>';
+        // Slides 1..N: one per group
+        for (const g of groups) {
+            const items = (categorized && categorized.groups[g.key]) || [];
             const layersWithFeatures = items.filter(it => it.hasCoverage).length;
+            slidesHtml += '<div class="bucket-swipe-slide" data-bucket="' + g.key + '" id="bucket_' + g.key + '">';
+            let h = '<button class="bucket-back-btn" type="button" data-back-to-overview="true">‹ Back to Results</button>';
+            h += '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + g.icon + ' ' + escapeHtml(g.label) + '</div>';
             h += '<div class="bucket-card-count' + (layersWithFeatures === 0 ? ' zero' : '') + '">' + layersWithFeatures + ' of ' + items.length + ' layer' + (items.length !== 1 ? 's' : '') + '</div></div>';
-            h += '<div class="bucket-card-desc">' + escapeHtml(bd.description) + '</div><ul class="bucket-layer-list">';
+            h += '<div class="bucket-card-desc">' + escapeHtml(g.description || '') + '</div><ul class="bucket-layer-list">';
             for (const it of items) {
                 const hasCov = it.hasCoverage;
                 h += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
                 h += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : '') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
             }
-            if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this category</li>';
+            if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this group</li>';
             h += '</ul>';
-            if (layersWithFeatures === 0) h += '<div class="hint" style="margin-top:8px;">No features found in this category for your project area.</div>';
-            // ── Add Generate Report button for this bucket ──
+            if (layersWithFeatures === 0) h += '<div class="hint" style="margin-top:8px;">No features found in this group for your project area.</div>';
             h += '<div class="bucket-report-actions" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-light);">';
-            h += '<button class="btn primary bucket-report-btn" type="button" data-bucket="' + bk + '">';
-            h += '📋 Generate ' + escapeHtml(bd.label) + ' Report</button>';
-            h += '</div>';
-            h += '</div>';
-            pe.innerHTML = h;
+            h += '<button class="btn primary bucket-report-btn" type="button" data-bucket="' + g.key + '">';
+            h += '📋 Generate ' + escapeHtml(g.label) + ' Report</button>';
+            h += '</div></div>';
+            slidesHtml += h + '</div>';
         }
 
-        // Wire up bucket report buttons
-        document.querySelectorAll('.bucket-report-btn[data-bucket]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const bucketKey = btn.dataset.bucket;
-                
-                // Check if report is already ready to view
-                if (btn.dataset.reportReady === 'true' && cachedBucketReports[bucketKey]) {
-                    const opened = openCompletedReport(cachedBucketReports[bucketKey]);
-                    if (!opened) {
-                        alert("Could not open report. Please allow popups for this site.");
-                    }
-                    return;
-                }
-                
-                generateBucketReport(bucketKey, btn);
-            });
-        });
-
-        // All Data bucket
-        const adEl = document.getElementById("bucketAllData");
-        if (adEl) {
+        // Last slide: All Data
+        {
             const layersWithFeatures = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
-            // Back button to return to overview
+            slidesHtml += '<div class="bucket-swipe-slide" data-bucket="all-data" id="bucketAllData">';
             let ad = '<button class="bucket-back-btn" type="button" data-back-to-overview="true">‹ Back to Results</button>';
             ad += '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">📊 All Queried Layers</div>';
             ad += '<div class="bucket-card-count">' + layersWithFeatures + ' of ' + lastReportRowsByLayer.length + '</div></div><ul class="bucket-layer-list">';
@@ -1051,27 +986,59 @@ function setActiveTab(tabName) {
                 ad += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : ' zero') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
             }
             ad += '</ul></div>';
-            adEl.innerHTML = ad;
+            slidesHtml += ad + '</div>';
+        }
+
+        track.innerHTML = slidesHtml;
+
+        // Always start at the overview slide for fresh results
+        setActiveBucket('overview');
+
+        // Wire up overview row clicks
+        track.querySelectorAll('.overview-cat-row[data-goto-bucket]').forEach(btn => {
+            btn.addEventListener('click', () => setActiveBucket(btn.dataset.gotoBucket));
+        });
+
+        // Wire up bucket report buttons
+        track.querySelectorAll('.bucket-report-btn[data-bucket]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const bucketKey = btn.dataset.bucket;
+                if (btn.dataset.reportReady === 'true' && cachedBucketReports[bucketKey]) {
+                    const opened = openCompletedReport(cachedBucketReports[bucketKey]);
+                    if (!opened) alert("Could not open report. Please allow popups for this site.");
+                    return;
+                }
+                generateBucketReport(bucketKey, btn);
+            });
+        });
+
+        // Wire up back buttons
+        track.querySelectorAll('.bucket-back-btn[data-back-to-overview]').forEach(btn => {
+            btn.addEventListener('click', () => setActiveBucket('overview'));
+        });
+
+        // Summary in header card
+        const summaryEl = document.getElementById("permitResultsSummary");
+        if (summaryEl) {
+            const lwc = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
+            const typeLabel = ptDef ? ptDef.label : 'All';
+            summaryEl.innerHTML = '<div class="small"><strong>' + typeLabel + '</strong> screening: <strong>' + lwc + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> layers have features in your project area.</div>';
         }
     }
 
-    // Bucket slide index mapping
-    const bucketSlideMap = { "overview": 0, "land-status": 1, "land-use": 2, "special": 3, "environmental": 4, "authorizations": 5, "all-data": 6 };
-
     function setActiveBucket(bucketKey) {
         const track = document.getElementById("bucketSwipeTrack");
-        const slideIndex = bucketSlideMap[bucketKey] ?? 0;
-        
+        const slideIndex = activeBucketSlideMap[bucketKey] ?? 0;
+
         if (track) {
             track.style.transform = `translateX(-${slideIndex * 100}%)`;
-            // Mark the active slide for CSS height calculation
             const slides = track.querySelectorAll(".bucket-swipe-slide");
             slides.forEach((slide, i) => {
                 slide.classList.toggle("active", i === slideIndex);
             });
         }
-        
-        // Scroll the panel so the top of step 3 content is visible after switching buckets
+
+        // Scroll so the top of step 3 is visible
         const panel = document.getElementById("panel");
         if (panel) {
             setTimeout(() => {
@@ -1082,19 +1049,6 @@ function setActiveTab(tabName) {
                     panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
                 }
             }, 100);
-        }
-        
-        // Wire up back buttons (on first click into a category)
-        if (bucketKey !== "overview") {
-            const pm = { "land-status": "bucketLandStatus", "land-use": "bucketLandUse", "special": "bucketSpecial", "environmental": "bucketEnvironmental", "authorizations": "bucketAuthorizations", "all-data": "bucketAllData" };
-            const activePanel = document.getElementById(pm[bucketKey]);
-            if (activePanel) {
-                const backBtn = activePanel.querySelector('.bucket-back-btn[data-back-to-overview]');
-                if (backBtn && !backBtn._wired) {
-                    backBtn._wired = true;
-                    backBtn.addEventListener('click', () => setActiveBucket('overview'));
-                }
-            }
         }
     }
 
@@ -1115,7 +1069,10 @@ function setActiveTab(tabName) {
             return;
         }
 
-        const bucketLabel = PERMIT_BUCKETS[bucketKey]?.label || bucketKey;
+        // Resolve label from active permit type groups
+        const ptDef = selectedPermitType ? PERMIT_TYPES[selectedPermitType] : null;
+        const groupDef = ptDef ? ptDef.groups.find(g => g.key === bucketKey) : null;
+        const bucketLabel = groupDef ? groupDef.label : bucketKey;
         
         // Show modal
         reportModal.show();
@@ -1124,6 +1081,7 @@ function setActiveTab(tabName) {
         try {
             const htmlContent = await buildReportInBackground({
                 bucketKey: bucketKey,
+                permitTypeKey: selectedPermitType || null,
                 onProgress: (pct, maps, sections) => {
                     reportModal.setProgress(pct);
                     reportModal.updateStats(maps, sections);
@@ -1193,6 +1151,7 @@ function setActiveTab(tabName) {
         try {
             const htmlContent = await buildReportInBackground({
                 bucketKey: null, // null = full report
+                permitTypeKey: selectedPermitType || null,
                 onProgress: (pct, maps, sections) => {
                     reportModal.setProgress(pct);
                     reportModal.updateStats(maps, sections);
@@ -1346,6 +1305,16 @@ function clearAll() {
     aoiSourceLayerUrl = null;
     aoiSourceFeature = null;
     aoiSourcePlssTool = null;
+
+    // Reset permit type selection
+    selectedPermitType = null;
+    document.querySelectorAll('.permit-type-card').forEach(c => c.classList.remove('selected'));
+    const badgeEl = document.getElementById("wizStep2PermitBadge");
+    if (badgeEl) badgeEl.textContent = "";
+
+    // Hide AOI confirm section
+    const confirmSec = document.getElementById("aoiConfirmSection");
+    if (confirmSec) confirmSec.classList.add("hidden");
     
     // Clear results
     if (resultsEl) resultsEl.innerHTML = "";
@@ -1382,16 +1351,15 @@ function clearAll() {
     if (wizLocationInput) wizLocationInput.value = "";
     if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
 
-    // Clear permit bucket DOM (step 3 results) and reset bucket swipe track to overview
-    const bucketPanelIds = ["bucketOverview", "bucketLandStatus", "bucketLandUse", "bucketSpecial", "bucketEnvironmental", "bucketAuthorizations", "bucketAllData"];
-    bucketPanelIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ""; });
-    const summaryEl = document.getElementById("permitResultsSummary");
-    if (summaryEl) summaryEl.innerHTML = "";
+    // Clear dynamic bucket slides (step 3) — slides are fully rebuilt per screening
     const bucketTrack = document.getElementById("bucketSwipeTrack");
     if (bucketTrack) {
+        bucketTrack.innerHTML = "";
         bucketTrack.style.transform = "translateX(0%)";
-        bucketTrack.querySelectorAll(".bucket-swipe-slide").forEach((s, i) => s.classList.toggle("active", i === 0));
     }
+    activeBucketSlideMap = {};
+    const summaryEl = document.getElementById("permitResultsSummary");
+    if (summaryEl) summaryEl.innerHTML = "";
 
     // Clear upload status
     const uploadStatusEl = document.getElementById("uploadStatus");
@@ -1402,10 +1370,12 @@ function clearAll() {
         selectionGeom = geom || null;
         if (runBtn) runBtn.disabled = !selectionGeom;
 
-        // Permitting mode: advance to Step 2 when AOI is defined
-        if (selectionGeom && currentAppMode === "permit" && currentWizardStep === 1) {
+        // Permitting mode: show AOI confirm section within Step 2 when AOI is defined
+        if (selectionGeom && currentAppMode === "permit" && currentWizardStep === 2) {
             populateAoiConfirmation();
-            goToWizardStep(2);
+            const cs = document.getElementById("aoiConfirmSection");
+            if (cs) cs.classList.remove("hidden");
+            scrollPanelToBottom();
         }
     }
 
@@ -2085,8 +2055,10 @@ async function runAnalysis() {
 
         // Permitting mode: populate bucket results with report buttons
         if (currentAppMode === "permit") {
-            populatePermitBuckets();
+            populatePermitResults();
             if (wizFullReport) wizFullReport.disabled = false;
+            // Advance to step 3 (results)
+            goToWizardStep(3);
         }
 
         // Enable "View Report" button (for Advanced mode, if ever re-enabled)
@@ -2116,9 +2088,17 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
 
-    // Use ALL layers (no tier filtering)
+    // Filter layers to those relevant for selected permit type (+ "core")
+    let reportLayerPool = config.reportLayers || [];
+    if (selectedPermitType) {
+        reportLayerPool = reportLayerPool.filter(l => {
+            const pts = l.permitTypes || [];
+            return pts.includes(selectedPermitType) || pts.includes("core");
+        });
+    }
+
     const combinedCfgs = [
-        ...(config.reportLayers || [])
+        ...reportLayerPool
     ];
 
     if (plssStateLayerUrl) {
@@ -3503,10 +3483,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const bp = document.getElementById("uploadBufferPanel");
                 if (bp) bp.classList.add("hidden");
 
-                // Advance wizard to Step 2
-                if (currentAppMode === "permit" && currentWizardStep === 1) {
+                // Show AOI confirm section within Step 2
+                if (currentAppMode === "permit" && currentWizardStep === 2) {
                     populateAoiConfirmation();
-                    goToWizardStep(2);
+                    const cs = document.getElementById("aoiConfirmSection");
+                    if (cs) cs.classList.remove("hidden");
+                    scrollPanelToBottom();
                 }
             }
 
@@ -3840,18 +3822,31 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             });
         }
 
+        // ── Permit Type Card Selection (Step 1 → Step 2) ──
+        document.querySelectorAll('.permit-type-card[data-permit-type]').forEach(card => {
+            card.addEventListener('click', () => {
+                const ptKey = card.dataset.permitType;
+                if (!ptKey || !PERMIT_TYPES[ptKey]) return;
+
+                // Set selected permit type
+                selectedPermitType = ptKey;
+                document.querySelectorAll('.permit-type-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+
+                // Update badge in step 2
+                const badge = document.getElementById("wizStep2PermitBadge");
+                if (badge) badge.textContent = PERMIT_TYPES[ptKey].label;
+
+                // Advance to step 2 (AOI selection)
+                goToWizardStep(2);
+            });
+        });
+
         // Wizard navigation
         if (wizBackToStep1) {
             wizBackToStep1.addEventListener("click", () => {
-                // Cancel any active sketch drawing
-                if (sketch) sketch.cancel();
-                // Clear location search state
-                clearTimeout(wizLocationDebounce);
-                wizLocationDebounce = null;
-                if (wizLocationInput) wizLocationInput.value = "";
-                if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
-                // Reset PLSS button states
-                setWizPlssActive(null);
+                // Full restart — clear everything and go back to permit type selection
+                clearAll();
                 goToWizardStep(1);
                 hideAoiMethodPanels();
             });

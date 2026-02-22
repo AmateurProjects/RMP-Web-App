@@ -138,6 +138,32 @@
     :root:not([data-theme="light"]) .badge-land-status { background: rgba(251,113,133,0.2); color: #fb7185; }
   }
   .badge-tier { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; font-size: 11px; font-weight: 700; background: #e0e0e0; }
+
+  /* Permit Type checkboxes & badges */
+  .permit-type-checks { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; }
+  .pt-check { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+  .pt-check input { margin: 0; }
+  .pt-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .pt-core { background: #e3f2fd; color: #1565c0; }
+  .pt-oil-gas { background: #fff3e0; color: #e65100; }
+  .pt-grazing { background: #e8f5e9; color: #2e7d32; }
+  .pt-mining { background: #fce4ec; color: #c62828; }
+  .pt-row { background: #f3e5f5; color: #7b1fa2; }
+  .pt-realty { background: #ede7f6; color: #4527a0; }
+  [data-theme="dark"] .pt-core { background: rgba(96,165,250,0.2); color: #60a5fa; }
+  [data-theme="dark"] .pt-oil-gas { background: rgba(251,146,60,0.2); color: #fb923c; }
+  [data-theme="dark"] .pt-grazing { background: rgba(74,222,128,0.2); color: #4ade80; }
+  [data-theme="dark"] .pt-mining { background: rgba(251,113,133,0.2); color: #fb7185; }
+  [data-theme="dark"] .pt-row { background: rgba(192,132,252,0.2); color: #c084fc; }
+  [data-theme="dark"] .pt-realty { background: rgba(167,139,250,0.2); color: #a78bfa; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .pt-core { background: rgba(96,165,250,0.2); color: #60a5fa; }
+    :root:not([data-theme="light"]) .pt-oil-gas { background: rgba(251,146,60,0.2); color: #fb923c; }
+    :root:not([data-theme="light"]) .pt-grazing { background: rgba(74,222,128,0.2); color: #4ade80; }
+    :root:not([data-theme="light"]) .pt-mining { background: rgba(251,113,133,0.2); color: #fb7185; }
+    :root:not([data-theme="light"]) .pt-row { background: rgba(192,132,252,0.2); color: #c084fc; }
+    :root:not([data-theme="light"]) .pt-realty { background: rgba(167,139,250,0.2); color: #a78bfa; }
+  }
   .badge-tier-1 { background: #c8e6c9; color: #1b5e20; }
   .badge-tier-2 { background: #fff9c4; color: #f57f17; }
   .badge-tier-3 { background: #ffcdd2; color: #b71c1c; }
@@ -311,12 +337,22 @@
         <option value="2">Tier 2</option>
         <option value="3">Tier 3</option>
       </select>
+      <select id="filterPermitType" onchange="renderReportTable()">
+        <option value="">All Permit Types</option>
+        <option value="core">Core</option>
+        <option value="oil-gas">Oil &amp; Gas</option>
+        <option value="grazing">Grazing</option>
+        <option value="mining">Mining</option>
+        <option value="row">ROW</option>
+        <option value="realty">Realty</option>
+        <option value="_none">No Permit Types</option>
+      </select>
       <button class="btn btn-primary" onclick="openLayerModal('report')">+ Add Report Layer</button>
       <button class="btn btn-outline" onclick="checkReportHealth()" id="checkReportHealthBtn">🔍 Check Health</button>
     </div>
     <table class="layer-table">
       <thead><tr>
-        <th style="width:50px">Status</th><th>Title</th><th>Category</th><th>Tier</th><th>Type</th><th>URL</th><th style="width:80px"></th>
+        <th style="width:50px">Status</th><th>Title</th><th>Category</th><th>Permit Types</th><th>Tier</th><th>Type</th><th>URL</th><th style="width:80px"></th>
       </tr></thead>
       <tbody id="reportTbody"></tbody>
     </table>
@@ -374,6 +410,18 @@
           <option value="land-use">Land Use</option>
           <option value="land-status">Land Status</option>
         </select>
+      </div>
+      <div class="form-row">
+        <label>Permit Types</label>
+        <div class="permit-type-checks" id="fPermitTypes">
+          <label class="pt-check"><input type="checkbox" value="core"/> <span class="pt-badge pt-core">Core</span> (all permit types)</label>
+          <label class="pt-check"><input type="checkbox" value="oil-gas"/> <span class="pt-badge pt-oil-gas">🛢️ Oil &amp; Gas</span></label>
+          <label class="pt-check"><input type="checkbox" value="grazing"/> <span class="pt-badge pt-grazing">🐄 Grazing</span></label>
+          <label class="pt-check"><input type="checkbox" value="mining"/> <span class="pt-badge pt-mining">⛏️ Mining</span></label>
+          <label class="pt-check"><input type="checkbox" value="row"/> <span class="pt-badge pt-row">🛤️ ROW</span></label>
+          <label class="pt-check"><input type="checkbox" value="realty"/> <span class="pt-badge pt-realty">🏠 Realty</span></label>
+        </div>
+        <div class="hint">Check which permit types this layer applies to. "Core" includes the layer in every permit screening.</div>
       </div>
       <div class="form-row">
         <label>Tier</label>
@@ -743,6 +791,14 @@ function catBadge(cat) {
   return '<span class="' + cls + '">' + esc(cat || '—') + '</span>';
 }
 
+function permitTypeBadges(pts) {
+  if (!pts || !pts.length) return '<span class="badge-cat" style="opacity:0.4">—</span>';
+  var labels = { core: '🔷', 'oil-gas': '🛢️', grazing: '🐄', mining: '⛏️', row: '🛤️', realty: '🏠' };
+  return pts.map(function(p) {
+    return '<span class="pt-badge pt-' + esc(p) + '" title="' + esc(p) + '">' + (labels[p] || esc(p)) + '</span>';
+  }).join(' ');
+}
+
 function tierBadge(tier) {
   return '<span class="badge-tier badge-tier-' + tier + '">' + tier + '</span>';
 }
@@ -752,12 +808,18 @@ function renderReportTable() {
   var search = (document.getElementById('searchReport').value || '').toLowerCase();
   var filterCat = document.getElementById('filterCategory').value;
   var filterTier = document.getElementById('filterTier').value;
+  var filterPT = document.getElementById('filterPermitType').value;
 
   var filtered = layers.map(function (l, i) { return { layer: l, index: i }; }).filter(function (item) {
     var l = item.layer;
     if (search && !(l.title || '').toLowerCase().includes(search) && !(l.url || '').toLowerCase().includes(search)) return false;
     if (filterCat && l.category !== filterCat) return false;
     if (filterTier && String(l.tier) !== filterTier) return false;
+    if (filterPT) {
+      var pts = l.permitTypes || [];
+      if (filterPT === '_none') { if (pts.length > 0) return false; }
+      else { if (!pts.includes(filterPT)) return false; }
+    }
     return true;
   });
 
@@ -778,6 +840,7 @@ function renderReportTable() {
     html += '<td style="text-align:center">' + healthDot + '</td>';
     html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + '</td>';
     html += '<td>' + catBadge(l.category) + '</td>';
+    html += '<td>' + permitTypeBadges(l.permitTypes) + '</td>';
     html += '<td>' + tierBadge(l.tier || 1) + '</td>';
     html += '<td>' + esc(l.serviceType || '—') + '</td>';
     html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
@@ -931,6 +994,7 @@ function editReportLayer(idx) {
   document.getElementById('fTitle').value = l.title || '';
   document.getElementById('fUrl').value = l.url || '';
   document.getElementById('fCategory').value = l.category || 'special';
+  setPermitTypeChecks(l.permitTypes || []);
   document.getElementById('fTier').value = String(l.tier || 1);
   document.getElementById('fServiceType').value = l.serviceType || 'feature';
   document.getElementById('fPlugin').value = l.summaryPlugin || '';
@@ -966,9 +1030,25 @@ function closeModal() {
 function clearForm() {
   ['fTitle', 'fUrl', 'fPlugin', 'fGroup', 'fHighlightFields'].forEach(function (id) { document.getElementById(id).value = ''; });
   document.getElementById('fCategory').value = 'special';
+  setPermitTypeChecks([]);
   document.getElementById('fTier').value = '1';
   document.getElementById('fServiceType').value = 'feature';
   document.getElementById('fVisible').value = 'false';
+}
+
+function setPermitTypeChecks(pts) {
+  var arr = pts || [];
+  document.querySelectorAll('#fPermitTypes input[type=checkbox]').forEach(function(cb) {
+    cb.checked = arr.includes(cb.value);
+  });
+}
+
+function getPermitTypeChecks() {
+  var arr = [];
+  document.querySelectorAll('#fPermitTypes input[type=checkbox]:checked').forEach(function(cb) {
+    arr.push(cb.value);
+  });
+  return arr;
 }
 
 // ── Save / Delete ──
@@ -983,6 +1063,7 @@ async function saveLayer() {
       url: url,
       tier: parseInt(document.getElementById('fTier').value) || 1,
       category: document.getElementById('fCategory').value,
+      permitTypes: getPermitTypeChecks(),
       serviceType: document.getElementById('fServiceType').value
     };
     var plugin = document.getElementById('fPlugin').value.trim();

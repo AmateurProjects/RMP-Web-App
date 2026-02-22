@@ -2778,6 +2778,144 @@ body.cv-highcontrast {
 }
 
 /* ============================================
+   PERMIT TYPE CARDS (Step 1)
+   ============================================ */
+.permit-type-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.permit-type-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg-white);
+    border: 2px solid var(--border-light);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+}
+
+.permit-type-card:hover {
+    border-color: var(--blm-green-light);
+    background: var(--blm-green-pale);
+}
+
+.permit-type-card:focus-visible {
+    outline: 2px solid var(--blm-green);
+    outline-offset: 2px;
+}
+
+.permit-type-card.selected {
+    border-color: var(--blm-green);
+    background: var(--blm-green-pale);
+    box-shadow: 0 0 0 2px var(--blm-green-light);
+}
+
+.permit-type-icon {
+    font-size: 24px;
+    min-width: 32px;
+    text-align: center;
+    line-height: 1;
+}
+
+.permit-type-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.permit-type-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.permit-type-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    line-height: 1.3;
+}
+
+.permit-type-arrow {
+    font-size: 20px;
+    color: var(--border-medium);
+    font-weight: 300;
+    line-height: 1;
+}
+
+.permit-type-card:hover .permit-type-arrow {
+    color: var(--blm-green);
+}
+
+/* Step 2 header with permit badge */
+.wizard-step2-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.wizard-step2-permit-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--blm-green-pale);
+    color: var(--blm-green);
+    border: 1px solid var(--blm-green-light);
+}
+
+.wizard-step2-permit-badge:empty {
+    display: none;
+}
+
+/* AOI Confirm Section (within Step 2) */
+.aoi-confirm-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
+}
+
+.aoi-confirm-card {
+    background: var(--bg-light);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    margin-top: 6px;
+}
+
+.aoi-confirm-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.aoi-confirm-row + .aoi-confirm-row {
+    border-top: 1px solid var(--border-light);
+}
+
+.aoi-confirm-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.aoi-confirm-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ============================================
    AOI METHOD CARDS
    ============================================ */
 .aoi-methods {

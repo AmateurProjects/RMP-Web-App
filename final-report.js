@@ -12,8 +12,9 @@
  */
 define([
     "app/config-helpers",
-    "app/summary-engine"
-], function (configHelpers, summaryEngineModule) {
+    "app/summary-engine",
+    "app/permit-types"
+], function (configHelpers, summaryEngineModule, permitTypesModule) {
     "use strict";
 
     const {
@@ -436,71 +437,21 @@ define([
     const REPORT_TTL_DAYS = 7;
 
     // ────────────────────────────────────────────
-    // Report Layer Buckets (same as Permit Screening UI)
+    // Permit Types — shared module re-exports
     // ────────────────────────────────────────────
-    const REPORT_BUCKETS = {
-        "land-status": {
-            label: "Land Status & Authority", icon: "🏛️",
-            description: "Federal land ownership, administrative boundaries, tribal lands, and jurisdictional authority.",
-            patterns: [/federal lands/i, /admin.*unit/i, /state boundar/i, /usfws.*region/i, /aoi source/i,
-                        /bia.*aian/i, /indian/i, /alaska.*native/i, /tribal/i, /surface.*ownership/i,
-                        /land use planning bound/i]
-        },
-        "land-use": {
-            label: "Land Use Plans & Allocations", icon: "📑",
-            description: "Resource Management Plans, timber and mineral allocations.",
-            patterns: [/land use plan/i, /revision.*development/i, /timber/i, /locatable.*mineral/i,
-                        /taylor grazing/i, /tga/i]
-        },
-        "special": {
-            label: "Special Designations", icon: "⭐",
-            description: "ACECs, wilderness, conservation lands, wild & scenic rivers, and other special designations.",
-            patterns: [/acec/i, /critical environmental/i, /nlcs/i, /conservation area/i, /national monument/i,
-                        /wilderness/i, /wsa/i, /recreation site/i, /lwcf/i, /conservation fund/i, /visual resource/i,
-                        /wild.*scenic.*river/i, /roadless/i, /national forest bound/i, /national wildlife refuge/i, /nwr/i]
-        },
-        "environmental": {
-            label: "Environmental & ESA", icon: "🌿",
-            description: "Critical habitat, wetlands, hydrology, wildlife corridors, flood hazards, and fire history.",
-            patterns: [/critical habitat/i, /ungulate/i, /migration/i, /wild horse/i, /burro/i, /elevation/i, /fire perim/i,
-                        /wetland/i, /nwi/i, /riparian/i, /nhd/i, /hydrography/i, /watershed/i, /wbd/i,
-                        /flood/i, /nfhl/i, /fema/i, /sagebrush/i, /fiat/i, /danl/i, /disturbance/i,
-                        /at.risk.*species/i, /t\&e/i, /threatened/i]
-        },
-        "authorizations": {
-            label: "Existing Authorizations", icon: "📝",
-            description: "Active permits, leases, rights-of-way, mining claims, and other authorizations.",
-            patterns: [/grazing allot/i, /grazing pasture/i, /oil.*gas/i, /mlrs.*row/i, /lua.*row/i, /eplanning/i, /plss.*parcel/i,
-                        /mining claim/i, /lua.*lease/i, /lua.*permit/i, /lua.*easem/i, /geothermal/i, /coal case/i,
-                        /oil shale/i, /non.energy/i, /mineral material/i, /locatable notice/i, /locatable plan/i,
-                        /participating area/i, /agreement/i, /gtlf/i, /road.*trail/i]
-        }
-    };
+    const {
+        PERMIT_TYPES, PERMIT_TYPE_ORDER,
+        CATEGORY_DEFS, CATEGORY_ORDER,
+        resolveCategory, categorizeByPermitType,
+        categorizeIntoBuckets: _categorizeIntoBucketsShared
+    } = permitTypesModule;
 
-    const BUCKET_ORDER = ["land-status", "land-use", "special", "environmental", "authorizations", "uncategorized"];
+    // Legacy alias kept for backward compatibility within this module
+    const REPORT_BUCKETS = CATEGORY_DEFS;
+    const BUCKET_ORDER = [...CATEGORY_ORDER, "uncategorized"];
 
     function categorizeLayersIntoBuckets(items) {
-        const buckets = {};
-        for (const key of Object.keys(REPORT_BUCKETS)) buckets[key] = [];
-        buckets["uncategorized"] = [];
-        const cfgByUrl = S.layerCfgByUrl;
-        for (const item of (items || [])) {
-            const title = (item.title || "");
-            // 1. Prefer explicit category from config (O(1) lookup)
-            const cfgEntry = cfgByUrl?.get(String(item.url || ""));
-            const cfgCategory = cfgEntry?.cfg?.category;
-            if (cfgCategory && REPORT_BUCKETS[cfgCategory]) {
-                buckets[cfgCategory].push(item);
-                continue;
-            }
-            // 2. Fallback: regex title matching for layers without a category field
-            let placed = false;
-            for (const [bk, bd] of Object.entries(REPORT_BUCKETS)) {
-                if (bd.patterns.some(p => p.test(title))) { buckets[bk].push(item); placed = true; break; }
-            }
-            if (!placed) buckets["uncategorized"].push(item);
-        }
-        return buckets;
+        return _categorizeIntoBucketsShared(items, S.layerCfgByUrl);
     }
 
     function _openReportDb() {
@@ -3782,10 +3733,12 @@ ${getA11yWidgetBlock()}
      * Build a progressive report for a specific bucket or all buckets
      * @param {Object} options
      * @param {string} options.bucketKey - e.g., "land-status", "environmental", or null for full report
+     * @param {string} options.permitTypeKey - e.g., "oil-gas", "grazing", etc. (for group label lookup)
      * @param {Function} options.onProgress - callback for progress updates
      */
     async function buildProgressiveReport(options = {}) {
         const bucketKey = options.bucketKey || null;
+        const permitTypeKey = options.permitTypeKey || null;
         const onProgress = options.onProgress || (() => {});
 
         const view = S.view;
@@ -3806,18 +3759,34 @@ ${getA11yWidgetBlock()}
             return;
         }
 
-        // Get bucket info
-        const bucketInfo = bucketKey ? REPORT_BUCKETS[bucketKey] : null;
-        const reportTitle = bucketInfo 
-            ? `${bucketInfo.icon} ${bucketInfo.label} Report`
-            : "Land & Resource Intersection Analysis Report";
-
-        // Filter layers to this bucket (or all for full report)
+        // ── Resolve report title and layer filter ──
+        let reportTitle;
         let targetLayers;
-        if (bucketKey) {
+
+        if (bucketKey && permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
+            // Permit-type-specific group
+            const ptDef = PERMIT_TYPES[permitTypeKey];
+            const groupDef = ptDef.groups.find(g => g.key === bucketKey);
+            if (groupDef) {
+                const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
+                targetLayers = categorized.groups[bucketKey] || [];
+                reportTitle = `${groupDef.icon} ${groupDef.label} Report — ${ptDef.label}`;
+            } else {
+                // Fallback to legacy bucket
+                const bucketInfo = REPORT_BUCKETS[bucketKey];
+                reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
+                const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
+                targetLayers = buckets[bucketKey] || [];
+            }
+        } else if (bucketKey) {
+            // Legacy bucket (no permit type)
+            const bucketInfo = REPORT_BUCKETS[bucketKey];
+            reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
             const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
             targetLayers = buckets[bucketKey] || [];
         } else {
+            // Full report
+            reportTitle = "Land & Resource Intersection Analysis Report";
             targetLayers = lastReportRowsByLayer;
         }
 
@@ -4888,6 +4857,7 @@ ${getA11yWidgetBlock()}
     // ────────────────────────────────────────────
     async function buildReportInBackground(options = {}) {
         const bucketKey = options.bucketKey || null;
+        const permitTypeKey = options.permitTypeKey || null;
         const onProgress = options.onProgress || (() => {});
         const onStep = options.onStep || (() => {});
         const isCanceled = options.isCanceled || (() => false);
@@ -4908,18 +4878,30 @@ ${getA11yWidgetBlock()}
             throw new Error("No analysis data available");
         }
 
-        // Get bucket info
-        const bucketInfo = bucketKey ? REPORT_BUCKETS[bucketKey] : null;
-        const reportTitle = bucketInfo 
-            ? `${bucketInfo.icon} ${bucketInfo.label} Report`
-            : "Land & Resource Intersection Analysis Report";
-
-        // Filter layers to this bucket (or all for full report)
+        // ── Resolve report title and layer filter ──
+        let reportTitle;
         let targetLayers;
-        if (bucketKey) {
+
+        if (bucketKey && permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
+            const ptDef = PERMIT_TYPES[permitTypeKey];
+            const groupDef = ptDef.groups.find(g => g.key === bucketKey);
+            if (groupDef) {
+                const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
+                targetLayers = categorized.groups[bucketKey] || [];
+                reportTitle = `${groupDef.icon} ${groupDef.label} Report — ${ptDef.label}`;
+            } else {
+                const bucketInfo = REPORT_BUCKETS[bucketKey];
+                reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
+                const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
+                targetLayers = buckets[bucketKey] || [];
+            }
+        } else if (bucketKey) {
+            const bucketInfo = REPORT_BUCKETS[bucketKey];
+            reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
             const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
             targetLayers = buckets[bucketKey] || [];
         } else {
+            reportTitle = "Land & Resource Intersection Analysis Report";
             targetLayers = lastReportRowsByLayer;
         }
 
