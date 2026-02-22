@@ -344,6 +344,44 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(env) });
     }
 
+    // ── OAuth Device Flow proxy routes ──
+    // GitHub's OAuth endpoints don't support CORS, so we proxy them here.
+    // Only the public Client ID is sent — no secrets required.
+
+    if (pathname === "/oauth/device-code" && request.method === "POST") {
+      const body = await request.text();
+      const ghRes = await fetch("https://github.com/login/device/code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body,
+      });
+      const data = await ghRes.text();
+      return new Response(data, {
+        status: ghRes.status,
+        headers: { "Content-Type": "application/json", ...corsHeaders(env) },
+      });
+    }
+
+    if (pathname === "/oauth/token" && request.method === "POST") {
+      const body = await request.text();
+      const ghRes = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body,
+      });
+      const data = await ghRes.text();
+      return new Response(data, {
+        status: ghRes.status,
+        headers: { "Content-Type": "application/json", ...corsHeaders(env) },
+      });
+    }
+
     // Route
     if (request.method === "GET" && pathname === "/metadata") {
       return handleGetMetadata(env);
