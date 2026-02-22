@@ -1660,6 +1660,27 @@ define([
                     content: '\u2713 ';
                 }
                 .a11y-option small { color: #888; font-weight: 400; }
+                /* Color-vision filters – CSS-native for iOS Safari compatibility */
+                body.cv-protanopia {
+                    -webkit-filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
+                    filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
+                }
+                body.cv-deuteranopia {
+                    -webkit-filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
+                    filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
+                }
+                body.cv-tritanopia {
+                    -webkit-filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
+                    filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
+                }
+                body.cv-achromatopsia {
+                    -webkit-filter: grayscale(100%) !important;
+                    filter: grayscale(100%) !important;
+                }
+                body.cv-highcontrast {
+                    -webkit-filter: contrast(1.8) brightness(0.85) !important;
+                    filter: contrast(1.8) brightness(0.85) !important;
+                }
                 /* Back-to-top button */
                 .back-to-top {
                     display: none;
@@ -2687,20 +2708,11 @@ define([
      * Returns the SVG color-vision filters, accessibility widget HTML,
      * and the inline JS that wires it up. Designed to be injected just
      * before </body> in every report template.
-     * Applies cv-* classes to `.cv-filter-wrap` so the fixed-position
-     * widget stays viewport-pinned (CSS filter on body breaks position:fixed).
+     * Applies cv-* CSS classes to <body> using CSS-native filter functions.
+     * iOS Safari silently ignores SVG data-URI filters set via inline JS;
+     * CSS-class rules with sepia/saturate/hue-rotate work across all platforms.
      */
     function getA11yWidgetBlock() {
-        // Data-URI SVG filters for cross-browser support (including iOS Safari which
-        // does not support CSS filter: url(#local-id) referencing in-page SVG).
-        var CV_FILTERS = {
-            protanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.567 0.433 0 0 0 0.558 0.442 0 0 0 0 0.242 0.758 0 0 0 0 0 1 0'/></filter></svg>#f\")",
-            deuteranopia:  "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.625 0.375 0 0 0 0.7 0.3 0 0 0 0 0.3 0.7 0 0 0 0 0 1 0'/></filter></svg>#f\")",
-            tritanopia:    "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.95 0.05 0 0 0 0 0.433 0.567 0 0 0 0.475 0.525 0 0 0 0 0 1 0'/></filter></svg>#f\")",
-            achromatopsia: "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feColorMatrix type='matrix' values='0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0.299 0.587 0.114 0 0 0 0 0 1 0'/></filter></svg>#f\")",
-            highcontrast:  "contrast(1.8) brightness(0.85)"
-        };
-
         return `
     <!-- Accessibility floating widget -->
     <div id="a11yWidgetReport" class="a11y-widget" role="region" aria-label="Accessibility options">
@@ -2727,17 +2739,11 @@ define([
         var menu = document.getElementById('a11yMenuReport');
         if (!toggleBtn || !menu) return;
         var options = menu.querySelectorAll('.a11y-option');
-        var filterWrap = document.querySelector('.cv-filter-wrap');
-        // Data-URI SVG filters — works on iOS Safari unlike url(#local-id)
-        var CV_FILTERS = ${JSON.stringify(CV_FILTERS).replace(/</g, '<')};
+        var CV_CLASSES = ['cv-protanopia', 'cv-deuteranopia', 'cv-tritanopia', 'cv-achromatopsia', 'cv-highcontrast'];
         function applyMode(mode) {
-            if (!filterWrap) return;
-            if (mode && mode !== 'none' && CV_FILTERS[mode]) {
-                filterWrap.style.webkitFilter = CV_FILTERS[mode];
-                filterWrap.style.filter = CV_FILTERS[mode];
-            } else {
-                filterWrap.style.webkitFilter = '';
-                filterWrap.style.filter = '';
+            CV_CLASSES.forEach(function(c) { document.body.classList.remove(c); });
+            if (mode && mode !== 'none') {
+                document.body.classList.add('cv-' + mode);
             }
             options.forEach(function(b) { b.setAttribute('aria-checked', b.getAttribute('data-cv') === mode ? 'true' : 'false'); });
             try { localStorage.setItem(STORAGE_KEY, mode || 'none'); } catch(_) {}
@@ -3360,6 +3366,27 @@ define([
                 content: '\\2713 ';
             }
             .a11y-option small { color: #888; font-weight: 400; }
+            /* Color-vision filters – CSS-native for iOS Safari compatibility */
+            body.cv-protanopia {
+                -webkit-filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
+                filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
+            }
+            body.cv-deuteranopia {
+                -webkit-filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
+                filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
+            }
+            body.cv-tritanopia {
+                -webkit-filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
+                filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
+            }
+            body.cv-achromatopsia {
+                -webkit-filter: grayscale(100%) !important;
+                filter: grayscale(100%) !important;
+            }
+            body.cv-highcontrast {
+                -webkit-filter: contrast(1.8) brightness(0.85) !important;
+                filter: contrast(1.8) brightness(0.85) !important;
+            }
             @media print {
                 .report-actions { display: none; }
                 .export-btn { display: none; }

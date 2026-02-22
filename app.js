@@ -2892,7 +2892,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             ui: { components: [] },
             constraints: { snapToZoom: false, rotationEnabled: false },
             center: [-98.5795, 39.8283], // Center of contiguous US
-            zoom: 2 // Zoomed out to show full US with margin
+            zoom: window.innerWidth <= 600 ? 1 : 2 // Lower zoom on mobile so full US is visible
         });
 
         // Disable all interaction on the overview
