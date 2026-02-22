@@ -208,7 +208,9 @@
       "tier": 1,
       "category": "special",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "USFWS Critical Habitat",
@@ -216,7 +218,9 @@
       "tier": 1,
       "category": "environmental",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Natl Grazing Allotment Polygons",
@@ -224,7 +228,13 @@
       "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["grazing", "oil-gas", "mining", "row", "realty"]
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining",
+        "row",
+        "realty"
+      ]
     },
     {
       "title": "BLM Natl MLRS LUA ROW",
@@ -232,7 +242,11 @@
       "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["row", "oil-gas", "realty"]
+      "permitTypes": [
+        "row",
+        "oil-gas",
+        "realty"
+      ]
     },
     {
       "title": "BLM National Land Use Plans (Approved 2022)",
@@ -240,7 +254,9 @@
       "tier": 1,
       "category": "land-use",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Areas of Critical Environmental Concern (ACEC)",
@@ -248,7 +264,9 @@
       "tier": 1,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM National Conservation Areas (NLCS)",
@@ -256,7 +274,9 @@
       "tier": 1,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Wilderness Areas (NLCS)",
@@ -264,7 +284,9 @@
       "tier": 1,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Wilderness Study Areas (WSA)",
@@ -272,7 +294,9 @@
       "tier": 1,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Locatable Mineral Allocations",
@@ -280,7 +304,10 @@
       "tier": 1,
       "category": "land-use",
       "serviceType": "feature",
-      "permitTypes": ["mining", "oil-gas"]
+      "permitTypes": [
+        "mining",
+        "oil-gas"
+      ]
     },
     {
       "title": "BLM Timber Allocations",
@@ -288,7 +315,11 @@
       "tier": 2,
       "category": "land-use",
       "serviceType": "feature",
-      "permitTypes": ["grazing", "realty", "row"]
+      "permitTypes": [
+        "grazing",
+        "realty",
+        "row"
+      ]
     },
     {
       "title": "USFWS Regions",
@@ -296,7 +327,9 @@
       "tier": 1,
       "category": "land-status",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "USGS Ungulate Migration",
@@ -304,7 +337,12 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "feature",
-      "permitTypes": ["grazing", "oil-gas", "row", "mining"]
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "row",
+        "mining"
+      ]
     },
     {
       "title": "BLM Grazing Pasture",
@@ -312,7 +350,11 @@
       "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["grazing", "oil-gas", "row"]
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "row"
+      ]
     },
     {
       "title": "BLM Oil and Gas Leases (MLRS)",
@@ -320,7 +362,9 @@
       "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["oil-gas"]
+      "permitTypes": [
+        "oil-gas"
+      ]
     },
     {
       "title": "BLM Wild Horse and Burro Herd Areas",
@@ -328,7 +372,11 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["grazing", "oil-gas", "mining"]
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining"
+      ]
     },
     {
       "title": "BLM Wild Horse and Burro Herd Management Areas",
@@ -336,7 +384,11 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["grazing", "oil-gas", "mining"]
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining"
+      ]
     },
     {
       "title": "BLM ePlanning Projects",
@@ -344,7 +396,9 @@
       "tier": 2,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Fire Perimeters (Final Poly)",
@@ -352,7 +406,9 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM National Recreation Sites",
@@ -360,7 +416,12 @@
       "tier": 2,
       "category": "special",
       "serviceType": "feature",
-      "permitTypes": ["oil-gas", "mining", "row", "realty"]
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row",
+        "realty"
+      ]
     },
     {
       "title": "BLM Natl Revision Development Land Use Plans",
@@ -368,7 +429,9 @@
       "tier": 2,
       "category": "land-use",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Land and Water Conservation Fund (LWCF)",
@@ -376,7 +439,9 @@
       "tier": 2,
       "category": "special",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Administrative Units",
@@ -386,7 +451,9 @@
       "tier": 1,
       "category": "land-status",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "USA Federal Lands",
@@ -397,7 +464,9 @@
       "tier": 1,
       "category": "land-status",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "3DEP Elevation",
@@ -407,7 +476,11 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "image",
-      "permitTypes": ["oil-gas", "mining", "row"]
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ]
     },
     {
       "title": "BLM Mining Claims (Active)",
@@ -415,7 +488,11 @@
       "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["mining", "oil-gas", "row"]
+      "permitTypes": [
+        "mining",
+        "oil-gas",
+        "row"
+      ]
     },
     {
       "title": "BLM LUA Leases, Permits & Easements",
@@ -423,7 +500,11 @@
       "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["realty", "row", "oil-gas"]
+      "permitTypes": [
+        "realty",
+        "row",
+        "oil-gas"
+      ]
     },
     {
       "title": "BLM Wild & Scenic Rivers (NLCS)",
@@ -431,7 +512,9 @@
       "tier": 1,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "National Wetlands Inventory (NWI)",
@@ -439,7 +522,9 @@
       "tier": 1,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BIA American Indian / Alaska Native Lands",
@@ -447,7 +532,9 @@
       "tier": 1,
       "category": "land-status",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "FEMA National Flood Hazard Layer (NFHL)",
@@ -455,7 +542,9 @@
       "tier": 1,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "USFWS National Wildlife Refuge Boundaries",
@@ -463,7 +552,9 @@
       "tier": 1,
       "category": "special",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Geothermal Leases",
@@ -471,7 +562,10 @@
       "tier": 2,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["oil-gas", "mining"]
+      "permitTypes": [
+        "oil-gas",
+        "mining"
+      ]
     },
     {
       "title": "BLM Coal Cases",
@@ -479,7 +573,10 @@
       "tier": 2,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["mining", "oil-gas"]
+      "permitTypes": [
+        "mining",
+        "oil-gas"
+      ]
     },
     {
       "title": "National Hydrography Dataset (NHD)",
@@ -487,7 +584,11 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["oil-gas", "mining", "row"]
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ]
     },
     {
       "title": "Watershed Boundaries (WBD)",
@@ -495,7 +596,11 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["oil-gas", "mining", "row"]
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ]
     },
     {
       "title": "USFS Inventoried Roadless Areas (2001)",
@@ -503,7 +608,11 @@
       "tier": 2,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["oil-gas", "mining", "row"]
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ]
     },
     {
       "title": "BLM GTLF Roads & Trails",
@@ -511,7 +620,11 @@
       "tier": 2,
       "category": "authorizations",
       "serviceType": "map",
-      "permitTypes": ["row", "oil-gas", "mining"]
+      "permitTypes": [
+        "row",
+        "oil-gas",
+        "mining"
+      ]
     },
     {
       "title": "BLM DANL Disturbance Assessment",
@@ -519,7 +632,11 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["oil-gas", "mining", "grazing"]
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "grazing"
+      ]
     },
     {
       "title": "USFWS At-Risk Species",
@@ -527,7 +644,9 @@
       "tier": 2,
       "category": "environmental",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Mining Claims (Closed)",
@@ -535,7 +654,9 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["mining"]
+      "permitTypes": [
+        "mining"
+      ]
     },
     {
       "title": "BLM Oil Shale Leases",
@@ -543,7 +664,10 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["oil-gas", "mining"]
+      "permitTypes": [
+        "oil-gas",
+        "mining"
+      ]
     },
     {
       "title": "BLM Oil and Gas Agreements",
@@ -551,7 +675,9 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["oil-gas"]
+      "permitTypes": [
+        "oil-gas"
+      ]
     },
     {
       "title": "BLM Oil and Gas Participating Areas",
@@ -559,7 +685,9 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["oil-gas"]
+      "permitTypes": [
+        "oil-gas"
+      ]
     },
     {
       "title": "BLM Non-Energy Leasables",
@@ -567,7 +695,10 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["realty", "mining"]
+      "permitTypes": [
+        "realty",
+        "mining"
+      ]
     },
     {
       "title": "BLM Mineral Materials",
@@ -575,7 +706,9 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["mining"]
+      "permitTypes": [
+        "mining"
+      ]
     },
     {
       "title": "BLM Locatable Notices",
@@ -583,7 +716,9 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["mining"]
+      "permitTypes": [
+        "mining"
+      ]
     },
     {
       "title": "BLM Locatable Plans of Operations",
@@ -591,7 +726,9 @@
       "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
-      "permitTypes": ["mining"]
+      "permitTypes": [
+        "mining"
+      ]
     },
     {
       "title": "BLM Taylor Grazing Act Lands",
@@ -599,7 +736,9 @@
       "tier": 3,
       "category": "land-use",
       "serviceType": "map",
-      "permitTypes": ["grazing"]
+      "permitTypes": [
+        "grazing"
+      ]
     },
     {
       "title": "NHDPlus High Resolution",
@@ -607,7 +746,11 @@
       "tier": 3,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["oil-gas", "mining", "row"]
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ]
     },
     {
       "title": "Riparian Areas (NWI)",
@@ -615,7 +758,12 @@
       "tier": 3,
       "category": "environmental",
       "serviceType": "map",
-      "permitTypes": ["grazing", "oil-gas", "mining", "row"]
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining",
+        "row"
+      ]
     },
     {
       "title": "USFS National Forest Boundaries",
@@ -623,7 +771,9 @@
       "tier": 3,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "USFS Wilderness Areas",
@@ -631,7 +781,9 @@
       "tier": 3,
       "category": "special",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BIA Tribal Statistical Areas",
@@ -639,7 +791,9 @@
       "tier": 3,
       "category": "land-status",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "BLM Land Use Planning Boundaries",
@@ -647,7 +801,9 @@
       "tier": 3,
       "category": "land-use",
       "serviceType": "map",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
     },
     {
       "title": "USGS PAD-US Protected Areas (Fee)",
@@ -656,7 +812,19 @@
       "tier": 2,
       "category": "land-status",
       "serviceType": "feature",
-      "permitTypes": ["core"]
+      "permitTypes": [
+        "core"
+      ]
+    },
+    {
+      "title": "Water Lines",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20",
+      "tier": 1,
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
     }
   ],
   "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
