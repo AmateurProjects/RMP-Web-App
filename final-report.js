@@ -953,9 +953,11 @@ define([
                     letter-spacing: 0.5px;
                 }
                 .report-header .meta{
-                    font-size: 13px;
-                    opacity: 0.85;
-                    margin: 0;
+                    font-size: 16px;
+                    font-weight: 600;
+                    opacity: 1;
+                    margin: 4px 0 0;
+                    letter-spacing: 0.3px;
                 }
                 .wrap{ 
                     max-width: 900px; 
@@ -2837,9 +2839,11 @@ define([
                 letter-spacing: 0.5px;
             }
             .report-header .meta{
-                font-size: 13px;
-                opacity: 0.85;
-                margin: 0;
+                font-size: 16px;
+                font-weight: 600;
+                opacity: 1;
+                margin: 4px 0 0;
+                letter-spacing: 0.3px;
             }
             .wrap{ 
                 max-width: 900px; 
