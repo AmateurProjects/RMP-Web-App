@@ -205,7 +205,6 @@
     {
       "title": "BLM Natl Visual Resource Inventory Classes",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0",
-      "tier": 1,
       "category": "special",
       "serviceType": "feature",
       "permitTypes": [
@@ -215,7 +214,6 @@
     {
       "title": "USFWS Critical Habitat",
       "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/USFWS_Critical_Habitat/FeatureServer",
-      "tier": 1,
       "category": "environmental",
       "serviceType": "feature",
       "permitTypes": [
@@ -225,7 +223,6 @@
     {
       "title": "BLM Natl Grazing Allotment Polygons",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Allotment_Polygons/FeatureServer/1",
-      "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -239,7 +236,6 @@
     {
       "title": "BLM Natl MLRS LUA ROW",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_ROW/FeatureServer/0",
-      "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -251,7 +247,6 @@
     {
       "title": "BLM National Land Use Plans (Approved 2022)",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Land_Use_Plans_Approved_2022/FeatureServer/1",
-      "tier": 1,
       "category": "land-use",
       "serviceType": "feature",
       "permitTypes": [
@@ -261,7 +256,6 @@
     {
       "title": "BLM Areas of Critical Environmental Concern (ACEC)",
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_ACEC/MapServer/0",
-      "tier": 1,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -271,7 +265,6 @@
     {
       "title": "BLM National Conservation Areas (NLCS)",
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_NM_NCA/MapServer/0",
-      "tier": 1,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -281,7 +274,6 @@
     {
       "title": "BLM Wilderness Areas (NLCS)",
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_WLD_WSA/MapServer/0",
-      "tier": 1,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -291,7 +283,6 @@
     {
       "title": "BLM Wilderness Study Areas (WSA)",
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_WLD_WSA/MapServer/1",
-      "tier": 1,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -301,7 +292,6 @@
     {
       "title": "BLM Locatable Mineral Allocations",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/Locatables_RUDD_ProofOfConcept/FeatureServer",
-      "tier": 1,
       "category": "land-use",
       "serviceType": "feature",
       "permitTypes": [
@@ -312,7 +302,6 @@
     {
       "title": "BLM Timber Allocations",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/Timber_RUDD_ProofOfConcept/FeatureServer",
-      "tier": 2,
       "category": "land-use",
       "serviceType": "feature",
       "permitTypes": [
@@ -324,7 +313,6 @@
     {
       "title": "USFWS Regions",
       "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/FWS_Legacy_Regional_Boundaries/FeatureServer/0",
-      "tier": 1,
       "category": "land-status",
       "serviceType": "feature",
       "permitTypes": [
@@ -334,7 +322,6 @@
     {
       "title": "USGS Ungulate Migration",
       "url": "https://services.arcgis.com/U7I2hMhPtOeGx0fs/arcgis/rest/services/Ungulate_Migration/FeatureServer",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "feature",
       "permitTypes": [
@@ -347,7 +334,6 @@
     {
       "title": "BLM Grazing Pasture",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Pasture_Polygons/FeatureServer",
-      "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -359,7 +345,6 @@
     {
       "title": "BLM Oil and Gas Leases (MLRS)",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Leases/FeatureServer",
-      "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -369,7 +354,6 @@
     {
       "title": "BLM Wild Horse and Burro Herd Areas",
       "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_WHB/MapServer/1",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -381,7 +365,6 @@
     {
       "title": "BLM Wild Horse and Burro Herd Management Areas",
       "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_WHB/MapServer/0",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -393,7 +376,6 @@
     {
       "title": "BLM ePlanning Projects",
       "url": "https://gis.blm.gov/arcgis/rest/services/ePlanning/BLM_Natl_Epl_Comment/FeatureServer",
-      "tier": 2,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -403,7 +385,6 @@
     {
       "title": "BLM Fire Perimeters (Final Poly)",
       "url": "https://gis.blm.gov/arcgis/rest/services/fire/BLM_Natl_FirePerimeter/MapServer/0",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -413,7 +394,6 @@
     {
       "title": "BLM National Recreation Sites",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_National_Recreation_Site_Points/FeatureServer/1",
-      "tier": 2,
       "category": "special",
       "serviceType": "feature",
       "permitTypes": [
@@ -426,7 +406,6 @@
     {
       "title": "BLM Natl Revision Development Land Use Plans",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Revision_Development_Land_Use_Plans/FeatureServer/0",
-      "tier": 2,
       "category": "land-use",
       "serviceType": "feature",
       "permitTypes": [
@@ -436,7 +415,6 @@
     {
       "title": "BLM Land and Water Conservation Fund (LWCF)",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Land_and_Water_Conservation_Fund_LWCF_Polygons/FeatureServer/2",
-      "tier": 2,
       "category": "special",
       "serviceType": "feature",
       "permitTypes": [
@@ -448,7 +426,6 @@
       "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer",
       "useServiceRenderer": true,
       "alwaysVisible": true,
-      "tier": 1,
       "category": "land-status",
       "serviceType": "feature",
       "permitTypes": [
@@ -461,7 +438,6 @@
       "useServiceRenderer": true,
       "minScale": 0,
       "maxScale": 0,
-      "tier": 1,
       "category": "land-status",
       "serviceType": "feature",
       "permitTypes": [
@@ -473,7 +449,6 @@
       "url": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
       "imageService": true,
       "renderingRule": "Hillshade Elevation Tinted",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "image",
       "permitTypes": [
@@ -485,7 +460,6 @@
     {
       "title": "BLM Mining Claims (Active)",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Not_Closed/FeatureServer",
-      "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -497,7 +471,6 @@
     {
       "title": "BLM LUA Leases, Permits & Easements",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_Leases_Permits_Esmts/FeatureServer",
-      "tier": 1,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -509,7 +482,6 @@
     {
       "title": "BLM Wild & Scenic Rivers (NLCS)",
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_WSR/MapServer/0",
-      "tier": 1,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -519,7 +491,6 @@
     {
       "title": "National Wetlands Inventory (NWI)",
       "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Wetlands/MapServer/0",
-      "tier": 1,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -529,7 +500,6 @@
     {
       "title": "BIA American Indian / Alaska Native Lands",
       "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_National_LAR/MapServer",
-      "tier": 1,
       "category": "land-status",
       "serviceType": "map",
       "permitTypes": [
@@ -539,7 +509,6 @@
     {
       "title": "FEMA National Flood Hazard Layer (NFHL)",
       "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING",
-      "tier": 1,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -549,7 +518,6 @@
     {
       "title": "USFWS National Wildlife Refuge Boundaries",
       "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/National_Wildlife_Refuge_System_Boundaries/FeatureServer",
-      "tier": 1,
       "category": "special",
       "serviceType": "feature",
       "permitTypes": [
@@ -559,7 +527,6 @@
     {
       "title": "BLM Geothermal Leases",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Geothermal_Leases/FeatureServer",
-      "tier": 2,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -570,7 +537,6 @@
     {
       "title": "BLM Coal Cases",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Coal_Cases/FeatureServer",
-      "tier": 2,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -581,7 +547,6 @@
     {
       "title": "National Hydrography Dataset (NHD)",
       "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -593,7 +558,6 @@
     {
       "title": "Watershed Boundaries (WBD)",
       "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -605,7 +569,6 @@
     {
       "title": "USFS Inventoried Roadless Areas (2001)",
       "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_InventoriedRoadlessAreas2001_01/MapServer",
-      "tier": 2,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -617,7 +580,6 @@
     {
       "title": "BLM GTLF Roads & Trails",
       "url": "https://gis.blm.gov/arcgis/rest/services/transportation/BLM_Natl_GTLF/MapServer",
-      "tier": 2,
       "category": "authorizations",
       "serviceType": "map",
       "permitTypes": [
@@ -629,7 +591,6 @@
     {
       "title": "BLM DANL Disturbance Assessment",
       "url": "https://gis.blm.gov/arcgis/rest/services/DANL/BLM_Natl_DANL_DataCollection/MapServer",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -641,7 +602,6 @@
     {
       "title": "USFWS At-Risk Species",
       "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/At_Risk_Species_Data_Layer_07_23_25_Hosted_view/FeatureServer",
-      "tier": 2,
       "category": "environmental",
       "serviceType": "feature",
       "permitTypes": [
@@ -651,7 +611,6 @@
     {
       "title": "BLM Mining Claims (Closed)",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Closed/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -661,7 +620,6 @@
     {
       "title": "BLM Oil Shale Leases",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_Shale_Leases/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -672,7 +630,6 @@
     {
       "title": "BLM Oil and Gas Agreements",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Agreements/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -682,7 +639,6 @@
     {
       "title": "BLM Oil and Gas Participating Areas",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Participating_Areas/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -692,7 +648,6 @@
     {
       "title": "BLM Non-Energy Leasables",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Non_Energy_Leasables/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -703,7 +658,6 @@
     {
       "title": "BLM Mineral Materials",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mineral_Materials/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -713,7 +667,6 @@
     {
       "title": "BLM Locatable Notices",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Notices/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -723,7 +676,6 @@
     {
       "title": "BLM Locatable Plans of Operations",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Plans_Of_Operations/FeatureServer",
-      "tier": 3,
       "category": "authorizations",
       "serviceType": "feature",
       "permitTypes": [
@@ -733,7 +685,6 @@
     {
       "title": "BLM Taylor Grazing Act Lands",
       "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_TGA/MapServer/9",
-      "tier": 3,
       "category": "land-use",
       "serviceType": "map",
       "permitTypes": [
@@ -743,7 +694,6 @@
     {
       "title": "NHDPlus High Resolution",
       "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer",
-      "tier": 3,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -755,7 +705,6 @@
     {
       "title": "Riparian Areas (NWI)",
       "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Riparian/MapServer",
-      "tier": 3,
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
@@ -768,7 +717,6 @@
     {
       "title": "USFS National Forest Boundaries",
       "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer",
-      "tier": 3,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -778,7 +726,6 @@
     {
       "title": "USFS Wilderness Areas",
       "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_Wilderness_01/MapServer",
-      "tier": 3,
       "category": "special",
       "serviceType": "map",
       "permitTypes": [
@@ -788,7 +735,6 @@
     {
       "title": "BIA Tribal Statistical Areas",
       "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_Tribal_Statistical_Areas/MapServer",
-      "tier": 3,
       "category": "land-status",
       "serviceType": "map",
       "permitTypes": [
@@ -798,7 +744,6 @@
     {
       "title": "BLM Land Use Planning Boundaries",
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_LandUsePlanningBoundaries/MapServer",
-      "tier": 3,
       "category": "land-use",
       "serviceType": "map",
       "permitTypes": [
@@ -809,7 +754,6 @@
       "title": "USGS PAD-US Protected Areas (Fee)",
       "url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Fee_Managers_PADUS/FeatureServer",
       "useServiceRenderer": true,
-      "tier": 2,
       "category": "land-status",
       "serviceType": "feature",
       "permitTypes": [

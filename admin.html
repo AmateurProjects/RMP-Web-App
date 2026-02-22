@@ -137,8 +137,6 @@
     :root:not([data-theme="light"]) .badge-land-use { background: rgba(192,132,252,0.2); color: #c084fc; }
     :root:not([data-theme="light"]) .badge-land-status { background: rgba(251,113,133,0.2); color: #fb7185; }
   }
-  .badge-tier { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; font-size: 11px; font-weight: 700; background: #e0e0e0; }
-
   /* Permit Type checkboxes & badges */
   .permit-type-checks { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; }
   .pt-check { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
@@ -164,20 +162,6 @@
     :root:not([data-theme="light"]) .pt-row { background: rgba(192,132,252,0.2); color: #c084fc; }
     :root:not([data-theme="light"]) .pt-realty { background: rgba(167,139,250,0.2); color: #a78bfa; }
   }
-  .badge-tier-1 { background: #c8e6c9; color: #1b5e20; }
-  .badge-tier-2 { background: #fff9c4; color: #f57f17; }
-  .badge-tier-3 { background: #ffcdd2; color: #b71c1c; }
-  [data-theme="dark"] .badge-tier { background: #3a4a6a; }
-  [data-theme="dark"] .badge-tier-1 { background: rgba(74,222,128,0.25); color: #4ade80; }
-  [data-theme="dark"] .badge-tier-2 { background: rgba(250,204,21,0.25); color: #facc15; }
-  [data-theme="dark"] .badge-tier-3 { background: rgba(248,113,113,0.25); color: #f87171; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .badge-tier { background: #3a4a6a; }
-    :root:not([data-theme="light"]) .badge-tier-1 { background: rgba(74,222,128,0.25); color: #4ade80; }
-    :root:not([data-theme="light"]) .badge-tier-2 { background: rgba(250,204,21,0.25); color: #facc15; }
-    :root:not([data-theme="light"]) .badge-tier-3 { background: rgba(248,113,113,0.25); color: #f87171; }
-  }
-
   /* Health dots */
   .health-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #bbb; }
   .health-dot.ok { background: var(--ok); }
@@ -331,12 +315,6 @@
         <option value="land-use">Land Use</option>
         <option value="land-status">Land Status</option>
       </select>
-      <select id="filterTier" onchange="renderReportTable()">
-        <option value="">All Tiers</option>
-        <option value="1">Tier 1</option>
-        <option value="2">Tier 2</option>
-        <option value="3">Tier 3</option>
-      </select>
       <select id="filterPermitType" onchange="renderReportTable()">
         <option value="">All Permit Types</option>
         <option value="core">Core</option>
@@ -352,7 +330,7 @@
     </div>
     <table class="layer-table">
       <thead><tr>
-        <th style="width:50px">Status</th><th>Title</th><th>Category</th><th>Permit Types</th><th>Tier</th><th>Type</th><th>URL</th><th style="width:80px"></th>
+        <th style="width:50px">Status</th><th>Title</th><th>Category</th><th>Permit Types</th><th>Type</th><th>URL</th><th style="width:80px"></th>
       </tr></thead>
       <tbody id="reportTbody"></tbody>
     </table>
@@ -422,14 +400,6 @@
           <label class="pt-check"><input type="checkbox" value="realty"/> <span class="pt-badge pt-realty">🏠 Realty</span></label>
         </div>
         <div class="hint">Check which permit types this layer applies to. "Core" includes the layer in every permit screening.</div>
-      </div>
-      <div class="form-row">
-        <label>Tier</label>
-        <select id="fTier">
-          <option value="1">Tier 1 – Core</option>
-          <option value="2">Tier 2 – Extended</option>
-          <option value="3">Tier 3 – Supplemental</option>
-        </select>
       </div>
       <div class="form-row">
         <label>Service Type</label>
@@ -799,22 +769,16 @@ function permitTypeBadges(pts) {
   }).join(' ');
 }
 
-function tierBadge(tier) {
-  return '<span class="badge-tier badge-tier-' + tier + '">' + tier + '</span>';
-}
-
 function renderReportTable() {
   var layers = config.reportLayers || [];
   var search = (document.getElementById('searchReport').value || '').toLowerCase();
   var filterCat = document.getElementById('filterCategory').value;
-  var filterTier = document.getElementById('filterTier').value;
   var filterPT = document.getElementById('filterPermitType').value;
 
   var filtered = layers.map(function (l, i) { return { layer: l, index: i }; }).filter(function (item) {
     var l = item.layer;
     if (search && !(l.title || '').toLowerCase().includes(search) && !(l.url || '').toLowerCase().includes(search)) return false;
     if (filterCat && l.category !== filterCat) return false;
-    if (filterTier && String(l.tier) !== filterTier) return false;
     if (filterPT) {
       var pts = l.permitTypes || [];
       if (filterPT === '_none') { if (pts.length > 0) return false; }
@@ -841,7 +805,6 @@ function renderReportTable() {
     html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + '</td>';
     html += '<td>' + catBadge(l.category) + '</td>';
     html += '<td>' + permitTypeBadges(l.permitTypes) + '</td>';
-    html += '<td>' + tierBadge(l.tier || 1) + '</td>';
     html += '<td>' + esc(l.serviceType || '—') + '</td>';
     html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
     html += '<td><button class="btn btn-outline btn-sm" onclick="editReportLayer(' + item.index + ')">Edit</button></td>';
@@ -856,15 +819,13 @@ function renderReportTable() {
         var escapedSubUrl = esc(subUrl).replace(/'/g, "\\'");
         var escapedSubName = esc(sub.name).replace(/'/g, "\\'");
         var parentCat = esc(l.category || 'special').replace(/'/g, "\\'");
-        var parentTier = String(l.tier || 1);
         var parentType = esc(l.serviceType || 'feature').replace(/'/g, "\\'");
         html += '<tr class="sublayer-row">';
         html += '<td style="text-align:center">' + subHealthDot + '</td>';
         html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
         html += '<td colspan="2"><span style="color:var(--muted);font-size:11px">' + esc(sub.type || '') + '</span></td>';
-        html += '<td></td>';
         html += '<td class="url-cell" title="' + esc(subUrl) + '">' + esc(subUrl) + '</td>';
-        html += '<td><button class="btn btn-outline btn-sm" onclick="addSublayerAsReport(\'' + escapedSubName + '\', \'' + escapedSubUrl + '\', \'' + parentCat + '\', \'' + parentTier + '\', \'' + parentType + '\')">+ Add</button></td>';
+        html += '<td><button class="btn btn-outline btn-sm" onclick="addSublayerAsReport(\'' + escapedSubName + '\', \'' + escapedSubUrl + '\', \'' + parentCat + '\', \'' + parentType + '\')">+ Add</button></td>';
         html += '</tr>';
       });
     }
@@ -951,12 +912,11 @@ function renderRefGrid() {
 }
 
 // ── Add sublayer as new layer ──
-function addSublayerAsReport(name, url, category, tier, serviceType) {
+function addSublayerAsReport(name, url, category, serviceType) {
   openLayerModal('report');
   document.getElementById('fTitle').value = name;
   document.getElementById('fUrl').value = url;
   document.getElementById('fCategory').value = category || 'special';
-  document.getElementById('fTier').value = tier || '1';
   document.getElementById('fServiceType').value = serviceType || 'feature';
   loadSamplePreview(url);
 }
@@ -995,7 +955,6 @@ function editReportLayer(idx) {
   document.getElementById('fUrl').value = l.url || '';
   document.getElementById('fCategory').value = l.category || 'special';
   setPermitTypeChecks(l.permitTypes || []);
-  document.getElementById('fTier').value = String(l.tier || 1);
   document.getElementById('fServiceType').value = l.serviceType || 'feature';
   document.getElementById('fPlugin').value = l.summaryPlugin || '';
   var hf = l.highlightFields;
@@ -1031,7 +990,6 @@ function clearForm() {
   ['fTitle', 'fUrl', 'fPlugin', 'fGroup', 'fHighlightFields'].forEach(function (id) { document.getElementById(id).value = ''; });
   document.getElementById('fCategory').value = 'special';
   setPermitTypeChecks([]);
-  document.getElementById('fTier').value = '1';
   document.getElementById('fServiceType').value = 'feature';
   document.getElementById('fVisible').value = 'false';
 }
@@ -1061,7 +1019,6 @@ async function saveLayer() {
     var obj = {
       title: title,
       url: url,
-      tier: parseInt(document.getElementById('fTier').value) || 1,
       category: document.getElementById('fCategory').value,
       permitTypes: getPermitTypeChecks(),
       serviceType: document.getElementById('fServiceType').value

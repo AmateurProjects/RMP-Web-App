@@ -678,8 +678,9 @@ function setActiveTab(tabName) {
         [wizardStep1, wizardStep2, wizardStep3].forEach((panel, idx) => {
             if (panel) panel.classList.toggle("active", idx + 1 === step);
         });
-        // Auto-scroll: for step 3 (results), scroll to top of results;
-        // for other steps, scroll panel to bottom so new content is visible.
+        // Auto-scroll: for step 3 (results), scroll to top of results.
+        // For other steps we no longer auto-scroll — the panel already shows
+        // the new step content at its natural position.
         if (step === 3) {
             const step3El = document.getElementById("wizardStep3");
             if (step3El) {
@@ -687,8 +688,6 @@ function setActiveTab(tabName) {
                     step3El.scrollIntoView({ behavior: "smooth", block: "start" });
                 }, 100);
             }
-        } else {
-            scrollPanelToBottom();
         }
     }
 
@@ -965,10 +964,7 @@ function setActiveTab(tabName) {
             if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this group</li>';
             h += '</ul>';
             if (layersWithFeatures === 0) h += '<div class="hint" style="margin-top:8px;">No features found in this group for your project area.</div>';
-            h += '<div class="bucket-report-actions" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-light);">';
-            h += '<button class="btn primary bucket-report-btn" type="button" data-bucket="' + g.key + '">';
-            h += '📋 Generate ' + escapeHtml(g.label) + ' Report</button>';
-            h += '</div></div>';
+            h += '</div>';
             slidesHtml += h + '</div>';
         }
 
@@ -997,19 +993,6 @@ function setActiveTab(tabName) {
         // Wire up overview row clicks
         track.querySelectorAll('.overview-cat-row[data-goto-bucket]').forEach(btn => {
             btn.addEventListener('click', () => setActiveBucket(btn.dataset.gotoBucket));
-        });
-
-        // Wire up bucket report buttons
-        track.querySelectorAll('.bucket-report-btn[data-bucket]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const bucketKey = btn.dataset.bucket;
-                if (btn.dataset.reportReady === 'true' && cachedBucketReports[bucketKey]) {
-                    const opened = openCompletedReport(cachedBucketReports[bucketKey]);
-                    if (!opened) alert("Could not open report. Please allow popups for this site.");
-                    return;
-                }
-                generateBucketReport(bucketKey, btn);
-            });
         });
 
         // Wire up back buttons
@@ -1052,78 +1035,13 @@ function setActiveTab(tabName) {
         }
     }
 
-    // Cache for generated bucket reports
-    const cachedBucketReports = {};
+    // Cache for generated permit-type reports
+    const cachedPermitReports = {};
 
     /**
-     * Generate a report for a specific bucket
-     * Shows modal during generation, then button changes to "View" state
-     */
-    async function generateBucketReport(bucketKey, buttonEl) {
-        if (!selectionGeom) {
-            setStatus("No AOI selected — cannot generate report");
-            return;
-        }
-        if (!lastReportRowsByLayer || !lastReportRowsByLayer.length) {
-            setStatus("Run analysis first before generating reports");
-            return;
-        }
-
-        // Resolve label from active permit type groups
-        const ptDef = selectedPermitType ? PERMIT_TYPES[selectedPermitType] : null;
-        const groupDef = ptDef ? ptDef.groups.find(g => g.key === bucketKey) : null;
-        const bucketLabel = groupDef ? groupDef.label : bucketKey;
-        
-        // Show modal
-        reportModal.show();
-        reportModal.setStep(`Building ${bucketLabel} Report`);
-        
-        try {
-            const htmlContent = await buildReportInBackground({
-                bucketKey: bucketKey,
-                permitTypeKey: selectedPermitType || null,
-                onProgress: (pct, maps, sections) => {
-                    reportModal.setProgress(pct);
-                    reportModal.updateStats(maps, sections);
-                },
-                onStep: (stepText) => {
-                    reportModal.setProgressDetail(stepText);
-                },
-                isCanceled: () => reportModal.isCanceled()
-            });
-            
-            if (reportModal.isCanceled()) {
-                setStatus("Report canceled");
-                return;
-            }
-            
-            reportModal.hide();
-            
-            // Cache the report and update button to "View" state
-            cachedBucketReports[bucketKey] = htmlContent;
-            
-            if (buttonEl) {
-                buttonEl.dataset.reportReady = 'true';
-                buttonEl.innerHTML = '📄 View ' + escapeHtml(bucketLabel) + ' Report';
-                buttonEl.classList.add('ready-to-view');
-            }
-            
-            setStatus(`${bucketLabel} report ready — click button to view`);
-            
-        } catch (e) {
-            reportModal.hide();
-            if (e.message === "Canceled") {
-                setStatus("Report canceled");
-            } else {
-                console.error("Report error:", e);
-                setStatus("Report generation failed — see console");
-            }
-        }
-    }
-
-    /**
-     * Generate the full report (all buckets)
-     * Shows modal during generation, then button changes to "View" state
+     * Generate the report for the active permit type.
+     * Only layers tagged for the selected permit type are included.
+     * Shows modal during generation, then button changes to "View" state.
      */
     async function generateFullProgressiveReport() {
         if (!selectionGeom) {
@@ -1134,23 +1052,39 @@ function setActiveTab(tabName) {
             setStatus("Run analysis first before generating reports");
             return;
         }
+
+        const ptKey = selectedPermitType || '__all__';
+        const ptDef = selectedPermitType ? PERMIT_TYPES[selectedPermitType] : null;
+        const ptLabel = ptDef ? ptDef.label : 'Full';
         
         // Check if report is already ready to view
-        if (wizFullReport && wizFullReport.dataset.reportReady === 'true' && cachedBucketReports['__full__']) {
-            const opened = openCompletedReport(cachedBucketReports['__full__']);
+        if (wizFullReport && wizFullReport.dataset.reportReady === 'true' && cachedPermitReports[ptKey]) {
+            const opened = openCompletedReport(cachedPermitReports[ptKey]);
             if (!opened) {
                 alert("Could not open report. Please allow popups for this site.");
             }
             return;
         }
 
+        // Pre-open the report window during the user gesture so popup
+        // blockers allow it. We write a loading page while the report builds.
+        const reportWindow = window.open('about:blank', '_blank');
+        if (reportWindow) {
+            reportWindow.document.write(
+                '<html><head><title>Building Report\u2026</title></head>' +
+                '<body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">' +
+                '<h2>Building ' + escapeHtml(ptLabel) + ' Report\u2026</h2></body></html>'
+            );
+            reportWindow.document.close();
+        }
+
         // Show modal
         reportModal.show();
-        reportModal.setStep("Building Full Report");
+        reportModal.setStep(`Building ${ptLabel} Report`);
         
         try {
             const htmlContent = await buildReportInBackground({
-                bucketKey: null, // null = full report
+                bucketKey: null,
                 permitTypeKey: selectedPermitType || null,
                 onProgress: (pct, maps, sections) => {
                     reportModal.setProgress(pct);
@@ -1163,6 +1097,7 @@ function setActiveTab(tabName) {
             });
             
             if (reportModal.isCanceled()) {
+                if (reportWindow && !reportWindow.closed) reportWindow.close();
                 setStatus("Report canceled");
                 return;
             }
@@ -1170,22 +1105,34 @@ function setActiveTab(tabName) {
             reportModal.hide();
             
             // Cache the report and update button to "View" state
-            cachedBucketReports['__full__'] = htmlContent;
+            cachedPermitReports[ptKey] = htmlContent;
             
             if (wizFullReport) {
                 wizFullReport.dataset.reportReady = 'true';
-                wizFullReport.innerHTML = '📄 View Full Report';
+                wizFullReport.innerHTML = '📄 View ' + escapeHtml(ptLabel) + ' Report';
                 wizFullReport.classList.add('ready-to-view');
             }
             
-            setStatus("Full report ready — click button to view");
+            // Write the finished report into the pre-opened window
+            if (reportWindow && !reportWindow.closed) {
+                const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                reportWindow.location.href = url;
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+            } else {
+                // Popup was blocked or user closed the tab — they can use the View button
+                alert("Report is ready! Click the View button to open it, or allow popups for this site.");
+            }
+            
+            setStatus(`${ptLabel} report ready`);
             
         } catch (e) {
+            if (reportWindow && !reportWindow.closed) reportWindow.close();
             reportModal.hide();
             if (e.message === "Canceled") {
                 setStatus("Report canceled");
             } else {
-                console.error("Full report error:", e);
+                console.error("Report error:", e);
                 setStatus("Report generation failed — see console");
             }
         }
@@ -1325,8 +1272,8 @@ function clearAll() {
     setCachedFinalReportHtml(null);
     if (viewReportBtn) viewReportBtn.disabled = true;
 
-    // Clear cached bucket reports (prevents stale HTML from accumulating in memory)
-    Object.keys(cachedBucketReports).forEach(k => delete cachedBucketReports[k]);
+    // Clear cached permit reports (prevents stale HTML from accumulating in memory)
+    Object.keys(cachedPermitReports).forEach(k => delete cachedPermitReports[k]);
 
     if (aoiLayer) aoiLayer.removeAll();
     aoiGraphic = null;
@@ -1340,7 +1287,7 @@ function clearAll() {
     if (wizFullReport) {
         wizFullReport.disabled = true;
         delete wizFullReport.dataset.reportReady;
-        wizFullReport.innerHTML = '📋 Full Report';
+        wizFullReport.innerHTML = '📋 Generate Report';
         wizFullReport.classList.remove('ready-to-view');
     }
     setWizPlssActive(null);
@@ -1372,10 +1319,12 @@ function clearAll() {
 
         // Permitting mode: show AOI confirm section within Step 2 when AOI is defined
         if (selectionGeom && currentAppMode === "permit" && currentWizardStep === 2) {
-            populateAoiConfirmation();
             const cs = document.getElementById("aoiConfirmSection");
+            const wasHidden = cs && cs.classList.contains("hidden");
+            populateAoiConfirmation();
             if (cs) cs.classList.remove("hidden");
-            scrollPanelToBottom();
+            // Only scroll once when the confirm section first appears
+            if (wasHidden) scrollPanelToBottom();
         }
     }
 
@@ -1648,12 +1597,11 @@ cb.addEventListener("change", async () => {
             const statusIcon = (status === "DOWN")
                 ? `<span class="status-warning" title="Service is DOWN">⚠️</span>`
                 : "";
-            const tierBadge = l.tier ? `<span style="font-size:10px;opacity:.55;margin-left:4px;">T${l.tier}</span>` : "";
             return `
                 <div class="toggle-row">
                     <input type="checkbox" id="lm_rptlayer_${i}" ${checked} />
                     <span class="layer-swatch layer-swatch-report" aria-hidden="true"></span>
-                    <label class="toggle-name" for="lm_rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}${tierBadge}</label>
+                    <label class="toggle-name" for="lm_rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}</label>
                     <span id="lm_rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
                 </div>`;
         }).join("");
@@ -2053,10 +2001,15 @@ async function runAnalysis() {
         // ✅ Show success animation
         analysisModal.showSuccess(layersQueried, layersWithFeatures, 0, Date.now() - analysisStartTime);
 
-        // Permitting mode: populate bucket results with report buttons
+        // Permitting mode: populate results and enable report button
         if (currentAppMode === "permit") {
             populatePermitResults();
-            if (wizFullReport) wizFullReport.disabled = false;
+            if (wizFullReport) {
+                const ptDef = selectedPermitType ? PERMIT_TYPES[selectedPermitType] : null;
+                const ptLabel = ptDef ? ptDef.label : 'Full';
+                wizFullReport.disabled = false;
+                wizFullReport.innerHTML = '📋 Generate ' + escapeHtml(ptLabel) + ' Report';
+            }
             // Advance to step 3 (results)
             goToWizardStep(3);
         }
@@ -3485,10 +3438,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
                 // Show AOI confirm section within Step 2
                 if (currentAppMode === "permit" && currentWizardStep === 2) {
-                    populateAoiConfirmation();
                     const cs = document.getElementById("aoiConfirmSection");
+                    const wasHidden = cs && cs.classList.contains("hidden");
+                    populateAoiConfirmation();
                     if (cs) cs.classList.remove("hidden");
-                    scrollPanelToBottom();
+                    // Only scroll once when the confirm section first appears
+                    if (wasHidden) scrollPanelToBottom();
                 }
             }
 

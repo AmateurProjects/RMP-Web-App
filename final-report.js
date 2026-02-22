@@ -3398,7 +3398,7 @@ define([
      */
     async function openProgressiveReport(options = {}) {
         const title = options.title || "Report";
-        const bucketLabel = options.bucketLabel || null;
+        const permitLabel = options.permitLabel || null;
         const createdAt = formatDateTimeForReport(new Date());
 
         // Create initial shell HTML
@@ -3422,7 +3422,7 @@ define([
     <header class="report-header">
         <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
         <h1>${escapeHtml(title)}</h1>
-        <p class="meta">Generated: ${escapeHtml(createdAt)}${bucketLabel ? ` &bull; Category: ${escapeHtml(bucketLabel)}` : ''}</p>
+        <p class="meta">Generated: ${escapeHtml(createdAt)}${permitLabel ? ` &bull; Permit Type: ${escapeHtml(permitLabel)}` : ''}</p>
         <div class="report-actions" id="reportActions" style="display:none;">
             <button class="export-btn pkg-download-btn" onclick="downloadReportPackage()">&#128230; Download Report Package</button>
             <button class="export-btn share-report-btn" onclick="shareReport()">&#128279; Share Report</button>
@@ -3759,33 +3759,40 @@ ${getA11yWidgetBlock()}
             return;
         }
 
-        // ── Resolve report title and layer filter ──
+        // ── Resolve report title, layer filter, and group ordering ──
         let reportTitle;
         let targetLayers;
+        let progPermitGroupOrder = null; // group ordering for section headers
+        let progLayerGroupMap = null;
 
-        if (bucketKey && permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
-            // Permit-type-specific group
+        if (permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
+            // Permit-type-driven report
             const ptDef = PERMIT_TYPES[permitTypeKey];
-            const groupDef = ptDef.groups.find(g => g.key === bucketKey);
-            if (groupDef) {
-                const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
-                targetLayers = categorized.groups[bucketKey] || [];
-                reportTitle = `${groupDef.icon} ${groupDef.label} Report — ${ptDef.label}`;
-            } else {
-                // Fallback to legacy bucket
-                const bucketInfo = REPORT_BUCKETS[bucketKey];
-                reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
-                const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
-                targetLayers = buckets[bucketKey] || [];
+            const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
+            targetLayers = categorized.allData || [];
+            reportTitle = `${ptDef.icon} ${ptDef.label} — Land & Resource Screening Report`;
+
+            progPermitGroupOrder = ptDef.groups.map(g => ({
+                key: g.key, label: g.label, icon: g.icon,
+                description: g.description || '',
+                layers: (categorized.groups[g.key] || [])
+            }));
+            const uncat = categorized.groups['uncategorized'] || [];
+            if (uncat.length) {
+                progPermitGroupOrder.push({
+                    key: 'uncategorized', label: 'Other Layers', icon: '📋',
+                    description: 'Additional layers not assigned to a specific group.',
+                    layers: uncat
+                });
             }
-        } else if (bucketKey) {
-            // Legacy bucket (no permit type)
-            const bucketInfo = REPORT_BUCKETS[bucketKey];
-            reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
-            const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
-            targetLayers = buckets[bucketKey] || [];
+            progLayerGroupMap = new Map();
+            for (const g of progPermitGroupOrder) {
+                for (const item of g.layers) {
+                    const urlKey = String(item.url || '');
+                    if (urlKey) progLayerGroupMap.set(urlKey, g);
+                }
+            }
         } else {
-            // Full report
             reportTitle = "Land & Resource Intersection Analysis Report";
             targetLayers = lastReportRowsByLayer;
         }
@@ -3797,10 +3804,22 @@ ${getA11yWidgetBlock()}
             .filter(x => x?.url || x?.__isImageService)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 
+        // Sort by group order if permit type is active
+        if (progPermitGroupOrder && progLayerGroupMap) {
+            const gIdx = {};
+            progPermitGroupOrder.forEach((g, idx) => { gIdx[g.key] = idx; });
+            mappableLayers.sort((a, b) => {
+                const ga = progLayerGroupMap.get(String(a.url || ''));
+                const gb = progLayerGroupMap.get(String(b.url || ''));
+                return (ga ? (gIdx[ga.key] ?? 999) : 999) - (gb ? (gIdx[gb.key] ?? 999) : 999);
+            });
+        }
+
         // Open the progressive report window
+        const ptDefForLabel = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
         const report = await openProgressiveReport({
             title: reportTitle,
-            bucketLabel: bucketInfo?.label || null
+            permitLabel: ptDefForLabel?.label || null
         });
 
         if (!report) {
@@ -3881,9 +3900,11 @@ ${getA11yWidgetBlock()}
 
             // === STEP 3: Generate maps for each layer progressively ===
             if (mappableLayers.length === 0) {
+                const ptDefLabel = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
+                const noDataLabel = ptDefLabel ? ptDefLabel.label : 'screened';
                 report.appendContent(`
                     <h2>Layer Details</h2>
-                    <p style="color: var(--muted); font-style: italic;">No intersecting features found in the ${bucketInfo?.label || 'screened'} datasets.</p>
+                    <p style="color: var(--muted); font-style: italic;">No intersecting features found in the ${escapeHtml(noDataLabel)} datasets.</p>
                 `);
             } else {
                 report.appendContent(`<h2>Layer Details</h2>`);
@@ -3933,6 +3954,7 @@ ${getA11yWidgetBlock()}
 
                     // Deferred screenshots: skip capture when tab is hidden, retry at end
                     const deferredScreenshots = [];
+                    let progLastGroupKey = null;
 
                     // Process each layer
                     for (let i = 0; i < mappableLayers.length; i++) {
@@ -3941,6 +3963,24 @@ ${getA11yWidgetBlock()}
                         const item = mappableLayers[i];
                         const layerTitle = item.title || "Unknown Layer";
                         const layerId = `layer-${i}`;
+
+                        // Insert group section header when transitioning between groups
+                        if (progLayerGroupMap) {
+                            const urlKey = String(item.url || '');
+                            const layerGroup = progLayerGroupMap.get(urlKey);
+                            const groupKey = layerGroup ? layerGroup.key : 'uncategorized';
+                            if (groupKey !== progLastGroupKey) {
+                                progLastGroupKey = groupKey;
+                                if (layerGroup) {
+                                    report.appendContent(`
+                                        <div class="bucket-header" id="group-${escapeHtml(groupKey)}">
+                                            <h2>${layerGroup.icon} ${escapeHtml(layerGroup.label)}</h2>
+                                            <p class="bucket-description">${escapeHtml(layerGroup.description)}</p>
+                                        </div>
+                                    `);
+                                }
+                            }
+                        }
 
                         report.updateProgress("Building report...", `Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                         onProgress(`Map ${i + 1}/${mappableLayers.length}`, 20 + (70 * i / mappableLayers.length));
@@ -4878,28 +4918,35 @@ ${getA11yWidgetBlock()}
             throw new Error("No analysis data available");
         }
 
-        // ── Resolve report title and layer filter ──
+        // ── Resolve report title, layer filter, and group ordering ──
         let reportTitle;
         let targetLayers;
+        let permitGroupOrder = null; // Array of { key, label, icon, layers[] } for section headers
 
-        if (bucketKey && permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
+        if (permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
+            // Permit-type-driven report — filter to layers for this permit type
             const ptDef = PERMIT_TYPES[permitTypeKey];
-            const groupDef = ptDef.groups.find(g => g.key === bucketKey);
-            if (groupDef) {
-                const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
-                targetLayers = categorized.groups[bucketKey] || [];
-                reportTitle = `${groupDef.icon} ${groupDef.label} Report — ${ptDef.label}`;
-            } else {
-                const bucketInfo = REPORT_BUCKETS[bucketKey];
-                reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
-                const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
-                targetLayers = buckets[bucketKey] || [];
+            const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
+            targetLayers = categorized.allData || [];
+            reportTitle = `${ptDef.icon} ${ptDef.label} — Land & Resource Screening Report`;
+
+            // Build group ordering for section headers
+            permitGroupOrder = ptDef.groups.map(g => ({
+                key: g.key,
+                label: g.label,
+                icon: g.icon,
+                description: g.description || '',
+                layers: (categorized.groups[g.key] || [])
+            }));
+            // Include uncategorized layers if any
+            const uncat = categorized.groups['uncategorized'] || [];
+            if (uncat.length) {
+                permitGroupOrder.push({
+                    key: 'uncategorized', label: 'Other Layers', icon: '📋',
+                    description: 'Additional layers not assigned to a specific group.',
+                    layers: uncat
+                });
             }
-        } else if (bucketKey) {
-            const bucketInfo = REPORT_BUCKETS[bucketKey];
-            reportTitle = bucketInfo ? `${bucketInfo.icon} ${bucketInfo.label} Report` : "Report";
-            const buckets = categorizeLayersIntoBuckets(lastReportRowsByLayer);
-            targetLayers = buckets[bucketKey] || [];
         } else {
             reportTitle = "Land & Resource Intersection Analysis Report";
             targetLayers = lastReportRowsByLayer;
@@ -4911,6 +4958,18 @@ ${getA11yWidgetBlock()}
             .filter(x => x?.hasCoverage || (x?.count || 0) > 0) // Coverage from screening
             .filter(x => x?.url || x?.__isImageService)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+
+        // Build URL→group mapping for section headers when iterating layers
+        let layerGroupMap = null; // url → group object
+        if (permitGroupOrder) {
+            layerGroupMap = new Map();
+            for (const g of permitGroupOrder) {
+                for (const item of g.layers) {
+                    const urlKey = String(item.url || '');
+                    if (urlKey) layerGroupMap.set(urlKey, g);
+                }
+            }
+        }
 
         const { querySingleLayer } = queryEngine;
 
@@ -4994,9 +5053,11 @@ ${getA11yWidgetBlock()}
 
             // === STEP 3: Generate maps for each layer ===
             if (mappableLayers.length === 0) {
+                const ptDef = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
+                const noDataLabel = ptDef ? ptDef.label : 'screened';
                 contentParts.push(`
                     <h2>Layer Details</h2>
-                    <p style="color: var(--muted); font-style: italic;">No intersecting features found in the ${bucketInfo?.label || 'screened'} datasets.</p>
+                    <p style="color: var(--muted); font-style: italic;">No intersecting features found in the ${escapeHtml(noDataLabel)} datasets.</p>
                 `);
             } else {
                 contentParts.push(`<h2>Layer Details</h2>`);
@@ -5044,13 +5105,45 @@ ${getA11yWidgetBlock()}
                         await waitForViewStationary(800);
                     }
 
+                    // Sort layers by permit-type group order so section headers flow correctly
+                    if (permitGroupOrder && layerGroupMap) {
+                        const groupIdx = {};
+                        permitGroupOrder.forEach((g, idx) => { groupIdx[g.key] = idx; });
+                        mappableLayers.sort((a, b) => {
+                            const ga = layerGroupMap.get(String(a.url || ''));
+                            const gb = layerGroupMap.get(String(b.url || ''));
+                            const ia = ga ? (groupIdx[ga.key] ?? 999) : 999;
+                            const ib = gb ? (groupIdx[gb.key] ?? 999) : 999;
+                            return ia - ib;
+                        });
+                    }
+
                     // Process each layer
                     const deferredScreenshots = [];
+                    let lastGroupKey = null; // Track current group for section headers
                     for (let i = 0; i < mappableLayers.length; i++) {
                         if (isCanceled()) throw new Error("Canceled");
 
                         const item = mappableLayers[i];
                         const layerTitle = item.title || "Unknown Layer";
+
+                        // Insert group section header when transitioning between groups
+                        if (layerGroupMap) {
+                            const urlKey = String(item.url || '');
+                            const layerGroup = layerGroupMap.get(urlKey);
+                            const groupKey = layerGroup ? layerGroup.key : 'uncategorized';
+                            if (groupKey !== lastGroupKey) {
+                                lastGroupKey = groupKey;
+                                if (layerGroup) {
+                                    contentParts.push(`
+                                        <div class="bucket-header" id="group-${escapeHtml(groupKey)}">
+                                            <h2>${layerGroup.icon} ${escapeHtml(layerGroup.label)}</h2>
+                                            <p class="bucket-description">${escapeHtml(layerGroup.description)}</p>
+                                        </div>
+                                    `);
+                                }
+                            }
+                        }
 
                         onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                         onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
@@ -5382,7 +5475,8 @@ ${getA11yWidgetBlock()}
 
             // Build complete HTML document
             const createdAt = formatDateTimeForReport(new Date());
-            const bucketLabel = bucketInfo?.label || null;
+            const ptDef = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
+            const permitLabel = ptDef ? ptDef.label : null;
             
             // Prepare export data (layer title, count, and sample attribute rows)
             const exportData = targetLayers.map(layer => ({
@@ -5412,7 +5506,7 @@ ${getA11yWidgetBlock()}
     <header class="report-header">
         <div class="agency-name">U.S. Department of the Interior &bull; Bureau of Land Management</div>
         <h1>${escapeHtml(reportTitle)}</h1>
-        <p class="meta">Generated: ${escapeHtml(createdAt)}${bucketLabel ? ` &bull; Category: ${escapeHtml(bucketLabel)}` : ''}</p>
+        <p class="meta">Generated: ${escapeHtml(createdAt)}${permitLabel ? ` &bull; Permit Type: ${escapeHtml(permitLabel)}` : ''}</p>
         <div class="report-actions">
             <button class="export-btn pkg-download-btn" onclick="downloadReportPackage()">&#128230; Download Report Package</button>
             <button class="export-btn share-report-btn" onclick="shareReport()">&#128279; Share Report</button>
