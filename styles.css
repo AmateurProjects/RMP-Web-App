@@ -3891,23 +3891,23 @@ body.cv-highcontrast {
   left: 0;
   right: 0;
   display: block;
-  height: 28px;
+  height: 48px;
   pointer-events: none;
   z-index: 5;
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.3s ease;
 }
 /* Top fade — sits right below the sticky header area */
 .scroll-fade::before {
   top: 0;
-  margin-bottom: -28px;
-  background: linear-gradient(to bottom, var(--bg-white) 0%, transparent 100%);
+  margin-bottom: -48px;
+  background: linear-gradient(to bottom, var(--bg-white) 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
 }
 /* Bottom fade */
 .scroll-fade::after {
   bottom: 0;
-  margin-top: -28px;
-  background: linear-gradient(to top, var(--bg-white) 0%, transparent 100%);
+  margin-top: -48px;
+  background: linear-gradient(to top, var(--bg-white) 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
 }
 /* Reveal when scrollable */
 .scroll-fade.can-scroll-up::before   { opacity: 1; }
@@ -3916,16 +3916,16 @@ body.cv-highcontrast {
 /* Panel-specific: top fade below sticky header */
 #panel.scroll-fade::before {
   top: 64px; /* height of the sticky .panel-header */
-  background: linear-gradient(to bottom, var(--bg-white) 0%, transparent 100%);
+  background: linear-gradient(to bottom, var(--bg-white) 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
 }
 
 /* Smaller fades for compact lists */
 .scroll-fade-sm::before,
 .scroll-fade-sm::after {
-  height: 18px;
+  height: 28px;
 }
-.scroll-fade-sm::before { margin-bottom: -18px; }
-.scroll-fade-sm::after  { margin-top: -18px; }
+.scroll-fade-sm::before { margin-bottom: -28px; }
+.scroll-fade-sm::after  { margin-top: -28px; }
 
 /* Dark-background variant (for layer manager, modals) */
 .scroll-fade-dark::before {

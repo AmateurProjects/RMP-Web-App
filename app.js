@@ -2805,6 +2805,10 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const isMinimized = panelEl.classList.toggle("minimized");
                 panelToggleBtn.title = isMinimized ? "Expand panel" : "Minimize panel";
                 panelToggleBtn.setAttribute("aria-label", isMinimized ? "Expand panel" : "Minimize panel");
+                // When expanding back, scroll to the bottom so the user sees current content
+                if (!isMinimized) {
+                    scrollPanelToBottom();
+                }
             });
         }
 
@@ -3994,6 +3998,47 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     observeWhenReady(".feature-picker-list", ["scroll-fade-sm"]);
     observeWhenReady(".wiz-location-results", ["scroll-fade-sm"]);
     observeWhenReady(".layer-mgr-body", ["scroll-fade-dark"]);
+
+    // ── Auto-scroll panel to bottom when new content appears ──
+    // Watches for child-list / subtree additions to the panel (e.g. wizard steps,
+    // screening results, buffer UI) and scrolls to the bottom so the user always
+    // sees the latest content.  Debounced so rapid DOM mutations don't thrash.
+    (function initPanelAutoScroll() {
+        const panel = document.getElementById("panel");
+        if (!panel) return;
+        let scrollTimer = null;
+        const DEBOUNCE_MS = 120;
+
+        function scheduleScroll() {
+            // Don't scroll if the panel is minimized
+            if (panel.classList.contains("minimized")) return;
+            if (scrollTimer) clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+                requestAnimationFrame(() => {
+                    panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
+                });
+            }, DEBOUNCE_MS);
+        }
+
+        const mo = new MutationObserver((mutations) => {
+            // Only scroll for changes that actually add visible content
+            const hasNewNodes = mutations.some(m =>
+                m.type === "childList" && m.addedNodes.length > 0
+            );
+            // Also trigger on class changes that reveal hidden content
+            const hasClassChange = mutations.some(m =>
+                m.type === "attributes" && m.attributeName === "class"
+            );
+            if (hasNewNodes || hasClassChange) scheduleScroll();
+        });
+
+        mo.observe(panel, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["class"]
+        });
+    })();
 })();
 
 // ════════════════════════════════════════════════════════════════════════════
