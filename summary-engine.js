@@ -95,6 +95,23 @@ define([], function () {
     var URL_RX = /^https?:\/\//i;
     var SKIP_FIELDS = /^(OBJECTID|FID|GLOBALID|ST_AREA|ST_LENGTH|ST_PERIMETER|SHAPE([-_. ].*)?|TOTAL[-_ ]?(AREA|LENGTH|ACRES|ACREAGE))$/i;
 
+    /** Maximum number of content rows (excluding the header) in Layer Highlights */
+    var MAX_HIGHLIGHT_ROWS = 3;
+
+    /**
+     * Cap the number of highlight <tr> rows.
+     * The first <tr> is always the section header and is kept;
+     * only the first `maxRows` content rows after it are retained.
+     */
+    function capHighlightRows(html, maxRows) {
+        if (!html) return html;
+        maxRows = maxRows || MAX_HIGHLIGHT_ROWS;
+        var trPattern = /<tr>[\s\S]*?<\/tr>/gi;
+        var matches = html.match(trPattern);
+        if (!matches || matches.length <= 1 + maxRows) return html;
+        return matches.slice(0, 1 + maxRows).join("");
+    }
+
     /* ================================================================
      *  Generic auto-summary builder
      * ================================================================ */
@@ -218,69 +235,25 @@ define([], function () {
 
         html += '<tr><td colspan="2" style="padding-top:12px;"><b>' + escapeHtml(headerLabel) + "</b></td></tr>";
 
-        // Names
+        // ── Priority order: names/status/types first, numeric last ──
+        // (capHighlightRows enforces the 3-row limit globally)
+
+        // 1. Names (proper nouns — highest priority)
         if (data.names.size > 0) {
             html += tr("Names", uniqueSummary(data.names, 10));
         }
 
-        // Types
-        if (data.types.size > 0) {
-            html += tr("Types", freqSummary(data.types, 10));
-        }
-
-        // Status
+        // 2. Status / condition (categorical)
         if (data.statuses.size > 0) {
             html += tr("Status", freqSummary(data.statuses, 10));
         }
 
-        // Years
-        if (data.years.size > 0) {
-            var sorted = Array.from(data.years.entries())
-                .sort(function (a, b) { return b[0].localeCompare(a[0]); })
-                .slice(0, 15)
-                .map(function (p) { return escapeHtml(p[0]) + " (" + p[1] + ")"; })
-                .join(", ");
-            if (data.years.size > 15) sorted += " …";
-            html += tr("Years", sorted);
+        // 3. Types / designations / ratings (categorical)
+        if (data.types.size > 0) {
+            html += tr("Types", freqSummary(data.types, 10));
         }
 
-        // Area
-        if (data.areaCount > 0) {
-            html += tr("Total Area (acres)", formatNumber(data.areaSum, 1) +
-                " (" + data.areaCount + " feature" + (data.areaCount !== 1 ? "s" : "") + ")");
-        }
-
-        // Length
-        if (data.lengthCount > 0) {
-            html += tr("Total Length", formatNumber(data.lengthSum, 1) +
-                " (" + data.lengthCount + " feature" + (data.lengthCount !== 1 ? "s" : "") + ")");
-        }
-
-        // Numeric fields (min/max/mean for fields with >1 value)
-        var numKeys = Object.keys(data.numericFields);
-        for (var n = 0; n < numKeys.length; n++) {
-            var nk = numKeys[n];
-            var nf = data.numericFields[nk];
-            if (nf.count > 1) {
-                html += tr(nk, "min " + formatNumber(nf.min, 1) +
-                    " / max " + formatNumber(nf.max, 1) +
-                    " / avg " + formatNumber(nf.sum / nf.count, 1) +
-                    " (" + nf.count + ")");
-            } else {
-                html += tr(nk, formatNumber(nf.sum, 1));
-            }
-        }
-
-        // IDs
-        if (data.ids.size > 0) {
-            if (data.ids.size <= 10) {
-                html += tr("Case/Serial Numbers", uniqueSummary(data.ids, 10));
-            } else {
-                html += tr("Case/Serial Numbers", data.ids.size + " records");
-            }
-        }
-
-        // Unclassified text fields (show top 3 fields by unique-value count)
+        // 4. Unclassified text fields (may contain meaningful labels)
         if (data.unclassified.size > 0) {
             var sorted2 = Array.from(data.unclassified.entries())
                 .sort(function (a, b) { return b[1].size - a[1].size; })
@@ -297,19 +270,23 @@ define([], function () {
             }
         }
 
-        // URLs
-        if (data.urls.size > 0) {
-            for (var iter = data.urls.entries(), step; !(step = iter.next()).done;) {
-                var urlLabel = step.value[0];
-                var urlSet = step.value[1];
-                var links = Array.from(urlSet).slice(0, 5)
-                    .map(function (u) {
-                        var escaped = escapeHtml(u);
-                        return '<a href="' + escaped + '" target="_blank" rel="noopener">' +
-                            (escaped.length > 50 ? escaped.substring(0, 50) + "…" : escaped) + "</a>";
-                    }).join("<br/>");
-                if (urlSet.size > 5) links += "<br/>…";
-                html += tr(urlLabel, links);
+        // 5. Years
+        if (data.years.size > 0) {
+            var sorted = Array.from(data.years.entries())
+                .sort(function (a, b) { return b[0].localeCompare(a[0]); })
+                .slice(0, 15)
+                .map(function (p) { return escapeHtml(p[0]) + " (" + p[1] + ")"; })
+                .join(", ");
+            if (data.years.size > 15) sorted += " …";
+            html += tr("Years", sorted);
+        }
+
+        // 6. IDs / case numbers
+        if (data.ids.size > 0) {
+            if (data.ids.size <= 10) {
+                html += tr("Case/Serial Numbers", uniqueSummary(data.ids, 10));
+            } else {
+                html += tr("Case/Serial Numbers", data.ids.size + " records");
             }
         }
 
@@ -869,8 +846,7 @@ define([], function () {
                 // If config specifies explicit highlightFields, use only those
                 if (layerCfg && Array.isArray(layerCfg.highlightFields) && layerCfg.highlightFields.length > 0) {
                     var html = renderExplicitFields(rows, layerCfg.highlightFields, headerLabel);
-                    html = appendUrlRows(html, rows);
-                    return html;
+                    return capHighlightRows(html);
                 }
 
                 // Try plugin first
@@ -886,10 +862,8 @@ define([], function () {
                     html = renderClassified(data, headerLabel);
                 }
 
-                // Append URL rows that weren't already included
-                html = appendUrlRows(html, rows);
-
-                return html;
+                // Enforce 3-row cap on highlights
+                return capHighlightRows(html);
             },
 
             /**

@@ -645,7 +645,7 @@ define([
     const {
         PERMIT_TYPES, PERMIT_TYPE_ORDER,
         CATEGORY_DEFS, CATEGORY_ORDER,
-        resolveCategory, categorizeByPermitType,
+        lookupLayerCfg, resolveCategory, categorizeByPermitType,
         categorizeIntoBuckets: _categorizeIntoBucketsShared
     } = permitTypesModule;
 
@@ -909,10 +909,10 @@ define([
             var count = item.count || 0;
             var entry = { name: item.title, count: count };
 
-            // Try config-level category first
+            // Try config-level category first (with sublayer→parent URL fallback)
             var catBucket = null;
             if (S && S.layerCfgByUrl && item.url) {
-                var cfgEntry = S.layerCfgByUrl.get(item.url);
+                var cfgEntry = lookupLayerCfg(S.layerCfgByUrl, item.url);
                 var cat = cfgEntry && (cfgEntry.cfg || cfgEntry).category;
                 if (cat && CATEGORY_MAP[cat]) {
                     catBucket = CATEGORY_MAP[cat];

@@ -249,11 +249,30 @@ define([], function () {
      * @param {Map} [layerCfgByUrl] - optional config lookup map
      * @returns {string} category key, e.g. "environmental"
      */
+    /**
+     * Look up a layer's config entry from layerCfgByUrl.
+     * Tries the exact URL first; if not found, strips the trailing
+     * sublayer ID (e.g. "/0", "/1") and retries with the parent
+     * service URL. This handles layers configured as root
+     * FeatureServer/MapServer URLs that get expanded to sublayers
+     * at runtime.
+     */
+    function lookupLayerCfg(layerCfgByUrl, url) {
+        if (!layerCfgByUrl || !url) return null;
+        var key = String(url);
+        var entry = layerCfgByUrl.get(key);
+        if (entry) return entry;
+        // Fallback: strip trailing /<number> (sublayer ID) and try parent URL
+        var parent = key.replace(/\/\d+$/, "");
+        if (parent !== key) return layerCfgByUrl.get(parent) || null;
+        return null;
+    }
+
     function resolveCategory(item, layerCfgByUrl) {
         var title = (item && item.title) || "";
         // 1. Explicit category from config
         if (layerCfgByUrl) {
-            var cfgEntry = layerCfgByUrl.get(String(item.url || ""));
+            var cfgEntry = lookupLayerCfg(layerCfgByUrl, item.url);
             var cfgCategory = cfgEntry && cfgEntry.cfg && cfgEntry.cfg.category;
             if (cfgCategory && CATEGORY_DEFS[cfgCategory]) return cfgCategory;
         }
@@ -279,7 +298,7 @@ define([], function () {
     function filterLayersByPermitType(reportItems, permitTypeKey, layerCfgByUrl) {
         if (!permitTypeKey) return (reportItems || []).slice();
         return (reportItems || []).filter(function (item) {
-            var cfgEntry = layerCfgByUrl ? layerCfgByUrl.get(String(item.url || "")) : null;
+            var cfgEntry = lookupLayerCfg(layerCfgByUrl, item.url);
             var permitTypes = (cfgEntry && cfgEntry.cfg && cfgEntry.cfg.permitTypes) || [];
             return permitTypes.indexOf(permitTypeKey) !== -1 || permitTypes.indexOf("core") !== -1;
         });
@@ -366,6 +385,7 @@ define([], function () {
         PERMIT_TYPE_ORDER: PERMIT_TYPE_ORDER,
         CATEGORY_DEFS: CATEGORY_DEFS,
         CATEGORY_ORDER: CATEGORY_ORDER,
+        lookupLayerCfg: lookupLayerCfg,
         resolveCategory: resolveCategory,
         filterLayersByPermitType: filterLayersByPermitType,
         categorizeByPermitType: categorizeByPermitType,

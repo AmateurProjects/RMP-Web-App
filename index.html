@@ -156,10 +156,6 @@
                 <div class="report-modal-stat-value" id="reportMapsGenerated">0</div>
                 <div class="report-modal-stat-label">Maps Generated</div>
             </div>
-            <div class="report-modal-stat">
-                <div class="report-modal-stat-value" id="reportSectionsComplete">0</div>
-                <div class="report-modal-stat-label">Sections Complete</div>
-            </div>
         </div>
         
         <div class="report-modal-footer">
@@ -637,11 +633,9 @@
         </div>
 
 
-        <!-- Swipe container for dynamic bucket panels (built per permit type) -->
-        <div class="bucket-swipe-container" id="bucketSwipeContainer">
-          <div class="bucket-swipe-track" id="bucketSwipeTrack">
-            <!-- Slides are injected dynamically by populatePermitResults() -->
-          </div>
+        <!-- Accordion container for dynamic bucket panels (built per permit type) -->
+        <div class="bucket-accordion-container" id="bucketAccordion">
+          <!-- Sections are injected dynamically by populatePermitResults() -->
         </div>
       </section>
 

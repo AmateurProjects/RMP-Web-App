@@ -314,8 +314,7 @@ function setBusy(isBusy) {
         currentStep: null,
         progressDetail: null,
         stats: {
-            mapsGenerated: null,
-            sectionsComplete: null
+            mapsGenerated: null
         },
         
         init() {
@@ -324,7 +323,6 @@ function setBusy(isBusy) {
             this.currentStep = document.getElementById("reportCurrentStep");
             this.progressDetail = document.getElementById("reportProgressDetail");
             this.stats.mapsGenerated = document.getElementById("reportMapsGenerated");
-            this.stats.sectionsComplete = document.getElementById("reportSectionsComplete");
             
             // Wire cancel button
             const cancelBtn = document.getElementById("reportModalCancelBtn");
@@ -362,7 +360,7 @@ function setBusy(isBusy) {
             this.setProgress(0);
             this.setStep("Initializing...");
             this.setProgressDetail("Preparing report...");
-            this.updateStats(0, 0);
+            this.updateStats(0);
         },
         
         setProgress(percent) {
@@ -383,9 +381,8 @@ function setBusy(isBusy) {
             }
         },
         
-        updateStats(mapsGenerated, sectionsComplete) {
+        updateStats(mapsGenerated) {
             if (this.stats.mapsGenerated) this.stats.mapsGenerated.textContent = mapsGenerated;
-            if (this.stats.sectionsComplete) this.stats.sectionsComplete.textContent = sectionsComplete;
         },
         
         isCanceled() {
@@ -885,8 +882,9 @@ function setActiveTab(tabName) {
     let activeBucketSlideMap = {};
 
     /**
-     * Populate screening results — dynamically builds bucket slides
+     * Populate screening results — dynamically builds accordion sections
      * based on the currently-selected permit type's groups.
+     * Each category is a collapsible section the user can tap to expand/collapse.
      */
     function populatePermitResults() {
         const ptKey = selectedPermitType;
@@ -898,106 +896,87 @@ function setActiveTab(tabName) {
             ? categorizeByPermitType(lastReportRowsByLayer, ptKey, layerCfgByUrl)
             : null;
 
-        // Build slide map: overview=0, then each group, then all-data
-        activeBucketSlideMap = { "overview": 0 };
-        groups.forEach((g, i) => { activeBucketSlideMap[g.key] = i + 1; });
-        activeBucketSlideMap["all-data"] = groups.length + 1;
+        // ── Build dynamic accordion DOM ──
+        const container = document.getElementById("bucketAccordion");
+        if (!container) return;
 
-        // ── Build dynamic slide DOM ──
-        const track = document.getElementById("bucketSwipeTrack");
-        if (!track) return;
+        let html = '';
 
-        let slidesHtml = '';
+        // Disclaimer at top
+        html += '<div class="overview-disclaimer"><strong>Important:</strong> These results show which layers have features intersecting your project area. Generate a report to see detailed analysis. Contact your local BLM field office for authoritative guidance.</div>';
 
-        // Slide 0: Overview dashboard
-        slidesHtml += '<div class="bucket-swipe-slide active" data-bucket="overview" id="bucketOverview">';
-        {
-            const tl = lastReportRowsByLayer.length;
-            const lwh = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
-            let oh = '<div class="overview-dash">';
-            oh += '<div class="overview-category-grid">';
-            for (const g of groups) {
-                const items = (categorized && categorized.groups[g.key]) || [];
-                const layersWithFeatures = items.filter(it => it.hasCoverage).length;
-                const totalLayers = items.length;
-                const statusClass = layersWithFeatures > 0 ? 'findings' : 'clear';
-                const statusLabel = layersWithFeatures > 0
-                    ? (layersWithFeatures + ' of ' + totalLayers + ' layer' + (totalLayers !== 1 ? 's' : ''))
-                    : 'No features';
-                oh += '<button class="overview-cat-row ' + statusClass + '" type="button" data-goto-bucket="' + g.key + '">';
-                oh += '<span class="overview-cat-indicator"></span>';
-                oh += '<span class="overview-cat-icon">' + g.icon + '</span>';
-                oh += '<span class="overview-cat-label">' + escapeHtml(g.label) + '</span>';
-                oh += '<span class="overview-cat-status">' + statusLabel + '</span>';
-                oh += '<span class="overview-cat-arrow">›</span>';
-                oh += '</button>';
-            }
-            // All Data row
-            oh += '<button class="overview-cat-row all-data" type="button" data-goto-bucket="all-data">';
-            oh += '<span class="overview-cat-indicator"></span>';
-            oh += '<span class="overview-cat-icon">📊</span>';
-            oh += '<span class="overview-cat-label">All Layers</span>';
-            oh += '<span class="overview-cat-status">' + lwh + ' of ' + tl + ' layer' + (tl !== 1 ? 's' : '') + '</span>';
-            oh += '<span class="overview-cat-arrow">›</span>';
-            oh += '</button>';
-            oh += '</div>';
-            oh += '<div class="overview-disclaimer"><strong>Important:</strong> These results show which layers have features intersecting your project area. Generate a report to see detailed analysis. Contact your local BLM field office for authoritative guidance.</div>';
-            oh += '</div>';
-            slidesHtml += oh;
-        }
-        slidesHtml += '</div>';
-
-        // Slides 1..N: one per group
+        // One accordion section per group
         for (const g of groups) {
             const items = (categorized && categorized.groups[g.key]) || [];
             const layersWithFeatures = items.filter(it => it.hasCoverage).length;
-            slidesHtml += '<div class="bucket-swipe-slide" data-bucket="' + g.key + '" id="bucket_' + g.key + '">';
-            let h = '<button class="bucket-back-btn" type="button" data-back-to-overview="true">‹ Back to Results</button>';
-            h += '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">' + g.icon + ' ' + escapeHtml(g.label) + '</div>';
-            h += '<div class="bucket-card-count' + (layersWithFeatures === 0 ? ' zero' : '') + '">' + layersWithFeatures + ' of ' + items.length + ' layer' + (items.length !== 1 ? 's' : '') + '</div></div>';
-            h += '<div class="bucket-card-desc">' + escapeHtml(g.description || '') + '</div><ul class="bucket-layer-list">';
+            const totalLayers = items.length;
+            const statusClass = layersWithFeatures > 0 ? 'findings' : 'clear';
+            const statusLabel = layersWithFeatures > 0
+                ? (layersWithFeatures + ' of ' + totalLayers + ' layer' + (totalLayers !== 1 ? 's' : ''))
+                : 'No features';
+
+            html += '<div class="bucket-accordion-section" data-bucket="' + g.key + '">';
+
+            // Header row (reuses overview-cat-row styling)
+            html += '<button class="overview-cat-row ' + statusClass + '" type="button">';
+            html += '<span class="overview-cat-indicator"></span>';
+            html += '<span class="overview-cat-icon">' + g.icon + '</span>';
+            html += '<span class="overview-cat-label">' + escapeHtml(g.label) + '</span>';
+            html += '<span class="overview-cat-status">' + statusLabel + '</span>';
+            html += '<span class="overview-cat-arrow">›</span>';
+            html += '</button>';
+
+            // Collapsible body
+            html += '<div class="bucket-accordion-body">';
+            html += '<div class="bucket-card">';
+            if (g.description) html += '<div class="bucket-card-desc">' + escapeHtml(g.description) + '</div>';
+            html += '<ul class="bucket-layer-list">';
             for (const it of items) {
                 const hasCov = it.hasCoverage;
-                h += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
-                h += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : '') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
+                html += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
+                html += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : '') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
             }
-            if (!items.length) h += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this group</li>';
-            h += '</ul>';
-            if (layersWithFeatures === 0) h += '<div class="hint" style="margin-top:8px;">No features found in this group for your project area.</div>';
-            h += '</div>';
-            slidesHtml += h + '</div>';
+            if (!items.length) html += '<li class="bucket-layer-item" style="color:var(--text-muted);font-style:italic;">No layers in this group</li>';
+            html += '</ul>';
+            if (layersWithFeatures === 0) html += '<div class="hint" style="margin-top:8px;">No features found in this group for your project area.</div>';
+            html += '</div></div>'; // close bucket-card + accordion-body
+
+            html += '</div>'; // close accordion-section
         }
 
-        // Last slide: All Data
+        // All Data accordion section
         {
-            const layersWithFeatures = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
-            slidesHtml += '<div class="bucket-swipe-slide" data-bucket="all-data" id="bucketAllData">';
-            let ad = '<button class="bucket-back-btn" type="button" data-back-to-overview="true">‹ Back to Results</button>';
-            ad += '<div class="bucket-card"><div class="bucket-card-head"><div class="bucket-card-title">📊 All Queried Layers</div>';
-            ad += '<div class="bucket-card-count">' + layersWithFeatures + ' of ' + lastReportRowsByLayer.length + '</div></div><ul class="bucket-layer-list">';
+            const tl = lastReportRowsByLayer.length;
+            const lwh = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
+            html += '<div class="bucket-accordion-section" data-bucket="all-data">';
+            html += '<button class="overview-cat-row all-data" type="button">';
+            html += '<span class="overview-cat-indicator"></span>';
+            html += '<span class="overview-cat-icon">📊</span>';
+            html += '<span class="overview-cat-label">All Layers</span>';
+            html += '<span class="overview-cat-status">' + lwh + ' of ' + tl + ' layer' + (tl !== 1 ? 's' : '') + '</span>';
+            html += '<span class="overview-cat-arrow">›</span>';
+            html += '</button>';
+
+            html += '<div class="bucket-accordion-body">';
+            html += '<div class="bucket-card"><ul class="bucket-layer-list">';
             const sorted = lastReportRowsByLayer.slice().sort((a, b) => (b.hasCoverage ? 1 : 0) - (a.hasCoverage ? 1 : 0));
             for (const it of sorted) {
                 const hasCov = it.hasCoverage;
-                ad += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
-                ad += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : ' zero') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
+                html += '<li class="bucket-layer-item"><span class="bucket-layer-name">' + escapeHtml(it.title) + '</span>';
+                html += '<span class="bucket-layer-count' + (hasCov ? ' has-hits' : ' zero') + '">' + (hasCov ? '✓' : '—') + '</span></li>';
             }
-            ad += '</ul></div>';
-            slidesHtml += ad + '</div>';
+            html += '</ul></div></div>'; // close bucket-card + accordion-body
+            html += '</div>'; // close accordion-section
         }
 
-        track.innerHTML = slidesHtml;
+        container.innerHTML = html;
 
-        // Always start at the overview slide for fresh results
-        setActiveBucket('overview');
-
-        // Wire up overview row clicks
-        track.querySelectorAll('.overview-cat-row[data-goto-bucket]').forEach(btn => {
-            btn.addEventListener('click', () => setActiveBucket(btn.dataset.gotoBucket));
-        });
-
-        // Wire up back buttons
-        track.querySelectorAll('.bucket-back-btn[data-back-to-overview]').forEach(btn => {
-            btn.addEventListener('click', () => setActiveBucket('overview'));
+        // Wire up accordion header clicks
+        container.querySelectorAll('.bucket-accordion-section > .overview-cat-row').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const section = btn.closest('.bucket-accordion-section');
+                section.classList.toggle('open');
+            });
         });
 
         // Summary in header card — also show count of additional layers queried during report
@@ -1024,30 +1003,12 @@ function setActiveTab(tabName) {
         }
     }
 
-    function setActiveBucket(bucketKey) {
-        const track = document.getElementById("bucketSwipeTrack");
-        const slideIndex = activeBucketSlideMap[bucketKey] ?? 0;
-
-        if (track) {
-            track.style.transform = `translateX(-${slideIndex * 100}%)`;
-            const slides = track.querySelectorAll(".bucket-swipe-slide");
-            slides.forEach((slide, i) => {
-                slide.classList.toggle("active", i === slideIndex);
-            });
-        }
-
-        // Scroll so the top of step 3 is visible
-        const panel = document.getElementById("panel");
-        if (panel) {
-            setTimeout(() => {
-                const step3 = document.getElementById("wizardStep3");
-                if (step3) {
-                    step3.scrollIntoView({ behavior: "smooth", block: "start" });
-                } else {
-                    panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
-                }
-            }, 100);
-        }
+    /** Toggle an accordion section open/closed by bucket key */
+    function toggleAccordionSection(bucketKey) {
+        const container = document.getElementById("bucketAccordion");
+        if (!container) return;
+        const section = container.querySelector('.bucket-accordion-section[data-bucket="' + bucketKey + '"]');
+        if (section) section.classList.toggle('open');
     }
 
     // Cache for generated permit-type reports
@@ -1091,7 +1052,7 @@ function setActiveTab(tabName) {
                 permitTypeKey: selectedPermitType || null,
                 onProgress: (pct, maps, sections) => {
                     reportModal.setProgress(pct);
-                    reportModal.updateStats(maps, sections);
+                    reportModal.updateStats(maps);
                 },
                 onStep: (stepText) => {
                     reportModal.setProgressDetail(stepText);
@@ -1288,11 +1249,10 @@ function clearAll() {
     if (wizLocationInput) wizLocationInput.value = "";
     if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
 
-    // Clear dynamic bucket slides (step 3) — slides are fully rebuilt per screening
-    const bucketTrack = document.getElementById("bucketSwipeTrack");
-    if (bucketTrack) {
-        bucketTrack.innerHTML = "";
-        bucketTrack.style.transform = "translateX(0%)";
+    // Clear dynamic accordion sections (step 3) — rebuilt per screening
+    const bucketAccordion = document.getElementById("bucketAccordion");
+    if (bucketAccordion) {
+        bucketAccordion.innerHTML = "";
     }
     activeBucketSlideMap = {};
     const summaryEl = document.getElementById("permitResultsSummary");
@@ -2737,6 +2697,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         }
 
         config = await fetchJson("./config.json");
+
+        // Strip excluded layers so they are invisible to screening, reporting, and mapping
+        if (config.reportLayers) {
+            config.reportLayers = config.reportLayers.filter(l => !l.excluded);
+        }
+
         layerCfgByUrl = buildLayerCfgIndex(config);
 
         // Resolve reference layer URLs from config

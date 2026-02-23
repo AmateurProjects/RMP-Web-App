@@ -2146,7 +2146,7 @@ body.cv-highcontrast {
 }
 
 .report-progress-bar {
-    height: 8px;
+    height: 12px;
     background: #e6e6e6;
     border-radius: 999px;
     overflow: hidden;
@@ -2246,17 +2246,15 @@ body.cv-highcontrast {
 .report-modal-stats {
     display: flex;
     justify-content: center;
-    gap: 16px;
     flex-shrink: 0;
     padding: 16px 24px 0;
     border-top: 1px solid #e6e6e6;
 }
 
 .report-modal-stat {
-    min-width: 120px;
-    flex: 0 1 auto;
+    min-width: 140px;
     text-align: center;
-    padding: 10px 8px;
+    padding: 10px 16px;
     background: #f8f9fa;
     border-radius: 10px;
 }
@@ -3480,82 +3478,62 @@ body.cv-highcontrast {
     color: var(--text-muted);
 }
 
-/* ============================================
-   BUCKET PANELS
-   ============================================ */
-.bucket-panel {
-    display: none;
-}
-
-.bucket-panel.active {
-    display: block;
-}
-
-/* Back button in bucket panels */
-.bucket-back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 10px;
-    margin: 10px 16px 0 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    font-family: inherit;
-}
-
-.bucket-back-btn:hover {
-    background: var(--blm-green-pale);
-    border-color: var(--blm-green-light);
-    color: var(--blm-green);
-}
+/* (bucket-panel / bucket-back-btn removed — accordion pattern replaces slide navigation)
 
 /* ============================================
-   BUCKET SWIPE CONTAINER (Slide navigation)
+   BUCKET ACCORDION CONTAINER (Expand/collapse navigation)
    ============================================ */
-.bucket-swipe-container {
-    position: relative;
-    overflow: hidden;
-}
-
-.bucket-swipe-track {
+.bucket-accordion-container {
     display: flex;
-    align-items: flex-start;
-    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform;
+    flex-direction: column;
+    gap: 0;
+    padding: 0 16px 12px;
 }
 
-.bucket-swipe-slide {
-    flex: 0 0 100%;
-    min-width: 100%;
-    box-sizing: border-box;
+/* Each accordion section wraps a header row + collapsible body */
+.bucket-accordion-section {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-top: 6px;
 }
 
-/* Hide inactive slides to prevent height contribution */
-.bucket-swipe-slide:not(.active) {
-    visibility: hidden;
+.bucket-accordion-section:first-child {
+    margin-top: 10px;
+}
+
+/* Collapsible body - hidden by default */
+.bucket-accordion-body {
     max-height: 0;
     overflow: hidden;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.bucket-swipe-slide.active {
-    visibility: visible;
-    max-height: none;
-    overflow: visible;
+/* Open state */
+.bucket-accordion-section.open .bucket-accordion-body {
+    max-height: 2000px;
+    transition: max-height 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Rotate arrow when open */
+.bucket-accordion-section.open .overview-cat-arrow {
+    transform: rotate(90deg);
+}
+
+/* Highlight active header row */
+.bucket-accordion-section.open > .overview-cat-row {
+    background: var(--blm-green-pale);
+    border-color: var(--blm-green-light);
 }
 
 .bucket-card {
     background: var(--bg-white);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
+    border: none;
+    border-radius: 0;
     padding: 14px;
-    margin: 10px 16px;
-    box-shadow: var(--shadow-sm);
+    margin: 0;
+    box-shadow: none;
+    border-top: 1px solid var(--border-light);
 }
 
 .bucket-card-head {
@@ -3717,14 +3695,14 @@ body.cv-highcontrast {
 
 /* ── Overview dashboard ── */
 .overview-dash {
-    padding: 0 16px 12px;
+    padding: 0 16px 0;
 }
 
 .overview-category-grid {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: 14px;
+    gap: 0;
+    margin-top: 0;
 }
 
 .overview-cat-row {
@@ -3733,8 +3711,8 @@ body.cv-highcontrast {
     gap: 10px;
     width: 100%;
     padding: 10px 14px;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
+    border: none;
+    border-radius: 0;
     background: var(--bg-subtle);
     cursor: pointer;
     font-size: 13.5px;
@@ -3781,11 +3759,6 @@ body.cv-highcontrast {
 .overview-cat-row.findings .overview-cat-status { color: #e65100; font-weight: 600; }
 
 /* All Data row styled slightly different */
-.overview-cat-row.all-data {
-    border-top: 1px solid var(--border-light);
-    margin-top: 4px;
-    padding-top: 12px;
-}
 .overview-cat-row.all-data .overview-cat-indicator {
     background: var(--text-muted);
 }
@@ -3798,6 +3771,7 @@ body.cv-highcontrast {
     color: var(--text-muted);
     flex-shrink: 0;
     margin-left: 2px;
+    transition: transform 0.3s ease;
 }
 
 /* Disclaimer */
