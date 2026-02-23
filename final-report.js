@@ -601,7 +601,7 @@ define([
     // ────────────────────────────────────────────
     // buildLayerNarrative — readable summary paragraph under each map
     // ────────────────────────────────────────────
-    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isImagery, elevStats }) {
+    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isImagery, elevStats, slopeAspect }) {
         const aoiStr   = `<b>${formatNumber(aoiAcres, 2)}</b> acres`;
         const titleStr = `<b>${escapeHtml(layerTitle)}</b>`;
 
@@ -620,6 +620,14 @@ define([
                     (elevStats.meanFt ? ` The mean elevation is <b>${formatNumber(elevStats.meanFt, 0)}</b> ft (<b>${formatNumber(elevStats.mean, 1)}</b> m).` : '') +
                     `</div>`;
             }
+
+            if (slopeAspect && slopeAspect.concentration > 0.05) {
+                narrative += `<div style="margin-top:8px;">` +
+                    `The mean slope direction within the AOI is <b>${escapeHtml(slopeAspect.cardinalDirection)}</b> ` +
+                    `(${formatNumber(slopeAspect.meanAspectDeg, 1)}°), indicating the terrain generally descends toward the ` +
+                    `<b>${escapeHtml(slopeAspect.cardinalDirection)}</b>.` +
+                    `</div>`;
+            }
         } else {
             // Feature layer narrative
             const countStr = `<b>${escapeHtml(String(featureCount))}</b> feature${featureCount !== 1 ? 's' : ''}`;
@@ -636,6 +644,36 @@ define([
         }
 
         return `<div class="layer-narrative">${narrative}</div>`;
+    }
+
+    // ────────────────────────────────────────────
+    // buildSlopeArrowSvg — compass arrow showing mean slope direction
+    // ────────────────────────────────────────────
+    function buildSlopeArrowSvg(slopeAspect) {
+        if (!slopeAspect || slopeAspect.concentration <= 0.05) return '';
+        const deg      = slopeAspect.meanAspectDeg;
+        const cardinal = escapeHtml(slopeAspect.cardinalDirection);
+        return `
+            <div class="slope-arrow-overlay" title="Mean slope direction: ${cardinal} (${formatNumber(deg, 1)}°)">
+                <svg viewBox="0 0 90 106" xmlns="http://www.w3.org/2000/svg">
+                    <!-- compass circle -->
+                    <circle cx="45" cy="45" r="40" fill="rgba(255,255,255,0.88)" stroke="#888" stroke-width="1.2"/>
+                    <!-- cardinal labels -->
+                    <text x="45" y="14" text-anchor="middle" font-size="10" font-weight="600" fill="#555" font-family="sans-serif">N</text>
+                    <text x="45" y="83" text-anchor="middle" font-size="10" fill="#777" font-family="sans-serif">S</text>
+                    <text x="9"  y="49" text-anchor="middle" font-size="10" fill="#777" font-family="sans-serif">W</text>
+                    <text x="81" y="49" text-anchor="middle" font-size="10" fill="#777" font-family="sans-serif">E</text>
+                    <!-- arrow rotated to mean aspect -->
+                    <g transform="rotate(${deg}, 45, 45)">
+                        <line x1="45" y1="45" x2="45" y2="14" stroke="#c0392b" stroke-width="2.8" stroke-linecap="round"/>
+                        <polygon points="45,10 39.5,20 50.5,20" fill="#c0392b"/>
+                    </g>
+                    <!-- centre dot -->
+                    <circle cx="45" cy="45" r="3" fill="#c0392b"/>
+                    <!-- label -->
+                    <text x="45" y="100" text-anchor="middle" font-size="9" fill="#444" font-family="sans-serif">Slope: ${cardinal}</text>
+                </svg>
+            </div>`;
     }
 
     // ────────────────────────────────────────────
@@ -1090,6 +1128,15 @@ define([
                     line-height: 1;
                 }
                 .map-zoom-controls button:hover { background: #e8f5e9; }
+                .slope-arrow-overlay {
+                    position: absolute;
+                    bottom: 12px; left: 12px;
+                    width: 80px; height: auto;
+                    z-index: 10;
+                    pointer-events: none;
+                    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.25));
+                }
+                .slope-arrow-overlay svg { width: 100%; height: auto; }
                 table.metaTbl{ 
                     width:100%; 
                     border-collapse: collapse; 
@@ -2913,8 +2960,18 @@ define([
                 background: var(--white); 
                 margin: 16px 0;
                 box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+                position: relative;
             }
             .map img{ display:block; width:100%; height:auto; }
+            .slope-arrow-overlay {
+                position: absolute;
+                bottom: 12px; left: 12px;
+                width: 80px; height: auto;
+                z-index: 10;
+                pointer-events: none;
+                filter: drop-shadow(0 1px 3px rgba(0,0,0,0.25));
+            }
+            .slope-arrow-overlay svg { width: 100%; height: auto; }
             .map-placeholder {
                 background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
                 padding: 60px 24px;
@@ -3184,6 +3241,15 @@ define([
             .map-zoom-controls button:hover {
                 background: var(--blm-tan);
             }
+            .slope-arrow-overlay {
+                position: absolute;
+                bottom: 12px; left: 12px;
+                width: 80px; height: auto;
+                z-index: 10;
+                pointer-events: none;
+                filter: drop-shadow(0 1px 3px rgba(0,0,0,0.25));
+            }
+            .slope-arrow-overlay svg { width: 100%; height: auto; }
             .map {
                 position: relative;
             }
@@ -3851,7 +3917,7 @@ ${getA11yWidgetBlock()}
         } = mapUtils;
 
         const {
-            queryAllFeaturesPaged, querySingleLayer, computeLayerCoverageStats, computeElevationStats, SQM_PER_ACRE
+            queryAllFeaturesPaged, querySingleLayer, computeLayerCoverageStats, computeElevationStats, computeSlopeAspect, SQM_PER_ACRE
         } = queryEngine;
 
         try {
@@ -4044,14 +4110,20 @@ ${getA11yWidgetBlock()}
                                 elevStats = await computeElevationStats(item.url, selectionGeom);
                             } catch (e) { /* skip */ }
 
+                            let slopeAspect = null;
+                            try {
+                                slopeAspect = await computeSlopeAspect(item.url, selectionGeom);
+                            } catch (e) { /* skip */ }
+
                             const narrativeHtml = buildLayerNarrative({
                                 aoiAcres, featureCount: 0, layerTitle,
                                 acresCovered: 0, pctCovered: 0,
-                                isPolygon: false, isImagery: true, elevStats
+                                isPolygon: false, isImagery: true, elevStats, slopeAspect
                             });
 
+                            const slopeArrowHtml = buildSlopeArrowSvg(slopeAspect);
                             const mapHtml = dataUrl
-                                ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" /></div>`
+                                ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)} map" />${slopeArrowHtml}</div>`
                                 : screenshotDeferred
                                     ? `<div class="map deferred-map" id="dm-${layerId}"><div class="sub" style="text-align:center;padding:24px;color:#7c6f5b;"><span style="font-size:24px;">&#9202;</span><br/>Map screenshot pending &mdash; return to the app tab</div></div>`
                                     : '';
@@ -4353,7 +4425,7 @@ ${getA11yWidgetBlock()}
         } = mapUtils;
 
         const {
-            queryAllFeaturesPaged, querySingleLayer, computeElevationStats,
+            queryAllFeaturesPaged, querySingleLayer, computeElevationStats, computeSlopeAspect,
             computeLayerCoverageStats, buildPerFeatureTable, SQM_PER_ACRE
         } = queryEngine;
 
@@ -4577,12 +4649,18 @@ ${getA11yWidgetBlock()}
 
                         const elevStats = await computeElevationStats(item.url, selectionGeom);
 
+                        let slopeAspect = null;
+                        try {
+                            slopeAspect = await computeSlopeAspect(item.url, selectionGeom);
+                        } catch (e) { /* skip */ }
+
                         const narrativeHtml = buildLayerNarrative({
                             aoiAcres, featureCount: 0, layerTitle: item.title,
                             acresCovered: 0, pctCovered: 0,
-                            isPolygon: false, isImagery: true, elevStats
+                            isPolygon: false, isImagery: true, elevStats, slopeAspect
                         });
 
+                        const slopeArrowHtml = buildSlopeArrowSvg(slopeAspect);
                         const mapImgHtml = dataUrl
                             ? `<img src="${dataUrl}" alt="${escapeHtml(item.title)}" style="width:100%; border-radius:8px;" />`
                             : screenshotDeferred ? deferToken : '';
@@ -4598,6 +4676,7 @@ ${getA11yWidgetBlock()}
                                   <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
                               </div>
                               ${mapImgHtml}
+                              ${slopeArrowHtml}
                             </div>
                             ${narrativeHtml}
                             </div></div>
@@ -4996,7 +5075,7 @@ ${getA11yWidgetBlock()}
             thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
         } = mapUtils;
 
-        const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, SQM_PER_ACRE } = queryEngine;
+        const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, computeSlopeAspect, SQM_PER_ACRE } = queryEngine;
 
         // Accumulate content sections
         const contentParts = [];
@@ -5205,14 +5284,20 @@ ${getA11yWidgetBlock()}
                                 elevStats = await computeElevationStats(item.url, selectionGeom);
                             } catch (e) { /* skip */ }
 
+                            let slopeAspect = null;
+                            try {
+                                slopeAspect = await computeSlopeAspect(item.url, selectionGeom);
+                            } catch (e) { /* skip */ }
+
                             const narrativeHtml = buildLayerNarrative({
                                 aoiAcres, featureCount: 0, layerTitle,
                                 acresCovered: 0, pctCovered: 0,
-                                isPolygon: false, isImagery: true, elevStats
+                                isPolygon: false, isImagery: true, elevStats, slopeAspect
                             });
 
+                            const slopeArrowHtml = buildSlopeArrowSvg(slopeAspect);
                             const mapHtml = dataUrl
-                                ? `<div class="map"><div class="map-zoom-controls"><button class="zoom-in" title="Zoom in">+</button><button class="zoom-out" title="Zoom out">&minus;</button><button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button></div><img src="${dataUrl}" alt="${escapeHtml(layerTitle)}" style="width:100%; border-radius:8px;" /></div>`
+                                ? `<div class="map"><div class="map-zoom-controls"><button class="zoom-in" title="Zoom in">+</button><button class="zoom-out" title="Zoom out">&minus;</button><button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button></div><img src="${dataUrl}" alt="${escapeHtml(layerTitle)}" style="width:100%; border-radius:8px;" />${slopeArrowHtml}</div>`
                                 : screenshotDeferred ? deferToken : '';
 
                             contentParts.push(`

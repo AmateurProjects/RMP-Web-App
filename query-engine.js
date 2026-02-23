@@ -500,6 +500,84 @@ define([
         }
     }
 
+    // ── Slope aspect (mean slope direction) ─────────────────────
+
+    /**
+     * Convert degrees (0 = N, clockwise) to an 8-point cardinal string.
+     */
+    function degToCardinal(deg) {
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+    }
+
+    /**
+     * Compute the mean slope direction (aspect) for an AOI by applying
+     * the Aspect raster function and computing a circular mean from its
+     * histogram.  Returns { meanAspectDeg, concentration, cardinalDirection }
+     * or null on failure / flat terrain.
+     */
+    async function computeSlopeAspect(imageServerUrl, geometry) {
+        if (!imageServerUrl || !geometry) return null;
+
+        try {
+            const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+
+            const url    = `${imageServerUrl}/computeHistograms`;
+            const params = new URLSearchParams({
+                f:            "json",
+                geometry:     geomJson,
+                geometryType: "esriGeometryPolygon",
+                renderingRule: JSON.stringify({ rasterFunction: "Aspect" })
+            });
+
+            const response = await fetch(url, {
+                method:  "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body:    params.toString()
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            if (!data.histograms || !data.histograms.length) return null;
+
+            const hist     = data.histograms[0];
+            const binCount = hist.counts ? hist.counts.length : 0;
+            if (binCount === 0) return null;
+
+            const binWidth = (hist.max - hist.min) / binCount;
+            let sumSin = 0, sumCos = 0, totalCount = 0;
+
+            for (let i = 0; i < binCount; i++) {
+                const count = hist.counts[i];
+                if (count === 0) continue;
+                const angleDeg = hist.min + (i + 0.5) * binWidth;
+                if (angleDeg < 0) continue;           // skip flat pixels (aspect = -1)
+                const angleRad = angleDeg * Math.PI / 180;
+                sumSin     += count * Math.sin(angleRad);
+                sumCos     += count * Math.cos(angleRad);
+                totalCount += count;
+            }
+
+            if (totalCount === 0) return null;
+
+            // Circular mean direction (degrees, 0 = North, clockwise)
+            let meanAspect = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+            if (meanAspect < 0) meanAspect += 360;
+
+            // Resultant length R ∈ [0,1]: 0 = uniform / flat, 1 = perfectly aligned
+            const R = Math.sqrt(sumSin * sumSin + sumCos * sumCos) / totalCount;
+
+            return {
+                meanAspectDeg:     Math.round(meanAspect * 10) / 10,
+                concentration:     Math.round(R * 1000) / 1000,
+                cardinalDirection: degToCardinal(meanAspect)
+            };
+        } catch (e) {
+            console.warn("Failed to compute slope aspect:", e);
+            return null;
+        }
+    }
+
     // ── Coverage stats ──────────────────────────────────────────
 
     /**
@@ -886,6 +964,9 @@ define([
 
             // Elevation
             computeElevationStats,
+
+            // Slope direction
+            computeSlopeAspect,
 
             // Coverage
             computeLayerCoverageStats,

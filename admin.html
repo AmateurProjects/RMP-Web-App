@@ -187,6 +187,24 @@
   .form-row .hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 
+  /* Root service warning banner */
+  .root-service-warning {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 14px; margin-bottom: 14px;
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    border-radius: 8px; font-size: 13px; line-height: 1.45; color: var(--fg);
+  }
+  .root-service-warning .root-service-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .root-service-warning strong { color: var(--warn, #e6a817); }
+
+  /* Disabled state for permit/category fields on root URLs */
+  #permitCategoryFields.fields-disabled {
+    opacity: 0.35; pointer-events: none;
+    filter: grayscale(0.5);
+    position: relative;
+  }
+
   /* Toast */
   .toast {
     position: fixed; bottom: 20px; right: 20px; background: var(--accent); color: #fff;
@@ -379,27 +397,37 @@
       <div class="hint">Full ArcGIS REST service endpoint URL</div>
     </div>
     <div id="reportFields">
-      <div class="form-row">
-        <label>Category</label>
-        <select id="fCategory">
-          <option value="special">Special Designations</option>
-          <option value="environmental">Environmental</option>
-          <option value="authorizations">Authorizations</option>
-          <option value="land-use">Land Use</option>
-          <option value="land-status">Land Status</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Permit Types</label>
-        <div class="permit-type-checks" id="fPermitTypes">
-          <label class="pt-check"><input type="checkbox" value="core"/> <span class="pt-badge pt-core">Core</span> (all permit types)</label>
-          <label class="pt-check"><input type="checkbox" value="oil-gas"/> <span class="pt-badge pt-oil-gas">🛢️ Oil &amp; Gas</span></label>
-          <label class="pt-check"><input type="checkbox" value="grazing"/> <span class="pt-badge pt-grazing">🐄 Grazing</span></label>
-          <label class="pt-check"><input type="checkbox" value="mining"/> <span class="pt-badge pt-mining">⛏️ Mining</span></label>
-          <label class="pt-check"><input type="checkbox" value="row"/> <span class="pt-badge pt-row">🛤️ ROW</span></label>
-          <label class="pt-check"><input type="checkbox" value="realty"/> <span class="pt-badge pt-realty">🏠 Realty</span></label>
+      <div id="rootServiceWarning" class="root-service-warning" style="display:none">
+        <span class="root-service-icon">⚠️</span>
+        <div>
+          <strong>Parent service URL — no queryable geometry</strong><br/>
+          Category and Permit Types can only be assigned to individual sublayers.
+          Use <em>Check Health</em> to discover sublayers, then click <strong>+ Add</strong> to register them.
         </div>
-        <div class="hint">Check which permit types this layer applies to. "Core" includes the layer in every permit screening.</div>
+      </div>
+      <div id="permitCategoryFields">
+        <div class="form-row">
+          <label>Category</label>
+          <select id="fCategory">
+            <option value="special">Special Designations</option>
+            <option value="environmental">Environmental</option>
+            <option value="authorizations">Authorizations</option>
+            <option value="land-use">Land Use</option>
+            <option value="land-status">Land Status</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Permit Types</label>
+          <div class="permit-type-checks" id="fPermitTypes">
+            <label class="pt-check"><input type="checkbox" value="core"/> <span class="pt-badge pt-core">Core</span> (all permit types)</label>
+            <label class="pt-check"><input type="checkbox" value="oil-gas"/> <span class="pt-badge pt-oil-gas">🛢️ Oil &amp; Gas</span></label>
+            <label class="pt-check"><input type="checkbox" value="grazing"/> <span class="pt-badge pt-grazing">🐄 Grazing</span></label>
+            <label class="pt-check"><input type="checkbox" value="mining"/> <span class="pt-badge pt-mining">⛏️ Mining</span></label>
+            <label class="pt-check"><input type="checkbox" value="row"/> <span class="pt-badge pt-row">🛤️ ROW</span></label>
+            <label class="pt-check"><input type="checkbox" value="realty"/> <span class="pt-badge pt-realty">🏠 Realty</span></label>
+          </div>
+          <div class="hint">Check which permit types this layer applies to. "Core" includes the layer in every permit screening.</div>
+        </div>
       </div>
       <div class="form-row">
         <label>Service Type</label>
@@ -920,6 +948,7 @@ function addSublayerAsReport(name, url, category, serviceType) {
   document.getElementById('fUrl').value = url;
   document.getElementById('fCategory').value = category || 'special';
   document.getElementById('fServiceType').value = serviceType || 'feature';
+  updateReportFieldsForUrl(url);
   loadSamplePreview(url);
 }
 
@@ -942,6 +971,7 @@ function openLayerModal(type) {
   clearForm();
   document.getElementById('samplePreview').style.display = 'none';
   document.getElementById('samplePreviewContent').innerHTML = '';
+  if (type === 'report') updateReportFieldsForUrl('');
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -961,6 +991,7 @@ function editReportLayer(idx) {
   document.getElementById('fPlugin').value = l.summaryPlugin || '';
   var hf = l.highlightFields;
   document.getElementById('fHighlightFields').value = Array.isArray(hf) ? hf.join(', ') : '';
+  updateReportFieldsForUrl(l.url || '');
   document.getElementById('modalOverlay').classList.add('open');
   loadSamplePreview(l.url);
 }
@@ -1018,11 +1049,12 @@ async function saveLayer() {
   if (!title || !url) { toast('Title and URL are required', true); return; }
 
   if (modalType === 'report') {
+    var isRoot = isRootServiceUrl(url);
     var obj = {
       title: title,
       url: url,
-      category: document.getElementById('fCategory').value,
-      permitTypes: getPermitTypeChecks(),
+      category: isRoot ? '' : document.getElementById('fCategory').value,
+      permitTypes: isRoot ? [] : getPermitTypeChecks(),
       serviceType: document.getElementById('fServiceType').value
     };
     var plugin = document.getElementById('fPlugin').value.trim();
@@ -1440,6 +1472,49 @@ function checkSublayerHealth(parentUrl, subs, renderFn) {
       });
   });
 }
+
+// ── URL Classification — root service vs. queryable sublayer ──
+function isRootServiceUrl(url) {
+  if (!url) return false;
+  var path = url.split('?')[0].replace(/\/$/, '');
+  return /\/(FeatureServer|MapServer)$/i.test(path);
+}
+
+/**
+ * Show/hide the Category + Permit Types fields based on whether
+ * the URL points to a root (metadata-only) service or a queryable sublayer.
+ */
+function updateReportFieldsForUrl(url) {
+  var isRoot = isRootServiceUrl(url);
+  var warning = document.getElementById('rootServiceWarning');
+  var fields  = document.getElementById('permitCategoryFields');
+  if (!warning || !fields) return;
+
+  warning.style.display = isRoot ? '' : 'none';
+
+  if (isRoot) {
+    fields.classList.add('fields-disabled');
+    // Reset to safe defaults so a root entry won't carry stale values
+    document.getElementById('fCategory').value = 'special';
+    setPermitTypeChecks([]);
+  } else {
+    fields.classList.remove('fields-disabled');
+  }
+}
+
+// Live-update when the user types a URL
+document.getElementById('fUrl').addEventListener('input', function () {
+  if (modalType === 'report') {
+    updateReportFieldsForUrl(this.value.trim());
+  }
+});
+
+// Also update on blur (paste-then-tab)
+document.getElementById('fUrl').addEventListener('change', function () {
+  if (modalType === 'report') {
+    updateReportFieldsForUrl(this.value.trim());
+  }
+});
 
 // ── Utilities ──
 function esc(s) {
