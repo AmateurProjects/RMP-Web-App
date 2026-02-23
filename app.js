@@ -1066,18 +1066,6 @@ function setActiveTab(tabName) {
             return;
         }
 
-        // Pre-open the report window during the user gesture so popup
-        // blockers allow it. We write a loading page while the report builds.
-        const reportWindow = window.open('about:blank', '_blank');
-        if (reportWindow) {
-            reportWindow.document.write(
-                '<html><head><title>Building Report\u2026</title></head>' +
-                '<body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">' +
-                '<h2>Building ' + escapeHtml(ptLabel) + ' Report\u2026</h2></body></html>'
-            );
-            reportWindow.document.close();
-        }
-
         // Show modal
         reportModal.show();
         reportModal.setStep(`Building ${ptLabel} Report`);
@@ -1097,7 +1085,6 @@ function setActiveTab(tabName) {
             });
             
             if (reportModal.isCanceled()) {
-                if (reportWindow && !reportWindow.closed) reportWindow.close();
                 setStatus("Report canceled");
                 return;
             }
@@ -1113,21 +1100,9 @@ function setActiveTab(tabName) {
                 wizFullReport.classList.add('ready-to-view');
             }
             
-            // Write the finished report into the pre-opened window
-            if (reportWindow && !reportWindow.closed) {
-                const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
-                const url = URL.createObjectURL(blob);
-                reportWindow.location.href = url;
-                setTimeout(() => URL.revokeObjectURL(url), 60000);
-            } else {
-                // Popup was blocked or user closed the tab — they can use the View button
-                alert("Report is ready! Click the View button to open it, or allow popups for this site.");
-            }
-            
             setStatus(`${ptLabel} report ready`);
             
         } catch (e) {
-            if (reportWindow && !reportWindow.closed) reportWindow.close();
             reportModal.hide();
             if (e.message === "Canceled") {
                 setStatus("Report canceled");
