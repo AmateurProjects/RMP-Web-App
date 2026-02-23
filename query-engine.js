@@ -65,12 +65,14 @@ define([
         const pad = factor ?? S.config?.report?.clipPaddingFactor ?? 1.5;
         const ext = aoiGeom.extent.expand(pad);
         // Convert Extent → Polygon so geometryEngine.intersect works reliably.
+        // Ring must be CLOCKWISE for ArcGIS to treat it as an outer boundary.
+        // (CCW would be interpreted as a hole → "everything except this box".)
         return new Polygon({
             rings: [[
                 [ext.xmin, ext.ymin],
-                [ext.xmin, ext.ymax],
-                [ext.xmax, ext.ymax],
                 [ext.xmax, ext.ymin],
+                [ext.xmax, ext.ymax],
+                [ext.xmin, ext.ymax],
                 [ext.xmin, ext.ymin]
             ]],
             spatialReference: ext.spatialReference
