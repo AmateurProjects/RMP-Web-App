@@ -796,6 +796,15 @@
         "oil-gas"
       ],
       "serviceType": "feature"
+    },
+    {
+      "title": "USA Federal Lands",
+      "url": "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Federal_Lands/FeatureServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "feature"
     }
   ],
   "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
