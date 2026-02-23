@@ -1000,12 +1000,27 @@ function setActiveTab(tabName) {
             btn.addEventListener('click', () => setActiveBucket('overview'));
         });
 
-        // Summary in header card
+        // Summary in header card — also show count of additional layers queried during report
         const summaryEl = document.getElementById("permitResultsSummary");
         if (summaryEl) {
             const lwc = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
             const typeLabel = ptDef ? ptDef.label : 'All';
-            summaryEl.innerHTML = '<div class="small"><strong>' + typeLabel + '</strong> screening: <strong>' + lwc + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> layers have features in your project area.</div>';
+            // Count additional (non-core) layers tagged for this permit type
+            const allLayers = config.reportLayers || [];
+            const screenedUrls = new Set(lastReportRowsByLayer.map(r => String(r.url || '').replace(/\/+$/, '')));
+            const additionalCount = ptKey
+                ? allLayers.filter(l => {
+                    const pts = l.permitTypes || [];
+                    return pts.includes(ptKey) && !pts.includes("core")
+                        && !screenedUrls.has(String(l.url || '').replace(/\/+$/, ''));
+                }).length
+                : 0;
+            let summaryHtml = '<div class="small"><strong>' + typeLabel + '</strong> screening: <strong>' + lwc + '</strong> of <strong>' + lastReportRowsByLayer.length + '</strong> core layers have features in your project area.';
+            if (additionalCount > 0) {
+                summaryHtml += '<br><span style="color:var(--accent);">+' + additionalCount + ' additional ' + escapeHtml(typeLabel) + '-specific layer' + (additionalCount !== 1 ? 's' : '') + ' will be analyzed in the report.</span>';
+            }
+            summaryHtml += '</div>';
+            summaryEl.innerHTML = summaryHtml;
         }
     }
 
@@ -2016,12 +2031,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
     if (exportAllBtn) exportAllBtn.disabled = true;
     lastReportRowsByLayer = [];
 
-    // Filter layers to those relevant for selected permit type (+ "core")
+    // Phase 1 screening: query ONLY "core" layers for fast coverage checks.
+    // Permit-type-specific layers are queried later during report generation.
     let reportLayerPool = config.reportLayers || [];
     if (selectedPermitType) {
         reportLayerPool = reportLayerPool.filter(l => {
             const pts = l.permitTypes || [];
-            return pts.includes(selectedPermitType) || pts.includes("core");
+            return pts.includes("core");
         });
     }
 

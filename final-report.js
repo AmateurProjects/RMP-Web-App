@@ -20,7 +20,9 @@ define([
     const {
         escapeHtml, formatNumber, plssToolLabel,
         getConfiguredServices, flattenAttributes,
-        fetchJsonWithTimeout, normalizePjsonUrl, pickServiceDescription
+        fetchJsonWithTimeout, normalizePjsonUrl, pickServiceDescription,
+        isFeatureServerRoot, isMapServerRoot,
+        expandServiceToSublayers, expandMapServerToSublayers
     } = configHelpers;
 
     // ── Module-private state (set by init) ──
@@ -39,6 +41,193 @@ define([
     let finalReportStatus = null;
     // External helpers injected from app.js
     let _setStatus = () => {};
+
+    // ────────────────────────────────────────────
+    // Phase 2: Query additional permit-type-specific layers (non-core)
+    // Called during report generation to supplement core screening results.
+    // ────────────────────────────────────────────
+
+    /** Sublayer expansion cache (shared across calls within a session) */
+    const _reportSublayerCache = new Map();
+
+    /**
+     * Find and query layers tagged for `permitTypeKey` that were NOT included
+     * in the core-only screening phase. For each additional layer, performs a
+     * quick coverage check (1-feature intersect) so the report generators can
+     * treat them identically to screened layers.
+     *
+     * @param {string} permitTypeKey  - e.g. "oil-gas", "grazing"
+     * @param {Object} options
+     * @param {Function} [options.onStep]   - status label callback
+     * @param {Function} [options.onLog]    - log line callback
+     * @param {Function} [options.isCanceled] - cancellation check
+     * @returns {Array} Array of reportEntry objects (same shape as lastReportRowsByLayer items)
+     */
+    async function queryAdditionalPermitLayers(permitTypeKey, options = {}) {
+        const onStep  = options.onStep  || (() => {});
+        const onLog   = options.onLog   || (() => {});
+        const isCanceled = options.isCanceled || (() => false);
+
+        const config = S.config;
+        const selectionGeom = S.selectionGeom;
+        const existingRows = S.lastReportRowsByLayer || [];
+
+        if (!permitTypeKey || !config || !selectionGeom) return [];
+
+        // Build set of URLs already screened (normalized)
+        const screenedUrls = new Set(
+            existingRows.map(r => String(r.url || '').replace(/\/+$/, '').toLowerCase())
+        );
+
+        // Find config layers tagged for this permit type but NOT "core"
+        const allLayers = config.reportLayers || [];
+        const additionalCfgs = allLayers.filter(l => {
+            const pts = l.permitTypes || [];
+            return pts.includes(permitTypeKey) && !pts.includes("core");
+        });
+
+        if (!additionalCfgs.length) return [];
+
+        onStep(`Querying ${additionalCfgs.length} additional ${permitTypeKey} layer(s)`);
+
+        // Separate into direct targets vs root URLs needing expansion
+        const directTargets = [];
+        const featureServerRoots = [];
+        const mapServerRoots = [];
+
+        for (const cfg of additionalCfgs) {
+            const url = String(cfg.url || '').replace(/\/+$/, '');
+            if (!url) continue;
+
+            if (cfg.imageService === true) {
+                directTargets.push({
+                    title: cfg.title, url,
+                    __isImageService: true,
+                    __renderingRule: cfg.renderingRule || null
+                });
+                continue;
+            }
+            if (isFeatureServerRoot(url)) { featureServerRoots.push(cfg); continue; }
+            if (isMapServerRoot(url))     { mapServerRoots.push(cfg); continue; }
+            directTargets.push({ title: cfg.title, url });
+        }
+
+        // Expand root URLs to sublayers (using cache)
+        const [fsResults, msResults] = await Promise.all([
+            Promise.allSettled(featureServerRoots.map(async cfg => {
+                const cacheKey = "fs:" + cfg.url;
+                if (!_reportSublayerCache.has(cacheKey)) {
+                    _reportSublayerCache.set(cacheKey, expandServiceToSublayers(cfg.url));
+                }
+                const sublayers = await _reportSublayerCache.get(cacheKey);
+                return sublayers.map(sl => ({ title: `${cfg.title}: ${sl.title}`, url: sl.url }));
+            })),
+            Promise.allSettled(mapServerRoots.map(async cfg => {
+                const cacheKey = "ms:" + cfg.url;
+                if (!_reportSublayerCache.has(cacheKey)) {
+                    _reportSublayerCache.set(cacheKey, expandMapServerToSublayers(cfg.url, { polygonOnly: false }));
+                }
+                const subs = await _reportSublayerCache.get(cacheKey);
+                return subs.map(sl => ({ title: `${cfg.title}: ${sl.title}`, url: sl.url }));
+            }))
+        ]);
+
+        const expandedTargets = [...directTargets];
+        for (const r of fsResults) { if (r.status === "fulfilled") expandedTargets.push(...r.value); }
+        for (const r of msResults) { if (r.status === "fulfilled") expandedTargets.push(...r.value); }
+
+        // Remove any that were already screened (e.g. if a sublayer URL matches)
+        const newTargets = expandedTargets.filter(
+            t => !screenedUrls.has(String(t.url || '').replace(/\/+$/, '').toLowerCase())
+        );
+
+        if (!newTargets.length) return [];
+
+        onStep(`Checking coverage for ${newTargets.length} additional layer(s)`);
+
+        // Coverage check each target — same pattern as the screening phase
+        const COVERAGE_TIMEOUT_MS = config.report?.coverageTimeoutMs ?? 30000;
+        const BATCH_SIZE = config.report?.queryBatchSize ?? 20;
+        const results = [];
+
+        for (let bStart = 0; bStart < newTargets.length; bStart += BATCH_SIZE) {
+            if (isCanceled()) break;
+
+            const batch = newTargets.slice(bStart, bStart + BATCH_SIZE);
+            const batchResults = await Promise.allSettled(batch.map(async t => {
+                // ImageService layers — assume coverage
+                if (t.__isImageService) {
+                    onLog(`Additional: ${t.title} (Image Service)`);
+                    return {
+                        title: t.title, url: t.url,
+                        hasCoverage: true, count: 0, rows: [],
+                        _layer: null, _exportQuery: null, fullRows: null,
+                        __isImageService: true,
+                        __renderingRule: t.__renderingRule,
+                        __isAdditionalLayer: true
+                    };
+                }
+
+                // Feature layer — quick 1-feature coverage check
+                let hasCoverage = false;
+                let layerRef = null;
+                try {
+                    layerRef = queryEngine.getCachedLayer(t.url);
+                    await layerRef.load();
+
+                    const checkQuery = layerRef.createQuery();
+                    checkQuery.geometry = selectionGeom;
+                    checkQuery.spatialRelationship = "intersects";
+                    checkQuery.returnGeometry = false;
+                    checkQuery.num = 1;
+                    checkQuery.outFields = [layerRef.objectIdField || "OBJECTID"];
+
+                    const result = await Promise.race([
+                        layerRef.queryFeatures(checkQuery),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
+                        )
+                    ]);
+                    hasCoverage = result.features && result.features.length > 0;
+                } catch (e) {
+                    if (e.message === "__coverageTimeout__") {
+                        onLog(`Additional: ${t.title} timed out — assuming coverage`);
+                        hasCoverage = true;
+                    } else {
+                        console.warn(`Additional layer coverage check failed for ${t.title}:`, e.message);
+                        hasCoverage = true; // Assume coverage on error
+                    }
+                }
+
+                onLog(`Additional: ${t.title} — ${hasCoverage ? 'has features' : 'no features'}`);
+
+                let exportQuery = null;
+                if (hasCoverage && layerRef) {
+                    try {
+                        exportQuery = layerRef.createQuery();
+                        exportQuery.geometry = selectionGeom;
+                        exportQuery.spatialRelationship = "intersects";
+                        exportQuery.outFields = ["*"];
+                        exportQuery.returnGeometry = false;
+                    } catch (_) {}
+                }
+
+                return {
+                    title: t.title, url: t.url,
+                    hasCoverage, count: 0, rows: [],
+                    _layer: layerRef, _exportQuery: exportQuery, fullRows: null,
+                    __isAdditionalLayer: true
+                };
+            }));
+
+            for (const r of batchResults) {
+                if (r.status === "fulfilled" && r.value) results.push(r.value);
+            }
+        }
+
+        onLog(`Additional layers: ${results.length} queried, ${results.filter(r => r.hasCoverage).length} with features`);
+        return results;
+    }
 
     // ────────────────────────────────────────────
     // Report-map overlay helpers (PLSS Township grid + hash pattern)
@@ -688,8 +877,11 @@ define([
     // ────────────────────────────────────────────
     // generateFindingsSummary – human-readable paragraph
     // ────────────────────────────────────────────
-    function generateFindingsSummary(reportItems, aoiAcres) {
+    function generateFindingsSummary(reportItems, aoiAcres, permitTypeKey) {
         if (!reportItems || !reportItems.length) return "";
+
+        const ptDef = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
+        const ptLabel = ptDef ? ptDef.label : null;
 
         const totalLayers = reportItems.length;
         const layersWithHits = reportItems.filter(function (x) { return (x.count || 0) > 0; });
@@ -768,7 +960,10 @@ define([
 
         // Opening overview
         var acresStr = formatNumber(aoiAcres, 0);
-        paragraphs.push("<p>This screening analysis examined <strong>" + totalLayers + " geospatial datasets</strong> to identify land management considerations that may be relevant to permit applications, renewals, or challenges within the approximately <strong>" + escapeHtml(acresStr) + "-acre</strong> project area. Of the datasets reviewed, <strong>" + layersWithHits.length + "</strong> contained features intersecting the area of interest, identifying a total of <strong>" + totalHits + " overlapping features</strong>.</p>");
+        var purposePhrase = ptLabel
+            ? "that may be relevant to <strong>" + escapeHtml(ptLabel) + "</strong> permit applications, renewals, or challenges"
+            : "that may be relevant to permit applications, renewals, or challenges";
+        paragraphs.push("<p>This screening analysis examined <strong>" + totalLayers + " geospatial datasets</strong> to identify land management considerations " + purposePhrase + " within the approximately <strong>" + escapeHtml(acresStr) + "-acre</strong> project area. Of the datasets reviewed, <strong>" + layersWithHits.length + "</strong> contained features intersecting the area of interest, identifying a total of <strong>" + totalHits + " overlapping features</strong>.</p>");
 
         // Regulatory framework overview
         paragraphs.push('<h4 class="findings-subhead">Regulatory Framework</h4>');
@@ -859,9 +1054,21 @@ define([
             paragraphs.push("<p>No intersecting features were identified across any of the screened datasets. While this preliminary screening suggests the project area may have fewer regulatory constraints, this does not replace site-specific environmental review or a formal BLM determination under NEPA (42 U.S.C. &sect;4321 et seq.). Field conditions, unlisted species, cultural resources subject to NHPA Section 106 (54 U.S.C. &sect;306108), and other factors not captured in geospatial datasets may still require evaluation.</p>");
         }
 
-        // Application guidance
+        // Application guidance — tailored to permit type when available
         paragraphs.push('<h4 class="findings-subhead">Application Guidance</h4>');
-        paragraphs.push('<p>Right-of-way applications are filed on Standard Form 299 (SF-299) per 43 CFR &sect;2804.12 and must include a project description, construction schedule, capability statement, and maps with GIS data. Other land use authorizations (leases, permits, easements) are governed by 43 CFR Part 2920. All applicants are subject to cost recovery fees (43 CFR &sect;2804.14) categorized by estimated federal processing hours, and must post performance and reclamation bonds before ground-disturbing activities may commence (43 CFR &sect;2805.20). A pre-application meeting with BLM staff (43 CFR &sect;2804.10) is strongly recommended to identify potential routing constraints, environmental issues, and financial obligations before formal filing.</p>');
+        if (permitTypeKey === 'oil-gas') {
+            paragraphs.push('<p>Oil and gas leasing is governed by the Mineral Leasing Act of 1920 (30 U.S.C. &sect;181 et seq.) and BLM regulations at 43 CFR Parts 3100&ndash;3190. Lease parcels are offered through competitive oral auctions administered by BLM state offices. Before commencing drilling operations on a Federal lease, operators must submit an <strong>Application for Permit to Drill (APD)</strong> on BLM Form 3160-3 (43 CFR &sect;3162.3-1). The APD must include a complete drilling plan, surface use plan, and evidence of required bonding (43 CFR &sect;3104). Environmental review under NEPA is required prior to APD approval. Operators should consult the local BLM field office to identify timing limitations, surface stipulations, and conditions of approval applicable to the lease area.</p>');
+        } else if (permitTypeKey === 'grazing') {
+            paragraphs.push('<p>Grazing permits and leases are administered under 43 CFR Part 4100 and the Taylor Grazing Act of 1934. Applications for grazing authorization are filed with the BLM field office having jurisdiction over the allotment. Permits are generally issued for 10-year terms (43 CFR &sect;4130.2) and require demonstrated base property qualifications. Applicants should consult BLM range management specialists and review the relevant Resource Management Plan for allotment-specific terms, stocking rates, and seasonal use periods. Changes to existing permits &mdash; including transfers, modifications, or temporary non-use requests &mdash; should be coordinated through the local field office.</p>');
+        } else if (permitTypeKey === 'row') {
+            paragraphs.push('<p>Right-of-way applications are filed on Standard Form 299 (SF-299) per 43 CFR &sect;2804.12 and must include a project description, construction schedule, capability statement, and maps with GIS data. All applicants are subject to cost recovery fees (43 CFR &sect;2804.14) categorized by estimated federal processing hours, and must post performance and reclamation bonds before ground-disturbing activities may commence (43 CFR &sect;2805.20). The BLM may require common use of existing corridors (43 CFR &sect;2802.10(b)) and encourages location of new ROWs within designated rights-of-way corridors where practical. A pre-application meeting with BLM staff (43 CFR &sect;2804.10) is strongly recommended to identify potential routing constraints, environmental issues, and financial obligations before formal filing.</p>');
+        } else if (permitTypeKey === 'mining') {
+            paragraphs.push('<p>Mining claims for locatable minerals on public lands are governed by the General Mining Law of 1872 (30 U.S.C. &sect;22 et seq.) and the Federal Land Policy and Management Act (FLPMA). Claimants must file notice with the BLM and the local county recorder (43 CFR Part 3830). Surface-disturbing exploration activities require a <strong>Notice of Intent</strong> (for &le; 5 acres of disturbance) or a <strong>Plan of Operations</strong> under 43 CFR Part 3809. Plans of Operations are subject to NEPA review and require a financial guarantee for reclamation (43 CFR &sect;3809.500). Operators should contact the BLM field office to determine mineral withdrawal status and applicable stipulations before beginning operations.</p>');
+        } else if (permitTypeKey === 'realty') {
+            paragraphs.push('<p>BLM land use authorizations for real property uses (including recreation and public purposes, commercial film permits, and leases) are governed by 43 CFR Part 2920. Applications must describe the proposed use, duration, and any anticipated surface disturbance. Special Recreation Permits (SRPs) for commercial, competitive, or organized events are administered under 43 CFR Part 2932. All applicants are subject to cost recovery fees and must demonstrate compatibility with the governing Resource Management Plan. A pre-application meeting with BLM staff is strongly recommended to understand jurisdictional requirements and identify potential issues before formal filing.</p>');
+        } else {
+            paragraphs.push('<p>Right-of-way applications are filed on Standard Form 299 (SF-299) per 43 CFR &sect;2804.12 and must include a project description, construction schedule, capability statement, and maps with GIS data. Other land use authorizations (leases, permits, easements) are governed by 43 CFR Part 2920. All applicants are subject to cost recovery fees (43 CFR &sect;2804.14) categorized by estimated federal processing hours, and must post performance and reclamation bonds before ground-disturbing activities may commence (43 CFR &sect;2805.20). A pre-application meeting with BLM staff (43 CFR &sect;2804.10) is strongly recommended to identify potential routing constraints, environmental issues, and financial obligations before formal filing.</p>');
+        }
 
         // Closing disclaimer
         paragraphs.push('<h4 class="findings-subhead">Disclaimer</h4>');
@@ -873,26 +1080,31 @@ define([
     // ────────────────────────────────────────────
     // BLM Permits, Applications & Leases – Quick Reference
     // ────────────────────────────────────────────
-    function getBlmPermitsSection() {
+    function getBlmPermitsSection(permitTypeKey) {
         const permits = [
-            { category: "Right-of-Way (ROW)", form: "SF-299", title: "Application for Transportation and Utility Systems and Facilities on Federal Lands", url: "https://www.blm.gov/services/permits-and-leases/right-of-way", description: "Pipelines, transmission lines, roads, fiber optic, communication sites on BLM lands (43 CFR 2800)." },
-            { category: "Mineral Materials (Free Use / Sale)", form: "BLM Form 3604-1", title: "Free Use Application for Mineral Materials", url: "https://www.blm.gov/programs/energy-and-minerals/mining-and-minerals/mineral-materials", description: "Sand, gravel, stone, clay, and other common mineral materials (43 CFR 3600)." },
-            { category: "Fluid Minerals (Oil & Gas)", form: "BLM Form 3100-11", title: "Offer to Lease and Lease for Oil and Gas", url: "https://www.blm.gov/programs/energy-and-minerals/oil-and-gas/leasing", description: "Competitive and non-competitive oil and gas leases on Federal lands (43 CFR 3100)." },
-            { category: "Application for Permit to Drill (APD)", form: "BLM Form 3160-3", title: "Application for Permit to Drill or Re-enter", url: "https://www.blm.gov/programs/energy-and-minerals/oil-and-gas/operations-and-production/permitting", description: "Drilling operations on existing Federal oil and gas leases (43 CFR 3160)." },
-            { category: "Geothermal Leasing", form: "BLM Form 3200-9", title: "Offer to Lease Geothermal Resources", url: "https://www.blm.gov/programs/energy-and-minerals/renewable-energy/geothermal-energy", description: "Geothermal resource exploration and development on Federal lands (43 CFR 3200)." },
-            { category: "Solar & Wind Energy ROW", form: "SF-299", title: "Solar/Wind Energy Development Application", url: "https://www.blm.gov/programs/energy-and-minerals/renewable-energy", description: "Utility-scale solar and wind energy projects on BLM-managed lands (43 CFR 2800)." },
-            { category: "Land Use (Leases & Permits)", form: "BLM Form 2920-1", title: "Application for Land Use Authorization", url: "https://www.blm.gov/services/permits-and-leases", description: "Short- and long-term land use authorizations for uses not covered by ROW (43 CFR 2920)." },
-            { category: "Grazing Permit/Lease", form: "BLM Form 4130-1a", title: "Grazing Application/Permit/Lease", url: "https://www.blm.gov/programs/natural-resources/rangelands-and-grazing/grazing-administration", description: "Livestock grazing on BLM-administered rangelands (43 CFR 4100)." },
-            { category: "Recreation Use Permit", form: "BLM Form 2930-1", title: "Special Recreation Permit Application", url: "https://www.blm.gov/programs/recreation/permits-and-fees/special-recreation-permits", description: "Commercial, competitive, and organized group recreation events (43 CFR 2930)." },
-            { category: "Mining Claim (Locatable Minerals)", form: "BLM Form 3830-2", title: "Notice of Location / Mining Claim", url: "https://www.blm.gov/programs/energy-and-minerals/mining-and-minerals/locatable-minerals/mining-claims", description: "Filing and maintaining mining claims for gold, silver, copper, and other locatable minerals (43 CFR 3830)." },
-            { category: "Coal Leasing", form: "BLM Form 3400-12", title: "Application for Coal Lease", url: "https://www.blm.gov/programs/energy-and-minerals/coal", description: "Competitive coal leasing on Federal lands (43 CFR 3400)." },
-            { category: "Timber / Forest Products", form: "BLM Contract", title: "Forest Management / Timber Sale", url: "https://www.blm.gov/programs/natural-resources/forests-and-woodlands", description: "Commercial timber harvest, firewood permits, and forest product sales." },
-            { category: "Cultural Resource Use Permit", form: "ARPA Permit", title: "Archaeological Resources Protection Act Permit", url: "https://www.blm.gov/programs/cultural-heritage-and-paleontology", description: "Archaeological investigation on public lands (16 U.S.C. §470aa–mm)." },
-            { category: "Film & Photography Permit", form: "BLM Form 2920", title: "Commercial Filming or Photography Permit", url: "https://www.blm.gov/services/permits-and-leases/filming-photography", description: "Commercial filming and still photography requiring exclusive use of BLM lands (43 CFR 2920)." }
+            { category: "Right-of-Way (ROW)", form: "SF-299", title: "Application for Transportation and Utility Systems and Facilities on Federal Lands", url: "https://www.blm.gov/services/permits-and-leases/right-of-way", description: "Pipelines, transmission lines, roads, fiber optic, communication sites on BLM lands (43 CFR 2800).", permitTypes: ["row", "oil-gas", "realty"] },
+            { category: "Mineral Materials (Free Use / Sale)", form: "BLM Form 3604-1", title: "Free Use Application for Mineral Materials", url: "https://www.blm.gov/programs/energy-and-minerals/mining-and-minerals/mineral-materials", description: "Sand, gravel, stone, clay, and other common mineral materials (43 CFR 3600).", permitTypes: ["mining"] },
+            { category: "Fluid Minerals (Oil & Gas)", form: "BLM Form 3100-11", title: "Offer to Lease and Lease for Oil and Gas", url: "https://www.blm.gov/programs/energy-and-minerals/oil-and-gas/leasing", description: "Competitive and non-competitive oil and gas leases on Federal lands (43 CFR 3100).", permitTypes: ["oil-gas"] },
+            { category: "Application for Permit to Drill (APD)", form: "BLM Form 3160-3", title: "Application for Permit to Drill or Re-enter", url: "https://www.blm.gov/programs/energy-and-minerals/oil-and-gas/operations-and-production/permitting", description: "Drilling operations on existing Federal oil and gas leases (43 CFR 3160).", permitTypes: ["oil-gas"] },
+            { category: "Geothermal Leasing", form: "BLM Form 3200-9", title: "Offer to Lease Geothermal Resources", url: "https://www.blm.gov/programs/energy-and-minerals/renewable-energy/geothermal-energy", description: "Geothermal resource exploration and development on Federal lands (43 CFR 3200).", permitTypes: ["oil-gas", "mining"] },
+            { category: "Solar & Wind Energy ROW", form: "SF-299", title: "Solar/Wind Energy Development Application", url: "https://www.blm.gov/programs/energy-and-minerals/renewable-energy", description: "Utility-scale solar and wind energy projects on BLM-managed lands (43 CFR 2800).", permitTypes: ["row", "realty"] },
+            { category: "Land Use (Leases & Permits)", form: "BLM Form 2920-1", title: "Application for Land Use Authorization", url: "https://www.blm.gov/services/permits-and-leases", description: "Short- and long-term land use authorizations for uses not covered by ROW (43 CFR 2920).", permitTypes: ["realty", "row"] },
+            { category: "Grazing Permit/Lease", form: "BLM Form 4130-1a", title: "Grazing Application/Permit/Lease", url: "https://www.blm.gov/programs/natural-resources/rangelands-and-grazing/grazing-administration", description: "Livestock grazing on BLM-administered rangelands (43 CFR 4100).", permitTypes: ["grazing"] },
+            { category: "Recreation Use Permit", form: "BLM Form 2930-1", title: "Special Recreation Permit Application", url: "https://www.blm.gov/programs/recreation/permits-and-fees/special-recreation-permits", description: "Commercial, competitive, and organized group recreation events (43 CFR 2930).", permitTypes: ["realty"] },
+            { category: "Mining Claim (Locatable Minerals)", form: "BLM Form 3830-2", title: "Notice of Location / Mining Claim", url: "https://www.blm.gov/programs/energy-and-minerals/mining-and-minerals/locatable-minerals/mining-claims", description: "Filing and maintaining mining claims for gold, silver, copper, and other locatable minerals (43 CFR 3830).", permitTypes: ["mining"] },
+            { category: "Coal Leasing", form: "BLM Form 3400-12", title: "Application for Coal Lease", url: "https://www.blm.gov/programs/energy-and-minerals/coal", description: "Competitive coal leasing on Federal lands (43 CFR 3400).", permitTypes: ["mining"] },
+            { category: "Timber / Forest Products", form: "BLM Contract", title: "Forest Management / Timber Sale", url: "https://www.blm.gov/programs/natural-resources/forests-and-woodlands", description: "Commercial timber harvest, firewood permits, and forest product sales.", permitTypes: ["realty", "mining"] },
+            { category: "Cultural Resource Use Permit", form: "ARPA Permit", title: "Archaeological Resources Protection Act Permit", url: "https://www.blm.gov/programs/cultural-heritage-and-paleontology", description: "Archaeological investigation on public lands (16 U.S.C. §470aa–mm).", permitTypes: ["realty"] },
+            { category: "Film & Photography Permit", form: "BLM Form 2920", title: "Commercial Filming or Photography Permit", url: "https://www.blm.gov/services/permits-and-leases/filming-photography", description: "Commercial filming and still photography requiring exclusive use of BLM lands (43 CFR 2920).", permitTypes: ["realty"] }
         ];
 
+        // Filter to permits relevant to the selected permit type (show all if none selected)
+        const filteredPermits = permitTypeKey
+            ? permits.filter(p => p.permitTypes.includes(permitTypeKey))
+            : permits;
+
         let rows = '';
-        for (const p of permits) {
+        for (const p of filteredPermits) {
             rows += `<tr>
                 <td style="font-weight:600;">${escapeHtml(p.category)}</td>
                 <td><code style="font-size:11px;background:var(--blm-tan);padding:2px 6px;border-radius:3px;">${escapeHtml(p.form)}</code></td>
@@ -926,7 +1138,7 @@ define([
     // ────────────────────────────────────────────
     // buildFinalReportHtmlDoc – HTML template
     // ────────────────────────────────────────────
-    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, findingsSummaryHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml, reportId, exportDataJson, aoiGeoJsonStr, workerUrl }) {
+    function buildFinalReportHtmlDoc({ title, createdAt, totalsHtml, findingsSummaryHtml, aoiSectionHtml, sectionsHtml, dataSourcesHtml, reportId, exportDataJson, aoiGeoJsonStr, workerUrl, permitTypeKey }) {
         const safeTitle = escapeHtml(title || "Final Report");
         const reportIdMeta = reportId ? `<meta name="report-id" content="${escapeHtml(reportId)}" />` : '';
 
@@ -1836,7 +2048,7 @@ define([
 
                 ${dataSourcesHtml || ""}
 
-                ${getBlmPermitsSection()}
+                ${getBlmPermitsSection(permitTypeKey)}
                 
                 <div class="report-footer">
                     <div class="dept-name">Bureau of Land Management</div>
@@ -3848,7 +4060,18 @@ ${getA11yWidgetBlock()}
         if (permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
             // Permit-type-driven report
             const ptDef = PERMIT_TYPES[permitTypeKey];
-            const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
+
+            // Phase 2: Query additional non-core layers for this permit type
+            const additionalRows = await queryAdditionalPermitLayers(permitTypeKey, {
+                onStep: (msg) => onProgress(msg, 8),
+                onLog:  (msg) => console.log('[progressive]', msg),
+                isCanceled: () => false
+            });
+            const combinedRows = additionalRows.length
+                ? [...lastReportRowsByLayer, ...additionalRows]
+                : lastReportRowsByLayer;
+
+            const categorized = categorizeByPermitType(combinedRows, permitTypeKey, S.layerCfgByUrl);
             targetLayers = categorized.allData || [];
             reportTitle = `${ptDef.icon} ${ptDef.label} — Land & Resource Screening Report`;
 
@@ -4340,7 +4563,7 @@ ${getA11yWidgetBlock()}
             // === STEP 5: Data Sources table and footer ===
             const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);
             report.appendContent(dataSourcesHtml);
-            report.appendContent(getBlmPermitsSection());
+            report.appendContent(getBlmPermitsSection(permitTypeKey));
             report.hideProgress();
             report.addFooter();
 
@@ -4882,7 +5105,7 @@ ${getA11yWidgetBlock()}
             const dataSourcesHtml = await buildLayerSourcesTable(lastReportRowsByLayer);
 
             // STEP 4b: Generate findings summary paragraph
-            const findingsSummaryHtml = generateFindingsSummary(lastReportRowsByLayer, aoiAcres);
+            const findingsSummaryHtml = generateFindingsSummary(lastReportRowsByLayer, aoiAcres, null);
 
             // STEP 5: Build Final HTML Document
             const totalLayers    = lastReportRowsByLayer.length;
@@ -4941,7 +5164,8 @@ ${getA11yWidgetBlock()}
                 ).replace(/</g, '\\u003c').replace(/>/g, '\\u003e'),
                 aoiGeoJsonStr: JSON.stringify(aoiGeomToGeoJSON(selectionGeom) || null)
                     .replace(/</g, '\\u003c').replace(/>/g, '\\u003e'),
-                workerUrl: config.metadataWorkerUrl || ''
+                workerUrl: config.metadataWorkerUrl || '',
+                permitTypeKey: null
             });
 
             cachedFinalReportHtml = htmlDoc;
@@ -5019,7 +5243,19 @@ ${getA11yWidgetBlock()}
         if (permitTypeKey && PERMIT_TYPES[permitTypeKey]) {
             // Permit-type-driven report — filter to layers for this permit type
             const ptDef = PERMIT_TYPES[permitTypeKey];
-            const categorized = categorizeByPermitType(lastReportRowsByLayer, permitTypeKey, S.layerCfgByUrl);
+
+            // Phase 2: Query additional non-core layers for this permit type
+            onStep("Querying additional permit-type layers");
+            const additionalRows = await queryAdditionalPermitLayers(permitTypeKey, {
+                onStep,
+                onLog:  (msg) => onStep(msg),
+                isCanceled
+            });
+            const combinedRows = additionalRows.length
+                ? [...lastReportRowsByLayer, ...additionalRows]
+                : lastReportRowsByLayer;
+
+            const categorized = categorizeByPermitType(combinedRows, permitTypeKey, S.layerCfgByUrl);
             targetLayers = categorized.allData || [];
             reportTitle = `${ptDef.icon} ${ptDef.label} — Land & Resource Screening Report`;
 
@@ -5570,7 +5806,7 @@ ${getA11yWidgetBlock()}
             const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);
 
             // Generate regulatory/findings summary (uses updated feature counts from queries)
-            const findingsSummaryHtml = generateFindingsSummary(targetLayers, aoiAcres);
+            const findingsSummaryHtml = generateFindingsSummary(targetLayers, aoiAcres, permitTypeKey);
 
             // Build complete HTML document
             const createdAt = formatDateTimeForReport(new Date());
@@ -5778,7 +6014,7 @@ ${getA11yWidgetBlock()}
     <main class="wrap">
         ${contentParts.join('\n')}
         ${dataSourcesHtml}
-        ${getBlmPermitsSection()}
+        ${getBlmPermitsSection(permitTypeKey)}
     </main>
     <footer class="report-footer">
         <p>This report is for informational purposes only and does not constitute a formal BLM determination.</p>
