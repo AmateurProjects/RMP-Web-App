@@ -487,6 +487,7 @@ function setBusy(isBusy) {
     const queryEngine = queryEngineModule.init(state);
     const {
         queryAllFeaturesPaged, queryAllFeaturesPagedWithGeometry,
+        getClipEnvelope, clipFeaturesToEnvelope,
         filterTouchingOnly, getReportGeometry, unionGeomsChunked,
         querySingleLayer, querySingleLayerChunked, computeElevationStats,
         computeLayerCoverageStats, buildPerFeatureTable,

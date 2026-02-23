@@ -45,6 +45,93 @@ define([
     // Key: `${aoiKey}||${layerUrl}` → Map<OID, { acresCovered, pctAoi, lengthFeet, lengthMiles }>
     const _intersectionCache = new Map();
 
+    // ── Clip-envelope helpers ────────────────────────────────────
+
+    /**
+     * Build a padded bounding-box Extent around an AOI geometry.
+     * Used as a pre-clip envelope: features are queried against this
+     * simpler geometry (faster server-side spatial filter) and then
+     * trimmed to it client-side before the precise AOI intersect runs.
+     *
+     * @param {Polygon} aoiGeom  – the AOI polygon
+     * @param {number}  [factor] – expansion factor (default from config, fallback 1.5)
+     * @returns {Extent} padded bounding box
+     */
+    function getClipEnvelope(aoiGeom, factor) {
+        const pad = factor ?? S.config?.report?.clipPaddingFactor ?? 1.5;
+        return aoiGeom.extent.expand(pad);
+    }
+
+    /**
+     * Selectively clip feature geometries to a bounding-box Extent.
+     *
+     * Only features whose own extent is **larger** than the clip envelope
+     * are actually clipped — these are the ones where the bbox pre-trim
+     * saves meaningful work for the subsequent precise AOI intersect.
+     * Small features that fit inside the clip box are passed through
+     * untouched, avoiding redundant geometry operations.
+     *
+     * – Polygons / polylines larger than the box are trimmed at the boundary.
+     * – Points pass through unchanged (containment is already guaranteed
+     *   by the server-side spatial filter).
+     * – Features whose geometry becomes null after clipping are removed.
+     *
+     * @param {Feature[]} features   – features with .geometry
+     * @param {Extent}     clipExtent – the padded bounding box
+     * @returns {Feature[]} features with (selectively) clipped geometries
+     */
+    function clipFeaturesToEnvelope(features, clipExtent) {
+        if (!features?.length || !clipExtent) return features || [];
+
+        // Pre-compute the clip envelope's area for the size comparison.
+        const clipW    = clipExtent.xmax - clipExtent.xmin;
+        const clipH    = clipExtent.ymax - clipExtent.ymin;
+        const clipArea = clipW * clipH;
+        // Threshold: only clip features whose extent area exceeds the clip box.
+        // A multiplier < 1 means "clip anything that extends meaningfully
+        // beyond the AOI"; 0.8 catches features ~80 % of the box or larger.
+        const THRESH = clipArea * 0.8;
+
+        const out = [];
+        for (const f of features) {
+            const g = f?.geometry;
+            if (!g) continue;
+            try {
+                const gType = (g.type || "").toLowerCase();
+
+                // Points: always keep (server already filtered to AOI)
+                if (gType === "point") {
+                    out.push(f);
+                    continue;
+                }
+
+                // Check whether this feature is large enough to benefit from clipping
+                const fExt = g.extent;
+                if (fExt) {
+                    const fW = fExt.xmax - fExt.xmin;
+                    const fH = fExt.ymax - fExt.ymin;
+                    if (fW * fH < THRESH) {
+                        // Feature is smaller than the clip box — skip clipping
+                        out.push(f);
+                        continue;
+                    }
+                }
+
+                // Large feature: clip to the bounding box (cheap 4-vertex intersect)
+                const clipped = geometryEngine.intersect(g, clipExtent);
+                if (clipped) {
+                    const fc = f.clone ? f.clone() : Object.assign(Object.create(Object.getPrototypeOf(f)), f);
+                    fc.geometry = clipped;
+                    out.push(fc);
+                } // else feature is entirely outside the clip box — drop it
+            } catch (e) {
+                // On error keep the original feature untouched
+                out.push(f);
+            }
+        }
+        return out;
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     /**
@@ -138,8 +225,29 @@ define([
      * Fetching attributes here allows the geometry cache to serve
      * both computeLayerCoverageStats and buildPerFeatureTable without
      * a second round trip.
+     *
+     * Optional optimisations (via `opts`):
+     *  • `maxAllowableOffset` – server-side geometry generalisation, reducing
+     *    vertex density in the response.  Pure win for coverage calculations
+     *    where sub-metre precision isn't needed.
+     *  • `clipEnvelope` – after features are returned, any feature whose
+     *    extent is significantly larger than the clip box is trimmed to it
+     *    client-side.  This keeps the original AOI polygon as the server
+     *    query geometry (most accurate hit-set) while still stripping heavy
+     *    off-screen vertices from oversized features.
+     *
+     * @param {FeatureLayer} layer
+     * @param {Query}        baseQuery
+     * @param {number}       pageSize
+     * @param {number}       maxExportFeatures
+     * @param {Object}       [opts]
+     * @param {Extent}       [opts.clipEnvelope]  – padded bbox from getClipEnvelope()
+     * @param {number}       [opts.maxAllowableOffset] – server-side generalisation tolerance (metres)
      */
-    async function queryAllFeaturesPagedWithGeometry(layer, baseQuery, pageSize, maxExportFeatures) {
+    async function queryAllFeaturesPagedWithGeometry(layer, baseQuery, pageSize, maxExportFeatures, opts) {
+        const clipEnvelope        = opts?.clipEnvelope ?? null;
+        const maxAllowableOffset  = opts?.maxAllowableOffset ?? null;
+
         const all = [];
         let offset = 0;
 
@@ -151,6 +259,12 @@ define([
             q.outFields         = ["*"];
             q.outSpatialReference = S.view?.spatialReference;
 
+            // ── Server-side generalisation: reduce vertex density in the
+            //    response when sub-metre precision isn't needed.
+            if (maxAllowableOffset != null && maxAllowableOffset > 0) {
+                q.maxAllowableOffset = maxAllowableOffset;
+            }
+
             const fs   = await layer.queryFeatures(q);
             const feats = (fs && fs.features) ? fs.features : [];
             all.push(...feats);
@@ -159,6 +273,14 @@ define([
             offset += pageSize;
             if (maxExportFeatures && all.length >= maxExportFeatures) break;
         }
+
+        // ── Selective client-side clip: only trim features whose extent is
+        //    larger than the clip box (the ones with heavy off-screen geometry).
+        //    Small features pass through untouched — no redundant work.
+        if (clipEnvelope && all.length > 0) {
+            return clipFeaturesToEnvelope(all, clipEnvelope);
+        }
+
         return all;
     }
 
@@ -601,9 +723,16 @@ define([
         const pageSize  = S.config.report?.pageSize ?? 1000;
         const maxExport = S.config.report?.maxExportFeatures ?? 50000;
 
-        const feats = await queryAllFeaturesPagedWithGeometry(item._layer, item._exportQuery, pageSize, maxExport);
+        // ── Pre-clip: query the padded bounding box and trim geometries
+        //    before running the expensive per-feature AOI intersect.
+        const clipEnvelope       = getClipEnvelope(aoiGeom);
+        const maxAllowableOffset = S.config.report?.coverageMaxAllowableOffset ?? 10;
+        const feats = await queryAllFeaturesPagedWithGeometry(
+            item._layer, item._exportQuery, pageSize, maxExport,
+            { clipEnvelope, maxAllowableOffset }
+        );
 
-        // Cache the geometry features for reuse by buildPerFeatureTable
+        // Cache the (pre-clipped) geometry features for reuse by buildPerFeatureTable
         _geomFeatureCache.set(cacheKey, feats);
 
         // Intersect each feature with AOI and cache per-feature results
@@ -758,27 +887,21 @@ define([
         }
 
         if (feats.length === 0) {
-            // Query all features WITH geometry + attributes
+            // Query all features WITH geometry + attributes, using the
+            // same pre-clip optimisation as computeLayerCoverageStats.
             try {
+                const clipEnvelope       = getClipEnvelope(aoiGeom);
+                const maxAllowableOffset = S.config.report?.coverageMaxAllowableOffset ?? 10;
+
                 const q = item._exportQuery.clone();
                 q.returnGeometry      = true;
                 q.outFields           = ["*"];
                 q.outSpatialReference = S.view?.spatialReference;
 
-                const all = [];
-                let offset = 0;
-                while (true) {
-                    const pq = q.clone();
-                    pq.num   = pageSize;
-                    pq.start = offset;
-                    const fs    = await item._layer.queryFeatures(pq);
-                    const batch = fs?.features ?? [];
-                    all.push(...batch);
-                    if (batch.length < pageSize) break;
-                    offset += pageSize;
-                    if (all.length >= maxExport) break;
-                }
-                feats = all;
+                feats = await queryAllFeaturesPagedWithGeometry(
+                    item._layer, q, pageSize, maxExport,
+                    { clipEnvelope, maxAllowableOffset }
+                );
             } catch (e) {
                 console.warn("buildPerFeatureTable: query failed", e);
                 return "";
@@ -950,6 +1073,10 @@ define([
             // Paging
             queryAllFeaturesPaged,
             queryAllFeaturesPagedWithGeometry,
+
+            // Pre-clip helpers
+            getClipEnvelope,
+            clipFeaturesToEnvelope,
 
             // Geometry
             filterTouchingOnly,
