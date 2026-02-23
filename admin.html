@@ -823,7 +823,9 @@ function renderReportTable() {
         html += '<tr class="sublayer-row">';
         html += '<td style="text-align:center">' + subHealthDot + '</td>';
         html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
-        html += '<td colspan="2"><span style="color:var(--muted);font-size:11px">' + esc(sub.type || '') + '</span></td>';
+        html += '<td>' + catBadge(l.category) + '</td>';
+        html += '<td>' + permitTypeBadges(l.permitTypes) + '</td>';
+        html += '<td>' + esc(sub.type || '—') + '</td>';
         html += '<td class="url-cell" title="' + esc(subUrl) + '">' + esc(subUrl) + '</td>';
         html += '<td><button class="btn btn-outline btn-sm" onclick="addSublayerAsReport(\'' + escapedSubName + '\', \'' + escapedSubUrl + '\', \'' + parentCat + '\', \'' + parentType + '\')">+ Add</button></td>';
         html += '</tr>';
