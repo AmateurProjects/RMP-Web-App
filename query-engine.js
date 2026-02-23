@@ -7,8 +7,9 @@ define([
     "app/config-helpers",
     "esri/layers/FeatureLayer",
     "esri/geometry/geometryEngine",
-    "esri/geometry/Extent"
-], function (configHelpers, FeatureLayer, geometryEngine, Extent) {
+    "esri/geometry/Extent",
+    "esri/geometry/Polygon"
+], function (configHelpers, FeatureLayer, geometryEngine, Extent, Polygon) {
     "use strict";
 
     const { escapeHtml, formatNumber } = configHelpers;
@@ -48,18 +49,32 @@ define([
     // ── Clip-envelope helpers ────────────────────────────────────
 
     /**
-     * Build a padded bounding-box Extent around an AOI geometry.
-     * Used as a pre-clip envelope: features are queried against this
-     * simpler geometry (faster server-side spatial filter) and then
-     * trimmed to it client-side before the precise AOI intersect runs.
+     * Build a padded bounding-box Polygon around an AOI geometry.
+     * Used as a pre-clip envelope: after features are queried with the
+     * precise AOI polygon, oversized features are trimmed to this box
+     * client-side before the expensive per-feature AOI intersect runs.
+     *
+     * Returns a Polygon (not an Extent) because geometryEngine.intersect()
+     * can produce degenerate / planet-sized results when given a raw Extent.
      *
      * @param {Polygon} aoiGeom  – the AOI polygon
      * @param {number}  [factor] – expansion factor (default from config, fallback 1.5)
-     * @returns {Extent} padded bounding box
+     * @returns {Polygon} padded bounding-box polygon
      */
     function getClipEnvelope(aoiGeom, factor) {
         const pad = factor ?? S.config?.report?.clipPaddingFactor ?? 1.5;
-        return aoiGeom.extent.expand(pad);
+        const ext = aoiGeom.extent.expand(pad);
+        // Convert Extent → Polygon so geometryEngine.intersect works reliably.
+        return new Polygon({
+            rings: [[
+                [ext.xmin, ext.ymin],
+                [ext.xmin, ext.ymax],
+                [ext.xmax, ext.ymax],
+                [ext.xmax, ext.ymin],
+                [ext.xmin, ext.ymin]
+            ]],
+            spatialReference: ext.spatialReference
+        });
     }
 
     /**
@@ -77,15 +92,16 @@ define([
      * – Features whose geometry becomes null after clipping are removed.
      *
      * @param {Feature[]} features   – features with .geometry
-     * @param {Extent}     clipExtent – the padded bounding box
+     * @param {Polygon}    clipPoly   – the padded bounding-box polygon
      * @returns {Feature[]} features with (selectively) clipped geometries
      */
-    function clipFeaturesToEnvelope(features, clipExtent) {
-        if (!features?.length || !clipExtent) return features || [];
+    function clipFeaturesToEnvelope(features, clipPoly) {
+        if (!features?.length || !clipPoly) return features || [];
 
-        // Pre-compute the clip envelope's area for the size comparison.
-        const clipW    = clipExtent.xmax - clipExtent.xmin;
-        const clipH    = clipExtent.ymax - clipExtent.ymin;
+        // Pre-compute the clip polygon's extent area for the size comparison.
+        const cExt     = clipPoly.extent;
+        const clipW    = cExt.xmax - cExt.xmin;
+        const clipH    = cExt.ymax - cExt.ymin;
         const clipArea = clipW * clipH;
         // Threshold: only clip features whose extent area exceeds the clip box.
         // A multiplier < 1 means "clip anything that extends meaningfully
@@ -117,8 +133,8 @@ define([
                     }
                 }
 
-                // Large feature: clip to the bounding box (cheap 4-vertex intersect)
-                const clipped = geometryEngine.intersect(g, clipExtent);
+                // Large feature: clip to the bounding box (polygon-polygon intersect)
+                const clipped = geometryEngine.intersect(g, clipPoly);
                 if (clipped) {
                     const fc = f.clone ? f.clone() : Object.assign(Object.create(Object.getPrototypeOf(f)), f);
                     fc.geometry = clipped;

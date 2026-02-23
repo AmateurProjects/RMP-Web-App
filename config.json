@@ -818,6 +818,6 @@
     "aoiChunkThresholdAcres": 250000,
     "aoiChunkGridSize": 4,
     "clipPaddingFactor": 1.5,
-    "coverageMaxAllowableOffset": 10
+    "coverageMaxAllowableOffset": 0
   }
 }
