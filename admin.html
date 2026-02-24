@@ -1195,8 +1195,8 @@ async function saveConfig() {
 function healthDotHtml(health) {
   if (!health) return '<span class="health-dot" title="Not checked"></span>';
   if (health.status === 'checking') return '<span class="health-dot checking" title="Checking…"></span>';
-  if (health.status === 'ok') return '<span class="health-dot ok" title="✔ Metadata OK, Query OK (' + health.ms + 'ms)"></span>';
-  if (health.status === 'warn') return '<span class="health-dot warn" title="⚠ Metadata OK but query failed: ' + esc(health.error || 'unknown') + ' (' + health.ms + 'ms)"></span>';
+  if (health.status === 'ok') return '<span class="health-dot ok" title="✔ Metadata OK, Query returned features (' + health.ms + 'ms)"></span>';
+  if (health.status === 'warn') return '<span class="health-dot warn" title="⚠ Metadata OK but ' + esc(health.error || 'warning') + ' (' + health.ms + 'ms)"></span>';
   if (health.status === 'err') return '<span class="health-dot err" title="✖ ' + esc(health.error || 'Error') + '"></span>';
   return '<span class="health-dot"></span>';
 }
@@ -1221,8 +1221,15 @@ function probeQuery(url) {
       if (data && data.error) {
         throw new Error((data.error.code || '') + ': ' + (data.error.message || 'Query error'));
       }
-      // For countOnly queries, success means the count property exists (even if 0)
-      return { ok: true };
+      // Count-only success still needs feature presence for full "ok".
+      var count = Number(data && data.count);
+      if (!isFinite(count)) {
+        return { ok: false, warn: true, noFeatures: true, count: 0, detail: 'query returned no count' };
+      }
+      if (count <= 0) {
+        return { ok: false, warn: true, noFeatures: true, count: 0, detail: 'query returned no features' };
+      }
+      return { ok: true, warn: false, noFeatures: false, count: count, detail: 'query returned features' };
     });
 }
 
@@ -1419,9 +1426,23 @@ function checkLayerHealth(layers, renderFn, btnId) {
                   // Single-layer endpoint (no sublayers) — run feature query probe
                   sublayerCache.set(layer.url, null);
                   return probeQuery(layer.url)
-                    .then(function () {
+                    .then(function (probe) {
                       var totalMs = Date.now() - start;
-                      healthCache.set(layer.url, { status: 'ok', ms: totalMs });
+                      if (probe && probe.ok) {
+                        healthCache.set(layer.url, { status: 'ok', ms: totalMs });
+                      } else if (probe && probe.warn) {
+                        healthCache.set(layer.url, {
+                          status: 'warn',
+                          error: probe.detail || 'query returned no features',
+                          ms: totalMs
+                        });
+                      } else {
+                        healthCache.set(layer.url, {
+                          status: 'warn',
+                          error: 'query probe warning',
+                          ms: totalMs
+                        });
+                      }
                     })
                     .catch(function (qErr) {
                       var totalMs = Date.now() - start;
@@ -1502,9 +1523,23 @@ function checkSublayerHealth(parentUrl, subs, renderFn) {
             }
             // Metadata OK — now run feature query probe
             return probeQuery(subUrl)
-              .then(function () {
+              .then(function (probe) {
                 var totalMs = Date.now() - start;
-                healthCache.set(subUrl, { status: 'ok', ms: totalMs });
+                if (probe && probe.ok) {
+                  healthCache.set(subUrl, { status: 'ok', ms: totalMs });
+                } else if (probe && probe.warn) {
+                  healthCache.set(subUrl, {
+                    status: 'warn',
+                    error: probe.detail || 'query returned no features',
+                    ms: totalMs
+                  });
+                } else {
+                  healthCache.set(subUrl, {
+                    status: 'warn',
+                    error: 'query probe warning',
+                    ms: totalMs
+                  });
+                }
               })
               .catch(function (qErr) {
                 var totalMs = Date.now() - start;

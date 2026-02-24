@@ -16,6 +16,8 @@ const path = require("path");
 
 const TIMEOUT_MS   = 15000;           // per-service timeout
 const CONCURRENCY  = 8;               // parallel pings
+const DATA_PROBE_LAYER_LIMIT = 5;
+const DATA_PROBE_FEATURE_LIMIT = 1;
 
 async function main() {
     const configPath = path.join(__dirname, "..", "..", "config.json");
@@ -142,7 +144,8 @@ async function main() {
 }
 
 async function checkOne(svc) {
-    const pjsonUrl = svc.url.replace(/\/$/, "") + "?f=pjson";
+    const baseUrl = stripQueryAndSlash(svc.url);
+    const pjsonUrl = baseUrl + "?f=pjson";
     const t0 = Date.now();
 
     const controller = new AbortController();
@@ -165,13 +168,165 @@ async function checkOne(svc) {
             throw new Error(`ArcGIS ${code}: ${json.error.message || "error"}`);
         }
 
-        return { status: "UP", responseTimeMs: Date.now() - t0, error: null };
+        const probe = await runDataProbe(baseUrl, json, controller.signal);
+        if (!probe.ok) {
+            throw new Error(`Data probe failed: ${probe.detail}`);
+        }
+
+        return {
+            status: "UP",
+            responseTimeMs: Date.now() - t0,
+            error: null,
+            probeMode: probe.mode,
+            probeDetail: probe.detail
+        };
     } catch (e) {
         const msg = e.name === "AbortError" ? `Timeout (${TIMEOUT_MS}ms)` : e.message;
-        return { status: "DOWN", responseTimeMs: Date.now() - t0, error: msg };
+        return {
+            status: "DOWN",
+            responseTimeMs: Date.now() - t0,
+            error: msg,
+            probeMode: null,
+            probeDetail: null
+        };
     } finally {
         clearTimeout(timer);
     }
+}
+
+function stripQueryAndSlash(url) {
+    return String(url || "").split("?")[0].replace(/\/+$/, "");
+}
+
+function detectServiceKind(url) {
+    const base = stripQueryAndSlash(url);
+    if (/\/ImageServer$/i.test(base)) return "image-root";
+    if (/\/FeatureServer\/\d+$/i.test(base)) return "feature-layer";
+    if (/\/FeatureServer$/i.test(base)) return "feature-root";
+    if (/\/MapServer\/\d+$/i.test(base)) return "map-layer";
+    if (/\/MapServer$/i.test(base)) return "map-root";
+    if (/\/GeocodeServer$/i.test(base)) return "geocode";
+    return "other";
+}
+
+function pickCandidateSublayerIds(meta) {
+    const layers = Array.isArray(meta?.layers) ? meta.layers : [];
+    return layers
+        .filter(l => Number.isFinite(Number(l?.id)))
+        .map(l => Number(l.id))
+        .slice(0, DATA_PROBE_LAYER_LIMIT);
+}
+
+async function fetchJsonChecked(url, signal) {
+    const res = await fetch(url, {
+        signal,
+        headers: { "Accept": "application/json" }
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data && data.error) {
+        const code = data.error.code != null ? data.error.code : "";
+        throw new Error(`ArcGIS ${code}: ${data.error.message || "error"}`);
+    }
+    return data;
+}
+
+async function probeFeatureOrMapLayer(layerUrl, signal) {
+    const base = stripQueryAndSlash(layerUrl);
+    const queryUrl =
+        `${base}/query?where=1%3D1` +
+        `&outFields=*` +
+        `&returnGeometry=true` +
+        `&resultRecordCount=${DATA_PROBE_FEATURE_LIMIT}` +
+        `&f=json`;
+
+    const data = await fetchJsonChecked(queryUrl, signal);
+    const features = Array.isArray(data?.features) ? data.features : [];
+    if (!features.length) {
+        return { ok: false, mode: "query", detail: "Query returned 0 features" };
+    }
+
+    const withGeometry = features.find(f => !!f?.geometry);
+    if (!withGeometry) {
+        return { ok: false, mode: "query", detail: "Query returned features without geometry" };
+    }
+
+    return { ok: true, mode: "query", detail: "Feature query returned geometry" };
+}
+
+async function probeFeatureOrMapRoot(serviceUrl, serviceMeta, signal) {
+    const base = stripQueryAndSlash(serviceUrl);
+    const ids = pickCandidateSublayerIds(serviceMeta);
+    if (!ids.length) {
+        return { ok: false, mode: "query", detail: "Service has no sublayers to probe" };
+    }
+
+    const errors = [];
+    for (const id of ids) {
+        const probe = await probeFeatureOrMapLayer(`${base}/${id}`, signal);
+        if (probe.ok) {
+            return { ok: true, mode: "query", detail: `${probe.detail} (sublayer ${id})` };
+        }
+        errors.push(`/${id}: ${probe.detail}`);
+    }
+
+    return { ok: false, mode: "query", detail: `No sublayer returned geometry (${errors.join("; ")})` };
+}
+
+async function probeImageService(serviceUrl, serviceMeta, signal) {
+    const base = stripQueryAndSlash(serviceUrl);
+    const ext = serviceMeta?.extent || serviceMeta?.fullExtent;
+    const sr = ext?.spatialReference || serviceMeta?.spatialReference || {};
+    const wkid = sr.latestWkid || sr.wkid || 4326;
+
+    if (!ext || [ext.xmin, ext.ymin, ext.xmax, ext.ymax].some(v => !Number.isFinite(Number(v)))) {
+        return { ok: false, mode: "exportImage", detail: "Image service extent unavailable for export probe" };
+    }
+
+    const exportUrl =
+        `${base}/exportImage` +
+        `?bbox=${ext.xmin},${ext.ymin},${ext.xmax},${ext.ymax}` +
+        `&bboxSR=${wkid}` +
+        `&imageSR=${wkid}` +
+        `&size=64,64` +
+        `&format=png` +
+        `&f=json`;
+
+    const data = await fetchJsonChecked(exportUrl, signal);
+    if (!data?.href && !data?.url) {
+        return { ok: false, mode: "exportImage", detail: "exportImage did not return an image URL" };
+    }
+
+    return { ok: true, mode: "exportImage", detail: "Image export returned raster URL" };
+}
+
+async function probeGeocodeService(serviceUrl, signal) {
+    const base = stripQueryAndSlash(serviceUrl);
+    const suggestUrl = `${base}/suggest?text=denver&maxSuggestions=1&f=json`;
+    const data = await fetchJsonChecked(suggestUrl, signal);
+    const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
+    if (!suggestions.length) {
+        return { ok: false, mode: "suggest", detail: "Geocode suggest returned 0 suggestions" };
+    }
+    return { ok: true, mode: "suggest", detail: "Geocode suggest returned candidates" };
+}
+
+async function runDataProbe(baseUrl, serviceMeta, signal) {
+    const kind = detectServiceKind(baseUrl);
+    if (kind === "feature-layer" || kind === "map-layer") {
+        return probeFeatureOrMapLayer(baseUrl, signal);
+    }
+    if (kind === "feature-root" || kind === "map-root") {
+        return probeFeatureOrMapRoot(baseUrl, serviceMeta, signal);
+    }
+    if (kind === "image-root") {
+        return probeImageService(baseUrl, serviceMeta, signal);
+    }
+    if (kind === "geocode") {
+        return probeGeocodeService(baseUrl, signal);
+    }
+    return { ok: true, mode: "metadata-only", detail: "No data probe for this endpoint type" };
 }
 
 main().catch(e => {

@@ -20,6 +20,8 @@
 const R2_KEY = "metadata.json";
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_CONCURRENCY = 8;
+const DATA_PROBE_LAYER_LIMIT = 5;
+const DATA_PROBE_FEATURE_LIMIT = 1;
 
 // ── Report sharing constants ─────────────────────────────────────────────────
 const REPORT_KEY_PREFIX = "reports/";
@@ -52,6 +54,168 @@ async function fetchWithTimeout(url, ms) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchJsonWithTimeout(url, ms) {
+  const res = await fetchWithTimeout(url, ms);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (json && json.error) {
+    const code = json.error.code != null ? json.error.code : "";
+    const msg = json.error.message || "ArcGIS error";
+    throw new Error(`ArcGIS ${code}: ${msg}`);
+  }
+  return json;
+}
+
+function stripQueryAndSlash(url) {
+  return String(url || "").split("?")[0].replace(/\/+$/, "");
+}
+
+function detectServiceKind(url) {
+  const base = stripQueryAndSlash(url);
+  if (/\/ImageServer$/i.test(base)) return "image-root";
+  if (/\/FeatureServer\/\d+$/i.test(base)) return "feature-layer";
+  if (/\/FeatureServer$/i.test(base)) return "feature-root";
+  if (/\/MapServer\/\d+$/i.test(base)) return "map-layer";
+  if (/\/MapServer$/i.test(base)) return "map-root";
+  if (/\/GeocodeServer$/i.test(base)) return "geocode";
+  return "other";
+}
+
+function pickCandidateSublayerIds(meta) {
+  const layers = Array.isArray(meta?.layers) ? meta.layers : [];
+  return layers
+    .filter((l) => Number.isFinite(Number(l?.id)))
+    .map((l) => Number(l.id))
+    .slice(0, DATA_PROBE_LAYER_LIMIT);
+}
+
+async function probeFeatureOrMapLayerForGeometry(layerUrl) {
+  const base = stripQueryAndSlash(layerUrl);
+  const queryUrl =
+    `${base}/query?where=1%3D1` +
+    `&outFields=*` +
+    `&returnGeometry=true` +
+    `&resultRecordCount=${DATA_PROBE_FEATURE_LIMIT}` +
+    `&f=json`;
+
+  const data = await fetchJsonWithTimeout(queryUrl, FETCH_TIMEOUT_MS);
+  const features = Array.isArray(data?.features) ? data.features : [];
+
+  if (!features.length) {
+    throw new Error("Query returned 0 features");
+  }
+
+  const withGeometry = features.find((f) => !!f?.geometry);
+  if (!withGeometry) {
+    throw new Error("Query returned features without geometry");
+  }
+
+  return {
+    ok: true,
+    mode: "query",
+    detail: "Feature query returned geometry",
+    testedUrl: base,
+  };
+}
+
+async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
+  const base = stripQueryAndSlash(serviceUrl);
+  const candidateIds = pickCandidateSublayerIds(serviceMeta);
+
+  if (!candidateIds.length) {
+    throw new Error("Service has no queryable sublayers to probe");
+  }
+
+  const errors = [];
+  for (const id of candidateIds) {
+    const layerUrl = `${base}/${id}`;
+    try {
+      const pass = await probeFeatureOrMapLayerForGeometry(layerUrl);
+      return {
+        ...pass,
+        detail: `${pass.detail} (sublayer ${id})`,
+      };
+    } catch (err) {
+      errors.push(`/${id}: ${err?.message || String(err)}`);
+    }
+  }
+
+  throw new Error(`No sublayer returned geometry (${errors.join("; ")})`);
+}
+
+async function probeImageServer(serviceUrl, serviceMeta) {
+  const base = stripQueryAndSlash(serviceUrl);
+  const ext = serviceMeta?.extent || serviceMeta?.fullExtent;
+  const sr = ext?.spatialReference || serviceMeta?.spatialReference || {};
+  const wkid = sr.latestWkid || sr.wkid || 4326;
+
+  if (!ext || [ext.xmin, ext.ymin, ext.xmax, ext.ymax].some((v) => !Number.isFinite(Number(v)))) {
+    throw new Error("Image service extent unavailable for export probe");
+  }
+
+  const exportUrl =
+    `${base}/exportImage` +
+    `?bbox=${ext.xmin},${ext.ymin},${ext.xmax},${ext.ymax}` +
+    `&bboxSR=${wkid}` +
+    `&imageSR=${wkid}` +
+    `&size=64,64` +
+    `&format=png` +
+    `&f=json`;
+
+  const data = await fetchJsonWithTimeout(exportUrl, FETCH_TIMEOUT_MS);
+  if (!data?.href && !data?.url) {
+    throw new Error("exportImage did not return an image URL");
+  }
+
+  return {
+    ok: true,
+    mode: "exportImage",
+    detail: "Image export test returned raster data URL",
+    testedUrl: base,
+  };
+}
+
+async function probeGeocodeServer(serviceUrl) {
+  const base = stripQueryAndSlash(serviceUrl);
+  const suggestUrl = `${base}/suggest?text=denver&maxSuggestions=1&f=json`;
+  const data = await fetchJsonWithTimeout(suggestUrl, FETCH_TIMEOUT_MS);
+  const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
+
+  if (!suggestions.length) {
+    throw new Error("Geocode suggest returned 0 suggestions");
+  }
+
+  return {
+    ok: true,
+    mode: "suggest",
+    detail: "Geocode suggest returned candidates",
+    testedUrl: base,
+  };
+}
+
+async function runDataProbe(url, serviceMeta) {
+  const kind = detectServiceKind(url);
+  if (kind === "feature-layer" || kind === "map-layer") {
+    return probeFeatureOrMapLayerForGeometry(url);
+  }
+  if (kind === "feature-root" || kind === "map-root") {
+    return probeFeatureOrMapRootForGeometry(url, serviceMeta);
+  }
+  if (kind === "image-root") {
+    return probeImageServer(url, serviceMeta);
+  }
+  if (kind === "geocode") {
+    return probeGeocodeServer(url);
+  }
+
+  return {
+    ok: true,
+    mode: "metadata-only",
+    detail: "No data probe implemented for this endpoint type",
+    testedUrl: stripQueryAndSlash(url),
+  };
 }
 
 /**
@@ -118,11 +282,42 @@ async function probeService(url) {
 
     const body = await res.json();
 
+    if (body && body.error) {
+      const code = body.error.code != null ? body.error.code : "";
+      const msg = body.error.message || "ArcGIS error";
+      return {
+        url,
+        status: "DOWN",
+        error: `ArcGIS ${code}: ${msg}`,
+        responseMs: elapsed,
+        dataProbe: { ok: false, mode: "metadata", detail: "Metadata request returned ArcGIS error" },
+      };
+    }
+
+    // Data-level probe (query geometry / export imagery / geocode suggest)
+    let probeResult;
+    try {
+      probeResult = await runDataProbe(url, body);
+    } catch (probeErr) {
+      return {
+        url,
+        status: "DOWN",
+        error: `Data probe failed: ${probeErr?.message || String(probeErr)}`,
+        responseMs: elapsed,
+        dataProbe: {
+          ok: false,
+          mode: "data",
+          detail: probeErr?.message || String(probeErr),
+        },
+      };
+    }
+
     // Pull out useful metadata fields
     return {
       url,
       status: "UP",
       responseMs: elapsed,
+      dataProbe: probeResult,
       currentVersion: body.currentVersion ?? null,
       serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
       type: body.type ?? null,

@@ -164,6 +164,24 @@
     </div>
 </div>
 
+<!-- Service Status Warning Modal -->
+<div id="serviceDownModal" class="service-down-modal hidden" role="dialog" aria-modal="true" aria-labelledby="serviceDownTitle">
+  <div class="service-down-modal-backdrop"></div>
+  <div class="service-down-modal-content">
+    <div class="service-down-modal-header">
+      <h2 id="serviceDownTitle">Some Data Services Are Unavailable</h2>
+      <p id="serviceDownSummary" class="service-down-modal-subtext"></p>
+    </div>
+    <div class="service-down-modal-body">
+      <div class="service-down-modal-note">Screening/report results may be incomplete while these services are down.</div>
+      <ul id="serviceDownList" class="service-down-list"></ul>
+    </div>
+    <div class="service-down-modal-footer">
+      <button id="serviceDownCloseBtn" class="btn btn-primary" type="button">Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- Feature Picker Modal (multiple overlapping polygons) -->
 <div id="featurePickerModal" class="feature-picker-modal hidden">
     <div class="feature-picker-content">
@@ -241,7 +259,7 @@
               <div class="permit-type-arrow">›</div>
             </button>
             <button class="permit-type-card" data-permit-type="grazing" type="button">
-              <div class="permit-type-icon">🐄</div>
+              <div class="permit-type-icon">🐂</div>
               <div class="permit-type-text">
                 <div class="permit-type-title">Grazing</div>
                 <div class="permit-type-desc">Grazing permits and allotment management</div>
@@ -640,155 +658,6 @@
       </section>
 
     </div><!-- /permitModePanel -->
-
-    <!-- ===== ADVANCED MODE — COMMENTED OUT FOR PERFORMANCE TESTING ===== -->
-    <!--
-    <div id="advancedModePanel" class="hidden">
-
-    <div class="banner banner-warn">
-      ⚠️ Pre-alpha: active development — outputs may change and results may be incomplete.
-    </div>
-
-    <div class="card">
-      <div class="subtitle">Select a polygon or draw one, then run analysis against configured layers.</div>
-
-      <div class="row" style="margin-top:10px;">
-        <label class="label">Area of Interest</label>
-        <select id="modeSelect">
-          <option value="select">Select from layer</option>
-          <option value="draw">Draw polygon</option>
-        </select>
-      </div>
-
-      <div id="selectModeControls">
-        <div class="row">
-          <label class="label" for="selectionGroupSelect">Select from</label>
-          <select id="selectionGroupSelect" class="select">
-            <option value="plss" selected>PLSS (Township/Section/Parcel)</option>
-            <option value="permit">Permit Layers</option>
-          </select>
-        </div>
-
-        <div id="plssSelectGroup" class="selection-group">
-          <div class="row">
-            <div id="plssSelectTools" class="toolgroup" role="group" aria-label="PLSS selection layer">
-              <button id="plssTownshipBtn" class="toolbtn" type="button" aria-pressed="true" title="Township (largest)">
-                <span class="box box-lg" aria-hidden="true"></span>
-                <span class="tooltext">Township</span>
-              </button>
-              <button id="plssSectionBtn" class="toolbtn" type="button" aria-pressed="false" title="Section (medium)">
-                <span class="box box-md" aria-hidden="true"></span>
-                <span class="tooltext">Section</span>
-              </button>
-              <button id="plssIntersectedBtn" class="toolbtn" type="button" aria-pressed="false" title="PLSS Parcel (small)">
-                <span class="box box-sm" aria-hidden="true"></span>
-                <span class="tooltext">Parcel</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div id="permitSelectGroup" class="selection-group hidden">
-          <div class="row">
-            <div id="permitSelectTools" class="toolgroup toolgroup-vertical" role="group" aria-label="Permit layer selection">
-              <button id="grazingAllotmentBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Grazing Allotments">
-                <span class="toolicon">🐄</span>
-                <span class="tooltext">Grazing Allotments</span>
-              </button>
-              <button id="grazingPastureBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Grazing Pastures">
-                <span class="toolicon">🌾</span>
-                <span class="tooltext">Grazing Pastures</span>
-              </button>
-              <button id="oilGasLeaseBtn" class="toolbtn toolbtn-wide" type="button" aria-pressed="false" title="BLM Oil and Gas Leases">
-                <span class="toolicon">🛢️</span>
-                <span class="tooltext">Oil & Gas Leases</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="hint">Click a polygon on the map to select the AOI.</div>
-      </div>
-
-      <div id="drawModeControls" class="hidden">
-        <div class="row">
-          <button id="drawBtn" class="btn" type="button">Draw polygon</button>
-          <button id="stopDrawBtn" class="btn subtle" type="button">Stop</button>
-        </div>
-        <div class="hint">Draw a polygon; the most recent sketch is used.</div>
-      </div>
-
-      <div class="row">
-        <button id="runBtn" class="btn primary" disabled>Run Analysis</button>
-        <button id="clearBtn" class="btn subtle" type="button">Clear</button>
-      </div>
-    </div>
-
-    <div id="status" class="status">
-      <span id="statusText">Status: ready</span>
-      <span id="busyIndicator" class="spinner hidden" aria-label="busy"></span>
-    </div>
-
-    <div class="tabs tabs-mid">
-      <button id="tabLayersBtn" class="tab-btn active" type="button">Layers</button>
-      <button id="tabServicesBtn" class="tab-btn" type="button">Data Check</button>
-      <button id="tabReportBtn" class="tab-btn" type="button">Tables</button>
-      <button id="tabFinalReportBtn" class="tab-btn" type="button">Report</button>
-    </div>
-
-    <section id="tabLayersPanel" class="tab-panel active">
-      <div class="layers-section">
-        <div class="layers-section-header">
-          <span class="layers-section-title">Selection Layers</span>
-          <span class="layers-section-subtitle">Click-to-select layers for AOI definition</span>
-        </div>
-        <div id="selectionLayerToggles" class="layers-list"></div>
-      </div>
-      <div class="layers-section">
-        <div class="layers-section-header">
-          <span class="layers-section-title">Report Layers</span>
-          <span class="layers-section-subtitle">Queried during analysis (toggle for map display)</span>
-        </div>
-        <div id="reportLayerToggles" class="layers-list"></div>
-      </div>
-    </section>
-
-    <section id="tabServicesPanel" class="tab-panel">
-      <div class="card">
-        <div class="row space-between">
-          <div class="label">Feature Services</div>
-          <button id="refreshServicesBtn" class="btn subtle" type="button">↻ Refresh</button>
-        </div>
-        <div class="hint">Shows configured selection/report services, basic service info, and a simple UP/DOWN check.</div>
-        <div id="servicesList" style="margin-top:10px;"></div>
-      </div>
-    </section>
-
-    <section id="tabReportPanel" class="tab-panel">
-      <div class="card">
-        <div class="row space-between">
-          <div class="label">Query Results</div>
-          <button id="exportAllBtn" class="btn subtle" type="button" disabled>📥 Export Merged CSVs</button>
-        </div>
-        <div id="results"></div>
-      </div>
-    </section>
-
-    <section id="tabReportFinalPanel" class="tab-panel">
-      <div class="card">
-        <div class="row space-between">
-          <div class="label">Final Report</div>
-        </div>
-        <div class="hint">📄 Printable HTML report with all maps and statistics. Opens in new tab.</div>
-        <div id="finalReportStatus" class="small" style="margin-top:12px;"></div>
-        <div class="row" style="margin-top:14px;">
-          <button id="viewReportBtn" class="btn primary" type="button" disabled>📋 View Report</button>
-        </div>
-      </div>
-    </section>
-
-    </div>
-    --><!-- /advancedModePanel — COMMENTED OUT FOR PERFORMANCE TESTING -->
 
   </aside>
 

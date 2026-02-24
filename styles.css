@@ -2277,6 +2277,124 @@ body.cv-highcontrast {
     text-align: right;
 }
 
+/* ====== Service Down Warning Modal ====== */
+.service-down-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10002;
+}
+
+.service-down-modal.hidden {
+  display: none;
+}
+
+.service-down-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.service-down-modal-content {
+  position: relative;
+  background: #fff;
+  border-radius: 16px;
+  width: 620px;
+  max-width: 92vw;
+  max-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.35);
+}
+
+.service-down-modal-header {
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.service-down-modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.service-down-modal-subtext {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.service-down-modal-body {
+  padding: 16px 24px;
+  overflow: auto;
+}
+
+.service-down-modal-note {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.service-down-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.service-down-item {
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #ef4444;
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: #fafafa;
+}
+
+.service-down-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.service-down-item-meta {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.service-down-item-url {
+  font-size: 12px;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+.service-down-item-url a {
+  color: #1a56db;
+  text-decoration: none;
+}
+
+.service-down-item-url a:hover {
+  text-decoration: underline;
+}
+
+.service-down-modal-footer {
+  padding: 12px 24px 16px;
+  border-top: 1px solid #e5e7eb;
+  text-align: right;
+}
+
 /* ====== Feature Search Widget ====== */
 .feature-search-widget {
     position: absolute;

@@ -128,6 +128,12 @@ require([
     const wizLocationInput = document.getElementById("wizLocationInput");
     const wizLocationResults = document.getElementById("wizLocationResults");
 
+    // Service-down warning modal
+    const serviceDownModalEl = document.getElementById("serviceDownModal");
+    const serviceDownSummaryEl = document.getElementById("serviceDownSummary");
+    const serviceDownListEl = document.getElementById("serviceDownList");
+    const serviceDownCloseBtn = document.getElementById("serviceDownCloseBtn");
+
     /* ── Layer count helper (all layers, no tier filtering) ── */
     function getTotalLayerCount() {
       return (config.reportLayers || []).length;
@@ -389,6 +395,59 @@ function setBusy(isBusy) {
             return reportBuildCanceled;
         }
     };
+
+    // ---------- Service Down Warning Modal Helpers ----------
+    let serviceDownNoticeShown = false;
+
+    const serviceDownModal = {
+        show(downItems, sourceLabel, refreshedAt) {
+            if (!serviceDownModalEl || !serviceDownListEl || !downItems || !downItems.length) return;
+
+            const sourceText = sourceLabel === "r2"
+                ? "from cached service checks"
+                : "from live fallback checks";
+            const refreshedText = refreshedAt ? ` (last refresh ${refreshedAt})` : "";
+
+            if (serviceDownSummaryEl) {
+                serviceDownSummaryEl.textContent = `${downItems.length} service${downItems.length !== 1 ? "s" : ""} marked DOWN ${sourceText}${refreshedText}.`;
+            }
+
+            serviceDownListEl.innerHTML = downItems.map(it => {
+                return `
+                    <li class="service-down-item">
+                        <div class="service-down-item-title">${escapeHtml(it.title || "Unnamed Service")}</div>
+                        <div class="service-down-item-meta">${escapeHtml(it.kind || "Service")}</div>
+                        <div class="service-down-item-url"><a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">${escapeHtml(it.url)}</a></div>
+                    </li>`;
+            }).join("");
+
+            serviceDownModalEl.classList.remove("hidden");
+            serviceDownNoticeShown = true;
+        },
+        hide() {
+            if (!serviceDownModalEl) return;
+            serviceDownModalEl.classList.add("hidden");
+        },
+        wire() {
+            if (serviceDownCloseBtn) {
+                serviceDownCloseBtn.addEventListener("click", () => this.hide());
+            }
+            if (serviceDownModalEl) {
+                serviceDownModalEl.addEventListener("click", (e) => {
+                    if (e.target && e.target.classList && e.target.classList.contains("service-down-modal-backdrop")) {
+                        this.hide();
+                    }
+                });
+            }
+        }
+    };
+
+    function maybeShowDownServiceWarning(items, sourceLabel, refreshedAt) {
+        if (serviceDownNoticeShown || !items || !items.length) return;
+        const downItems = items.filter(it => serviceStatus.get(it.url) === "DOWN");
+        if (!downItems.length) return;
+        serviceDownModal.show(downItems, sourceLabel, refreshedAt);
+    }
 
 
     // ---------- State ----------
@@ -1739,6 +1798,7 @@ async function checkServiceStatusBackground() {
                     }
                 }
                 renderLayerToggles(map);
+                maybeShowDownServiceWarning(items, "r2", cached.lastRefresh || null);
                 console.log(`[metadata-cache] Loaded ${Object.keys(cached.layers).length} layers from R2 (refreshed ${cached.lastRefresh})`);
                 return; // cache hit — skip direct pings
             }
@@ -1768,6 +1828,7 @@ async function checkServiceStatusBackground() {
 
     // Re-render layer toggles to show status icons
     renderLayerToggles(map);
+    maybeShowDownServiceWarning(items, "fallback", null);
 }
 
 /**
@@ -3878,6 +3939,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         
         // Initialize report building modal
         reportModal.init();
+
+        // Initialize service-down warning modal
+        serviceDownModal.wire();
 
         // Background service check — delay 5s so it doesn't compete with
         // critical layer loading for browser connection slots
