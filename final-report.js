@@ -4257,6 +4257,7 @@ ${getA11yWidgetBlock()}
                     ensureAoiOnTop();
                 }
 
+                let _persistentPlss = null;
                 try {
                     // Switch to imagery basemap
                     view.map.basemap = imageryBasemapId;
@@ -4281,7 +4282,7 @@ ${getA11yWidgetBlock()}
                     );
 
                     // Create persistent PLSS township overlay (shared across all screenshots)
-                    let _persistentPlss = createPlssTownshipLayer();
+                    _persistentPlss = createPlssTownshipLayer();
                     if (_persistentPlss) {
                         view.map.add(_persistentPlss);
                         try { await _persistentPlss.when(); } catch (_) {}
@@ -5516,6 +5517,7 @@ ${getA11yWidgetBlock()}
                     ensureAoiOnTop();
                 }
 
+                let _persistentPlss = null;
                 try {
                     // Switch to imagery basemap
                     view.map.basemap = imageryBasemapId;
@@ -5552,7 +5554,7 @@ ${getA11yWidgetBlock()}
                     }
 
                     // Create persistent PLSS township overlay (shared across all screenshots)
-                    let _persistentPlss = createPlssTownshipLayer();
+                    _persistentPlss = createPlssTownshipLayer();
                     if (_persistentPlss) {
                         view.map.add(_persistentPlss);
                         try { await _persistentPlss.when(); } catch (_) {}
