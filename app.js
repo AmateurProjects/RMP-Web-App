@@ -1269,8 +1269,47 @@ function clearAll() {
     if (uploadStatusEl) uploadStatusEl.classList.add("hidden");
 }
 
+    /**
+     * Count total vertices across all rings/paths of a geometry.
+     */
+    function countVertices(geom) {
+        if (!geom) return 0;
+        const rings = geom.rings || geom.paths || [];
+        let count = 0;
+        for (let i = 0; i < rings.length; i++) count += rings[i].length;
+        return count;
+    }
+
+    /**
+     * If the AOI polygon exceeds the configured vertex threshold, simplify it
+     * using geometryEngine.generalize to keep query payloads small.
+     * Returns the (possibly simplified) geometry.
+     */
+    function generalizeAoiIfNeeded(geom) {
+        if (!geom || geom.type !== "polygon") return geom;
+        const maxVerts = config?.report?.aoiMaxVertices ?? 500;
+        const maxDev   = config?.report?.aoiGeneralizeMaxDeviation ?? 10; // meters (Web Mercator)
+        const before = countVertices(geom);
+        if (before <= maxVerts) return geom;
+
+        try {
+            const simplified = geometryEngine.generalize(geom, maxDev, true, "meters");
+            const after = countVertices(simplified);
+            console.log(`[AOI] Generalized polygon: ${before} → ${after} vertices (maxDev=${maxDev}m)`);
+            // If generalize collapsed the geometry, keep original
+            if (!simplified || countVertices(simplified) < 3) {
+                console.warn("[AOI] Generalize produced degenerate geometry — keeping original");
+                return geom;
+            }
+            return simplified;
+        } catch (e) {
+            console.warn("[AOI] Generalize failed — keeping original", e);
+            return geom;
+        }
+    }
+
     function setGeometryFromSelection(geom) {
-        selectionGeom = geom || null;
+        selectionGeom = generalizeAoiIfNeeded(geom) || null;
         if (runBtn) runBtn.disabled = !selectionGeom;
 
         // Permitting mode: show AOI confirm section within Step 2 when AOI is defined
@@ -3232,7 +3271,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 return;
             }
 
-            // Set the geometry as the AOI
+            // Set the geometry as the AOI (generalize before storing)
+            geom = generalizeAoiIfNeeded(geom) || geom;
             selectionGeom = geom;
             aoiSource = "search";
             aoiSourceLayerTitle = feature.layerTitle || null;
@@ -3377,6 +3417,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     return;
                 }
 
+                geometry = generalizeAoiIfNeeded(geometry) || geometry;
                 selectionGeom = geometry;
                 aoiSource = "upload";
                 aoiSourceLayerTitle = result.fileName;
