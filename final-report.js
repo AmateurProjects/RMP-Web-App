@@ -5294,6 +5294,7 @@ ${getA11yWidgetBlock()}
     // Returns complete HTML document ready to open
     // ────────────────────────────────────────────
     async function buildReportInBackground(options = {}) {
+        console.log("[buildReportInBackground] entered");
         const bucketKey = options.bucketKey || null;
         const permitTypeKey = options.permitTypeKey || null;
         const onProgress = options.onProgress || (() => {});
@@ -5307,6 +5308,9 @@ ${getA11yWidgetBlock()}
         const aoiLayer = S.aoiLayer;
         const aoiMaskLayer = S.aoiMaskLayer;
         const alwaysVisibleLayers = S.alwaysVisibleLayers;
+
+        console.log("[buildReportInBackground] view:", !!view, "selectionGeom:", !!selectionGeom,
+            "rows:", lastReportRowsByLayer?.length, "permitTypeKey:", permitTypeKey);
 
         if (!view || !selectionGeom) {
             throw new Error("No AOI selected");
@@ -5327,16 +5331,19 @@ ${getA11yWidgetBlock()}
 
             // Phase 2: Query additional non-core layers for this permit type
             onStep("Querying additional permit-type layers");
+            console.log("[buildReportInBackground] querying additional permit layers…");
             const additionalRows = await queryAdditionalPermitLayers(permitTypeKey, {
                 onStep,
                 onLog:  (msg) => onStep(msg),
                 isCanceled
             });
+            console.log("[buildReportInBackground] additional rows:", additionalRows.length);
             const combinedRows = additionalRows.length
                 ? [...lastReportRowsByLayer, ...additionalRows]
                 : lastReportRowsByLayer;
 
             const categorized = categorizeByPermitType(combinedRows, permitTypeKey, S.layerCfgByUrl);
+            console.log("[buildReportInBackground] categorized — allData:", categorized.allData?.length);
             targetLayers = categorized.allData || [];
             reportTitle = `${ptDef.icon} ${ptDef.label} — Land & Resource Screening Report`;
 
@@ -5368,6 +5375,8 @@ ${getA11yWidgetBlock()}
             .filter(x => x?.hasCoverage || (x?.count || 0) > 0) // Coverage from screening
             .filter(x => x?.url || x?.__isImageService)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
+
+        console.log("[buildReportInBackground] targetLayers:", targetLayers.length, "mappable:", mappableLayers.length);
 
         // Build URL→group mapping for section headers when iterating layers
         let layerGroupMap = null; // url → group object
@@ -5406,6 +5415,7 @@ ${getA11yWidgetBlock()}
             // === STEP 1: AOI Overview ===
             onStep("Generating AOI overview maps");
             onProgress(5, mapsGenerated, sectionsComplete);
+            console.log("[buildReportInBackground] generating AOI overview maps…");
 
             if (isCanceled()) throw new Error("Canceled");
 
@@ -5428,6 +5438,7 @@ ${getA11yWidgetBlock()}
 
             // Generate AOI maps
             const aoiMapsHtml = await generateAoiMapsWithCircles();
+            console.log("[buildReportInBackground] AOI maps done, length:", aoiMapsHtml?.length);
             mapsGenerated += 2; // Usually generates 2 AOI maps
             sectionsComplete++;
             onProgress(15, mapsGenerated, sectionsComplete);
@@ -5513,6 +5524,7 @@ ${getA11yWidgetBlock()}
 
                     // Lock view container to fixed pixel dimensions to prevent resize interference
                     lockViewContainer();
+                    console.log("[buildReportInBackground] view container locked");
 
                     if (fixedExtent) {
                         await view.goTo(fixedExtent, { animate: false });
@@ -5520,6 +5532,7 @@ ${getA11yWidgetBlock()}
                     }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
+                    console.log("[buildReportInBackground] starting pre-load phase…");
                     const _preGeomTypes = {};
                     const _preCovPromises = {};
                     {

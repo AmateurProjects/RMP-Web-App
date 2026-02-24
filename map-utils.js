@@ -910,22 +910,26 @@ define([
         const view = S.view;
         if (!view || !view.container) return;
         const el = view.container;
-        _savedContainerStyle = {
-            width:    el.style.width,
-            height:   el.style.height,
-            position: el.style.position,
-            top:      el.style.top,
-            left:     el.style.left
-        };
-        const ssWidth  = S.config?.visualReport?.screenshotWidth ?? 1400;
-        const ssHeight = Math.round(ssWidth * 0.5625); // 16:9
-        el.style.width    = ssWidth + "px";
-        el.style.height   = ssHeight + "px";
-        el.style.position = "absolute";
-        el.style.top      = "0";
-        el.style.left     = "0";
-        // Let the MapView recalculate after the resize
-        view.resize();
+        try {
+            _savedContainerStyle = {
+                width:    el.style.width,
+                height:   el.style.height,
+                position: el.style.position,
+                top:      el.style.top,
+                left:     el.style.left
+            };
+            const ssWidth  = S.config?.visualReport?.screenshotWidth ?? 1400;
+            const ssHeight = Math.round(ssWidth * 0.5625); // 16:9
+            el.style.width    = ssWidth + "px";
+            el.style.height   = ssHeight + "px";
+            el.style.position = "absolute";
+            el.style.top      = "0";
+            el.style.left     = "0";
+            // Let the MapView recalculate after the resize
+            if (typeof view.resize === "function") view.resize();
+        } catch (e) {
+            console.warn("[map-utils] lockViewContainer failed:", e);
+        }
     }
 
     /**
@@ -934,14 +938,18 @@ define([
     function unlockViewContainer() {
         const view = S.view;
         if (!view || !view.container || !_savedContainerStyle) return;
-        const el = view.container;
-        el.style.width    = _savedContainerStyle.width;
-        el.style.height   = _savedContainerStyle.height;
-        el.style.position = _savedContainerStyle.position;
-        el.style.top      = _savedContainerStyle.top;
-        el.style.left     = _savedContainerStyle.left;
-        _savedContainerStyle = null;
-        view.resize();
+        try {
+            const el = view.container;
+            el.style.width    = _savedContainerStyle.width;
+            el.style.height   = _savedContainerStyle.height;
+            el.style.position = _savedContainerStyle.position;
+            el.style.top      = _savedContainerStyle.top;
+            el.style.left     = _savedContainerStyle.left;
+            _savedContainerStyle = null;
+            if (typeof view.resize === "function") view.resize();
+        } catch (e) {
+            console.warn("[map-utils] unlockViewContainer failed:", e);
+        }
     }
 
     const api = {

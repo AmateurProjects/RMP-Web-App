@@ -1021,6 +1021,8 @@ function setActiveTab(tabName) {
      * Shows modal during generation, then button changes to "View" state.
      */
     async function generateFullProgressiveReport() {
+        console.log("[report] generateFullProgressiveReport called, selectionGeom:", !!selectionGeom,
+            "rows:", lastReportRowsByLayer?.length, "permitType:", selectedPermitType);
         if (!selectionGeom) {
             setStatus("No AOI selected — cannot generate report");
             return;
@@ -1046,6 +1048,7 @@ function setActiveTab(tabName) {
         // Show modal
         reportModal.show();
         reportModal.setStep(`Building ${ptLabel} Report`);
+        console.log(`[report] Starting ${ptLabel} report generation…`);
         
         try {
             const htmlContent = await buildReportInBackground({
@@ -1067,6 +1070,7 @@ function setActiveTab(tabName) {
             }
             
             reportModal.hide();
+            console.log(`[report] ${ptLabel} report generated successfully`);
             
             // Cache the report and update button to "View" state
             cachedPermitReports[ptKey] = htmlContent;
@@ -1080,12 +1084,13 @@ function setActiveTab(tabName) {
             setStatus(`${ptLabel} report ready`);
             
         } catch (e) {
+            console.error("[report] Report generation failed:", e);
             reportModal.hide();
             if (e.message === "Canceled") {
                 setStatus("Report canceled");
             } else {
-                console.error("Report error:", e);
                 setStatus("Report generation failed — see console");
+                alert("Report generation failed: " + e.message);
             }
         }
     }
