@@ -897,6 +897,53 @@ define([
         return api;
     }
 
+    // ── View container lock (prevent resize from affecting screenshots) ──
+
+    let _savedContainerStyle = null;
+
+    /**
+     * Lock the #viewDiv to fixed pixel dimensions so browser resize
+     * cannot affect the MapView during screenshot capture.
+     * Call once before the screenshot loop; call unlockViewContainer() after.
+     */
+    function lockViewContainer() {
+        const view = S.view;
+        if (!view || !view.container) return;
+        const el = view.container;
+        _savedContainerStyle = {
+            width:    el.style.width,
+            height:   el.style.height,
+            position: el.style.position,
+            top:      el.style.top,
+            left:     el.style.left
+        };
+        const ssWidth  = S.config?.visualReport?.screenshotWidth ?? 1400;
+        const ssHeight = Math.round(ssWidth * 0.5625); // 16:9
+        el.style.width    = ssWidth + "px";
+        el.style.height   = ssHeight + "px";
+        el.style.position = "absolute";
+        el.style.top      = "0";
+        el.style.left     = "0";
+        // Let the MapView recalculate after the resize
+        view.resize();
+    }
+
+    /**
+     * Restore the view container to its original CSS sizing.
+     */
+    function unlockViewContainer() {
+        const view = S.view;
+        if (!view || !view.container || !_savedContainerStyle) return;
+        const el = view.container;
+        el.style.width    = _savedContainerStyle.width;
+        el.style.height   = _savedContainerStyle.height;
+        el.style.position = _savedContainerStyle.position;
+        el.style.top      = _savedContainerStyle.top;
+        el.style.left     = _savedContainerStyle.left;
+        _savedContainerStyle = null;
+        view.resize();
+    }
+
     const api = {
         init,
 
@@ -931,6 +978,8 @@ define([
         waitForLayerReadyToCapture,
         captureScreenshotWithWait,
         hardRefreshLayer,
+        lockViewContainer,
+        unlockViewContainer,
 
         // Report layers
         buildReportDisplayLayers

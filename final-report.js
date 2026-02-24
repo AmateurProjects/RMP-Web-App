@@ -238,7 +238,7 @@ define([
      * to the map for a report-layer screenshot.
      * @returns {{ hashOverlay: FeatureLayer|null, plssTownship: FeatureLayer|null }}
      */
-    async function _addReportOverlays(view, tempLayer, tempGeomType, url, defExpr) {
+    async function _addReportOverlays(view, tempLayer, tempGeomType, url, defExpr, persistentPlss) {
         const { createReportHashOverlay, createPlssTownshipLayer, waitForLayerReadyToCapture } = mapUtils;
         const isPoly = tempGeomType && String(tempGeomType).toLowerCase().includes("polygon");
 
@@ -249,15 +249,24 @@ define([
             try { await hashOverlay.when(); } catch (_) {}
         }
 
-        const plssTownship = createPlssTownshipLayer();
-        if (plssTownship) {
-            // Insert below the data layer so grid lines sit behind the data
+        let plssTownship = persistentPlss || null;
+        if (!plssTownship) {
+            // No persistent PLSS provided — create a one-off (fallback for deferred retries)
+            plssTownship = createPlssTownshipLayer();
+            if (plssTownship) {
+                const idx = view.map.layers.indexOf(tempLayer);
+                view.map.add(plssTownship, idx >= 0 ? idx : undefined);
+                try { await plssTownship.when(); } catch (_) {}
+            }
+        } else {
+            // Persistent PLSS — just reorder below the data layer
             const idx = view.map.layers.indexOf(tempLayer);
-            view.map.add(plssTownship, idx >= 0 ? idx : undefined);
-            try { await plssTownship.when(); } catch (_) {}
+            if (idx >= 0) {
+                try { view.map.reorder(plssTownship, idx); } catch (_) {}
+            }
         }
 
-        return { hashOverlay, plssTownship };
+        return { hashOverlay, plssTownship, _persistent: !!persistentPlss };
     }
 
     async function _waitForOverlays(view, overlays) {
@@ -268,7 +277,10 @@ define([
 
     function _removeOverlays(view, overlays) {
         if (overlays.hashOverlay)  try { view.map.remove(overlays.hashOverlay);  } catch (_) {}
-        if (overlays.plssTownship) try { view.map.remove(overlays.plssTownship); } catch (_) {}
+        // Only remove PLSS if it's NOT a persistent shared instance
+        if (overlays.plssTownship && !overlays._persistent) {
+            try { view.map.remove(overlays.plssTownship); } catch (_) {}
+        }
     }
 
     // ────────────────────────────────────────────
@@ -4136,7 +4148,8 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer,
+            lockViewContainer, unlockViewContainer
         } = mapUtils;
 
         const {
@@ -4250,9 +4263,29 @@ ${getA11yWidgetBlock()}
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
+                    // Lock view container to fixed pixel dimensions to prevent resize interference
+                    lockViewContainer();
+
                     if (fixedExtent) {
                         await view.goTo(fixedExtent, { animate: false });
                         await waitForViewStationary(800);
+                    }
+
+                    // ── Pre-load phase: parallel metadata fetch + geometry types ──
+                    const _preloadGeomTypes = await Promise.all(
+                        mappableLayers.map(item =>
+                            item.__isImageService
+                                ? Promise.resolve(null)
+                                : getLayerGeometryType(item.url).catch(() => null)
+                        )
+                    );
+
+                    // Create persistent PLSS township overlay (shared across all screenshots)
+                    let _persistentPlss = createPlssTownshipLayer();
+                    if (_persistentPlss) {
+                        view.map.add(_persistentPlss);
+                        try { await _persistentPlss.when(); } catch (_) {}
+                        await waitForLayerReadyToCapture(_persistentPlss, view, { timeoutMs: 8000 });
                     }
 
                     // Deferred screenshots: skip capture when tab is hidden, retry at end
@@ -4381,7 +4414,7 @@ ${getA11yWidgetBlock()}
                                 continue;
                             }
 
-                            const tempGeomType = await getLayerGeometryType(item.url);
+                            const tempGeomType = _preloadGeomTypes[i] || (await getLayerGeometryType(item.url));
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
 
                             // Fire coverage stats early (REST query — works in background)
@@ -4405,7 +4438,7 @@ ${getA11yWidgetBlock()}
                                 thickenLayerSymbology(tempLayer, tempGeomType);
                                 tempLayer.minScale = 0;
                                 tempLayer.maxScale = 0;
-                                const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression);
+                                const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression, _persistentPlss);
 
                                 setVisibilityForScreenshot(tempLayer);
                                 await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
@@ -4511,7 +4544,7 @@ ${getA11yWidgetBlock()}
                                     tempLayer.definitionExpression = def.item._exportQuery?.where || "1=1";
                                     try { await tempLayer.when(); } catch (e) {}
                                     thickenLayerSymbology(tempLayer, def.tempGeomType);
-                                    const overlays = await _addReportOverlays(view, tempLayer, def.tempGeomType, def.item.url, tempLayer.definitionExpression);
+                                    const overlays = await _addReportOverlays(view, tempLayer, def.tempGeomType, def.item.url, tempLayer.definitionExpression, _persistentPlss);
                                     try {
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
@@ -4542,6 +4575,12 @@ ${getA11yWidgetBlock()}
                     }
 
                 } finally {
+                    // Remove persistent PLSS overlay
+                    if (_persistentPlss) {
+                        try { view.map.remove(_persistentPlss); } catch (_) {}
+                    }
+                    // Unlock view container sizing
+                    unlockViewContainer();
                     // Restore original state
                     try {
                         view.map.basemap = originalBasemap;
@@ -4647,7 +4686,8 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer,
+            lockViewContainer, unlockViewContainer
         } = mapUtils;
 
         const {
@@ -4811,6 +4851,37 @@ ${getA11yWidgetBlock()}
                     console.warn("Failed to switch to imagery basemap:", e);
                 }
 
+                // Lock view container to fixed pixel dimensions to prevent resize interference
+                lockViewContainer();
+
+                // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
+                const _allBucketItems = BUCKET_ORDER.flatMap(k => bucketedTargets[k] || []);
+                const _preGeomTypes = {};
+                const _preCovPromises = {};
+                {
+                    const featureItems = _allBucketItems.filter(x => !x.__isImageService && x.url);
+                    const gtPromises = featureItems.map(x =>
+                        getLayerGeometryType(x.url).catch(() => null)
+                    );
+                    const gtResults = await Promise.all(gtPromises);
+                    featureItems.forEach((x, idx) => { _preGeomTypes[x.url] = gtResults[idx]; });
+                    // Fire all coverage stat queries in parallel
+                    featureItems.forEach(x => {
+                        const gt = _preGeomTypes[x.url];
+                        if (gt && String(gt).toLowerCase().includes('polygon')) {
+                            _preCovPromises[x.url] = computeLayerCoverageStats(x, selectionGeom).catch(() => null);
+                        }
+                    });
+                }
+
+                // Create persistent PLSS township overlay (shared across all screenshots)
+                let _persistentPlss = createPlssTownshipLayer();
+                if (_persistentPlss) {
+                    view.map.add(_persistentPlss);
+                    try { await _persistentPlss.when(); } catch (_) {}
+                    await waitForLayerReadyToCapture(_persistentPlss, view, { timeoutMs: 8000 });
+                }
+
                 // Iterate through buckets in order
                 const deferredScreenshots = [];
 
@@ -4931,7 +5002,7 @@ ${getA11yWidgetBlock()}
                     if ((item.count || 0) === 0) continue;
 
                     // FeatureServer layers
-                    const tempGeomType = await getLayerGeometryType(item.url);
+                    const tempGeomType = _preGeomTypes[item.url] || (await getLayerGeometryType(item.url));
                     let dataUrl = null;
                     let screenshotDeferred = false;
                     const deferToken = `__DEFERRED_MAP_${globalLayerIndex}__`;
@@ -4949,7 +5020,7 @@ ${getA11yWidgetBlock()}
                         view.map.add(temp);
                         try { await temp.when(); } catch (e) { /* continue */ }
                         thickenLayerSymbology(temp, tempGeomType);
-                        const overlays = await _addReportOverlays(view, temp, tempGeomType, item.url, temp.definitionExpression || null);
+                        const overlays = await _addReportOverlays(view, temp, tempGeomType, item.url, temp.definitionExpression || null, _persistentPlss);
 
                         try {
                             setVisibilityForScreenshot(temp);
@@ -4972,13 +5043,13 @@ ${getA11yWidgetBlock()}
                         console.log(`[full-report] Deferring screenshot for "${item.title}" (tab hidden)`);
                     }
 
-                    // Coverage stats, narratives, tables — all REST-based, work even when hidden
+                    // Coverage stats — use pre-fired parallel promise if available
                     const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
                     let acresCovered = 0;
                     let pctCovered   = 0;
                     try {
                         if (isPolygonLayer) {
-                            const covStats = await computeLayerCoverageStats(item, selectionGeom);
+                            const covStats = await (_preCovPromises[item.url] || computeLayerCoverageStats(item, selectionGeom));
                             if (covStats) {
                                 acresCovered = covStats.acresCovered || 0;
                                 pctCovered   = covStats.pctAoiCovered || 0;
@@ -5059,7 +5130,7 @@ ${getA11yWidgetBlock()}
                                 view.map.add(temp);
                                 try { await temp.when(); } catch (e) { /* continue */ }
                                 thickenLayerSymbology(temp, def.tempGeomType);
-                                const overlays = await _addReportOverlays(view, temp, def.tempGeomType, def.item.url, temp.definitionExpression || null);
+                                const overlays = await _addReportOverlays(view, temp, def.tempGeomType, def.item.url, temp.definitionExpression || null, _persistentPlss);
                                 try {
                                     setVisibilityForScreenshot(temp);
                                     await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
@@ -5094,6 +5165,13 @@ ${getA11yWidgetBlock()}
                         }
                     }
                 }
+
+                // Remove persistent PLSS overlay
+                if (_persistentPlss) {
+                    try { view.map.remove(_persistentPlss); } catch (_) {}
+                }
+                // Unlock view container sizing
+                unlockViewContainer();
 
                 // Restore original basemap
                 try {
@@ -5311,7 +5389,8 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer,
+            lockViewContainer, unlockViewContainer
         } = mapUtils;
 
         const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, computeSlopeAspect, SQM_PER_ACRE } = queryEngine;
@@ -5432,9 +5511,39 @@ ${getA11yWidgetBlock()}
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
+                    // Lock view container to fixed pixel dimensions to prevent resize interference
+                    lockViewContainer();
+
                     if (fixedExtent) {
                         await view.goTo(fixedExtent, { animate: false });
                         await waitForViewStationary(800);
+                    }
+
+                    // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
+                    const _preGeomTypes = {};
+                    const _preCovPromises = {};
+                    {
+                        const featureItems = mappableLayers.filter(x => !x.__isImageService && x.url);
+                        const gtPromises = featureItems.map(x =>
+                            getLayerGeometryType(x.url).catch(() => null)
+                        );
+                        const gtResults = await Promise.all(gtPromises);
+                        featureItems.forEach((x, idx) => { _preGeomTypes[x.url] = gtResults[idx]; });
+                        // Fire all coverage stat queries in parallel
+                        featureItems.forEach(x => {
+                            const gt = _preGeomTypes[x.url];
+                            if (gt && String(gt).toLowerCase().includes('polygon')) {
+                                _preCovPromises[x.url] = computeLayerCoverageStats(x, selectionGeom).catch(() => null);
+                            }
+                        });
+                    }
+
+                    // Create persistent PLSS township overlay (shared across all screenshots)
+                    let _persistentPlss = createPlssTownshipLayer();
+                    if (_persistentPlss) {
+                        view.map.add(_persistentPlss);
+                        try { await _persistentPlss.when(); } catch (_) {}
+                        await waitForLayerReadyToCapture(_persistentPlss, view, { timeoutMs: 8000 });
                     }
 
                     // Sort layers by permit-type group order so section headers flow correctly
@@ -5580,7 +5689,7 @@ ${getA11yWidgetBlock()}
                             
                             onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                             
-                            const tempGeomType = await getLayerGeometryType(item.url);
+                            const tempGeomType = _preGeomTypes[item.url] || (await getLayerGeometryType(item.url));
                             let dataUrl = null;
                             let screenshotDeferred = false;
                             const deferToken = `__BG_DEFERRED_MAP_${i}__`;
@@ -5597,7 +5706,7 @@ ${getA11yWidgetBlock()}
                                 thickenLayerSymbology(tempLayer, tempGeomType);
                                 tempLayer.minScale = 0;
                                 tempLayer.maxScale = 0;
-                                const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression);
+                                const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression, _persistentPlss);
 
                                 try {
                                     setVisibilityForScreenshot(tempLayer);
@@ -5628,13 +5737,13 @@ ${getA11yWidgetBlock()}
                                 console.log(`[bg-report] Deferring screenshot for "${layerTitle}" (tab hidden)`);
                             }
 
-                            // Coverage stats — REST-based, works even when hidden
+                            // Coverage stats — use pre-fired parallel promise if available
                             const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
                             let acresCovered = 0;
                             let pctCovered = 0;
                             try {
                                 if (isPolygonLayer) {
-                                    const covStats = await computeLayerCoverageStats(item, selectionGeom);
+                                    const covStats = await (_preCovPromises[item.url] || computeLayerCoverageStats(item, selectionGeom));
                                     if (covStats) {
                                         acresCovered = covStats.acresCovered || 0;
                                         pctCovered = covStats.pctAoiCovered || 0;
@@ -5732,7 +5841,7 @@ ${getA11yWidgetBlock()}
                                     thickenLayerSymbology(tempLayer, def.tempGeomType);
                                     tempLayer.minScale = 0;
                                     tempLayer.maxScale = 0;
-                                    const overlays = await _addReportOverlays(view, tempLayer, def.tempGeomType, def.item.url, tempLayer.definitionExpression);
+                                    const overlays = await _addReportOverlays(view, tempLayer, def.tempGeomType, def.item.url, tempLayer.definitionExpression, _persistentPlss);
                                     try {
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
@@ -5779,6 +5888,12 @@ ${getA11yWidgetBlock()}
                     }
 
                 } finally {
+                    // Remove persistent PLSS overlay
+                    if (_persistentPlss) {
+                        try { view.map.remove(_persistentPlss); } catch (_) {}
+                    }
+                    // Unlock view container sizing
+                    unlockViewContainer();
                     // Restore original state
                     try {
                         view.map.basemap = originalBasemap;
