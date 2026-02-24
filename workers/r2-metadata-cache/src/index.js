@@ -18,8 +18,9 @@
  */
 
 const R2_KEY = "metadata.json";
-const FETCH_TIMEOUT_MS = 10000;
-const MAX_CONCURRENCY = 8;
+const FETCH_TIMEOUT_MS = 20000;
+const FETCH_RETRY_ATTEMPTS = 1;
+const MAX_CONCURRENCY = 4;
 const DATA_PROBE_LAYER_LIMIT = 5;
 const DATA_PROBE_FEATURE_LIMIT = 1;
 
@@ -68,6 +69,35 @@ async function fetchJsonWithTimeout(url, ms) {
   return json;
 }
 
+function isRetryableProbeError(err) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return (
+    msg.includes("aborted") ||
+    msg.includes("abort") ||
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("network") ||
+    msg.includes("fetch failed") ||
+    msg.includes("connection")
+  );
+}
+
+async function fetchJsonRobust(url, ms, retries = FETCH_RETRY_ATTEMPTS) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchJsonWithTimeout(url, ms);
+    } catch (err) {
+      lastErr = err;
+      if (attempt >= retries || !isRetryableProbeError(err)) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+    }
+  }
+  throw lastErr || new Error("Unknown fetch failure");
+}
+
 function stripQueryAndSlash(url) {
   return String(url || "").split("?")[0].replace(/\/+$/, "");
 }
@@ -100,7 +130,7 @@ async function probeFeatureOrMapLayerForGeometry(layerUrl) {
     `&resultRecordCount=${DATA_PROBE_FEATURE_LIMIT}` +
     `&f=json`;
 
-  const data = await fetchJsonWithTimeout(queryUrl, FETCH_TIMEOUT_MS);
+  const data = await fetchJsonRobust(queryUrl, FETCH_TIMEOUT_MS);
   const features = Array.isArray(data?.features) ? data.features : [];
 
   if (!features.length) {
@@ -209,7 +239,7 @@ async function probeImageServer(serviceUrl, serviceMeta) {
     `&format=png` +
     `&f=json`;
 
-  const data = await fetchJsonWithTimeout(exportUrl, FETCH_TIMEOUT_MS);
+  const data = await fetchJsonRobust(exportUrl, FETCH_TIMEOUT_MS);
   if (!data?.href && !data?.url) {
     throw new Error("exportImage did not return an image URL");
   }
@@ -225,7 +255,7 @@ async function probeImageServer(serviceUrl, serviceMeta) {
 async function probeGeocodeServer(serviceUrl) {
   const base = stripQueryAndSlash(serviceUrl);
   const suggestUrl = `${base}/suggest?text=denver&maxSuggestions=1&f=json`;
-  const data = await fetchJsonWithTimeout(suggestUrl, FETCH_TIMEOUT_MS);
+  const data = await fetchJsonRobust(suggestUrl, FETCH_TIMEOUT_MS);
   const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
 
   if (!suggestions.length) {
@@ -324,26 +354,27 @@ async function probeService(url) {
 
   const started = Date.now();
   try {
-    const res = await fetchWithTimeout(pjsonUrl, FETCH_TIMEOUT_MS);
-    const elapsed = Date.now() - started;
-
-    if (!res.ok) {
-      return { url, status: "DOWN", error: `HTTP ${res.status}`, responseMs: elapsed };
-    }
-
-    const body = await res.json();
-
-    if (body && body.error) {
-      const code = body.error.code != null ? body.error.code : "";
-      const msg = body.error.message || "ArcGIS error";
+    let body;
+    try {
+      body = await fetchJsonRobust(pjsonUrl, FETCH_TIMEOUT_MS);
+    } catch (metaErr) {
+      const elapsed = Date.now() - started;
+      const msg = metaErr?.message || String(metaErr);
       return {
         url,
         status: "DOWN",
-        error: `ArcGIS ${code}: ${msg}`,
+        error: msg,
         responseMs: elapsed,
-        dataProbe: { ok: false, mode: "metadata", detail: "Metadata request returned ArcGIS error" },
+        dataProbe: {
+          ok: false,
+          mode: "metadata",
+          detail: `Metadata request failed: ${msg}`,
+        },
+        probedAt: new Date().toISOString(),
       };
     }
+
+    const elapsed = Date.now() - started;
 
     // Data-level probe (query geometry / export imagery / geocode suggest)
     let probeResult;

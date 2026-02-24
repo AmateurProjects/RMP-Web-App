@@ -1,9 +1,9 @@
 name: Refresh R2 Metadata Cache
 
 on:
-  # Weekly schedule (every Monday at 06:00 UTC)
+  # Scheduled refresh (every 6 hours)
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 */6 * * *"
 
   # Re-probe when config.json changes on main
   push:
@@ -16,7 +16,7 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
 
     steps:
       - name: Trigger Worker refresh
