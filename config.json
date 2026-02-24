@@ -206,9 +206,14 @@
       "title": "BLM Natl Visual Resource Inventory Classes",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0",
       "category": "special",
-      "serviceType": "feature",
       "permitTypes": [
         "core"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "VRI_CLASS_CODE",
+        "SL_OVRL_RT",
+        "VRI_SPCL_IND"
       ]
     },
     {
