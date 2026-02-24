@@ -780,24 +780,6 @@
       "serviceType": "feature"
     },
     {
-      "title": "Final Critical Habitat Features",
-      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/USFWS_Critical_Habitat/FeatureServer/0",
-      "category": "environmental",
-      "permitTypes": [
-        "oil-gas"
-      ],
-      "serviceType": "feature"
-    },
-    {
-      "title": "Final Critical Habitat Features",
-      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/USFWS_Critical_Habitat/FeatureServer/0",
-      "category": "environmental",
-      "permitTypes": [
-        "oil-gas"
-      ],
-      "serviceType": "feature"
-    },
-    {
       "title": "USA Federal Lands",
       "url": "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Federal_Lands/FeatureServer/0",
       "category": "land-status",

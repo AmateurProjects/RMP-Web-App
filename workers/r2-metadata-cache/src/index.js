@@ -167,7 +167,13 @@ async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
   const candidateIds = pickCandidateSublayerIds(serviceMeta);
 
   if (!candidateIds.length) {
-    throw new Error("Service has no queryable sublayers to probe");
+    return {
+      ok: false,
+      warn: true,
+      mode: "query",
+      detail: "Service has no queryable sublayers to probe",
+      testedUrl: base,
+    };
   }
 
   const errors = [];
@@ -414,23 +420,63 @@ async function probeService(url) {
       if (probeResult && probeResult.ok === false && !probeResult.warn) {
         return {
           url,
-          status: "DOWN",
-          error: `Data probe failed: ${probeResult.detail || "Unknown probe failure"}`,
+          status: "WARN",
+          error: `Data probe warning: ${probeResult.detail || "Unknown probe issue"}`,
           responseMs: elapsed,
           dataProbe: probeResult,
+          currentVersion: body.currentVersion ?? null,
+          serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
+          type: body.type ?? null,
+          geometryType: body.geometryType ?? null,
+          capabilities: body.capabilities ?? null,
+          fields: (body.fields || []).map((f) => ({
+            name: f.name,
+            alias: f.alias,
+            type: f.type,
+          })),
+          layers: (body.layers || []).map((l) => ({
+            id: l.id,
+            name: l.name,
+          })),
+          spatialReference: body.spatialReference ?? null,
+          extent: body.extent ?? body.fullExtent ?? null,
+          maxRecordCount: body.maxRecordCount ?? null,
+          supportedQueryFormats: body.supportedQueryFormats ?? null,
+          advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
+          probedAt: new Date().toISOString(),
         };
       }
     } catch (probeErr) {
       return {
         url,
-        status: "DOWN",
-        error: `Data probe failed: ${probeErr?.message || String(probeErr)}`,
+        status: "WARN",
+        error: `Data probe warning: ${probeErr?.message || String(probeErr)}`,
         responseMs: elapsed,
         dataProbe: {
           ok: false,
           mode: "data",
           detail: probeErr?.message || String(probeErr),
         },
+        currentVersion: body.currentVersion ?? null,
+        serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
+        type: body.type ?? null,
+        geometryType: body.geometryType ?? null,
+        capabilities: body.capabilities ?? null,
+        fields: (body.fields || []).map((f) => ({
+          name: f.name,
+          alias: f.alias,
+          type: f.type,
+        })),
+        layers: (body.layers || []).map((l) => ({
+          id: l.id,
+          name: l.name,
+        })),
+        spatialReference: body.spatialReference ?? null,
+        extent: body.extent ?? body.fullExtent ?? null,
+        maxRecordCount: body.maxRecordCount ?? null,
+        supportedQueryFormats: body.supportedQueryFormats ?? null,
+        advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
+        probedAt: new Date().toISOString(),
       };
     }
 
@@ -616,10 +662,12 @@ async function handleRefresh(request, env) {
   // 4. Build metadata blob
   const layers = {};
   let upCount = 0;
+  let warnCount = 0;
   let downCount = 0;
   for (const r of results) {
     layers[r.url] = r;
     if (r.status === "UP") upCount++;
+    else if (r.status === "WARN") warnCount++;
     else downCount++;
   }
 
@@ -627,6 +675,7 @@ async function handleRefresh(request, env) {
     lastRefresh: new Date().toISOString(),
     totalLayers: urls.length,
     upCount,
+    warnCount,
     downCount,
     layers,
   };
@@ -642,6 +691,7 @@ async function handleRefresh(request, env) {
       lastRefresh: blob.lastRefresh,
       totalLayers: blob.totalLayers,
       upCount,
+      warnCount,
       downCount,
     },
     200,

@@ -1093,6 +1093,18 @@ async function saveLayer() {
   if (!title || !url) { toast('Title and URL are required', true); return; }
 
   if (modalType === 'report') {
+    var normalizedUrl = url.replace(/\/?$/, '');
+    var duplicateIndex = (config.reportLayers || []).findIndex(function (layer, idx) {
+      if (!layer || !layer.url) return false;
+      if (editMode && editMode.type === 'report' && idx === editMode.index) return false;
+      return layer.url.replace(/\/?$/, '') === normalizedUrl;
+    });
+    if (duplicateIndex >= 0) {
+      var dupTitle = (config.reportLayers[duplicateIndex] && config.reportLayers[duplicateIndex].title) || 'existing report layer';
+      toast('Duplicate report URL already exists: ' + dupTitle, true);
+      return;
+    }
+
     var isRoot = isRootServiceUrl(url);
     var sType = document.getElementById('fServiceType').value;
     var obj = {
@@ -1126,6 +1138,18 @@ async function saveLayer() {
       config.reportLayers.push(obj);
     }
   } else {
+    var normalizedSelectionUrl = url.replace(/\/?$/, '');
+    var selectionDuplicateIndex = (config.selectionLayers || []).findIndex(function (layer, idx) {
+      if (!layer || !layer.url) return false;
+      if (editMode && editMode.type === 'selection' && idx === editMode.index) return false;
+      return layer.url.replace(/\/?$/, '') === normalizedSelectionUrl;
+    });
+    if (selectionDuplicateIndex >= 0) {
+      var dupSelectionTitle = (config.selectionLayers[selectionDuplicateIndex] && config.selectionLayers[selectionDuplicateIndex].title) || 'existing selection layer';
+      toast('Duplicate selection URL already exists: ' + dupSelectionTitle, true);
+      return;
+    }
+
     var obj2 = {
       title: title,
       url: url,
