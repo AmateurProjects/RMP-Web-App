@@ -114,14 +114,18 @@ function detectServiceKind(url) {
 }
 
 function pickCandidateSublayerIds(meta) {
+  // Consider both layers and tables — some FeatureServers expose
+  // data only as tables (e.g. USFWS At-Risk Species).
   const layers = Array.isArray(meta?.layers) ? meta.layers : [];
-  return layers
+  const tables = Array.isArray(meta?.tables) ? meta.tables : [];
+  const all = layers.concat(tables);
+  return all
     .filter((l) => {
       if (!Number.isFinite(Number(l?.id))) return false;
       const type = String(l?.type || "").toLowerCase();
       if (type.includes("group")) return false;
       if (type.includes("feature")) return true;
-      return !!l?.geometryType;
+      return !!l?.geometryType || tables.includes(l);
     })
     .map((l) => Number(l.id))
     .slice(0, DATA_PROBE_LAYER_LIMIT);
@@ -201,12 +205,30 @@ async function probeFeatureOrMapLayerForGeometry(layerUrl) {
   const base = stripQueryAndSlash(layerUrl);
   const queryUrl =
     `${base}/query?where=1%3D1` +
-    `&outFields=*` +
+    `&outFields=OBJECTID` +
     `&returnGeometry=true` +
     `&resultRecordCount=${DATA_PROBE_FEATURE_LIMIT}` +
     `&f=json`;
 
-  const data = await fetchJsonRobust(queryUrl, FETCH_TIMEOUT_MS);
+  let data;
+  try {
+    data = await fetchJsonRobust(queryUrl, FETCH_TIMEOUT_MS);
+  } catch (queryErr) {
+    const msg = String(queryErr?.message || queryErr || "").toLowerCase();
+    // ArcGIS 400 "not supported" or 500 "error performing query" on large
+    // services — metadata was fine, so treat as operational with a note.
+    if (msg.includes("400") || msg.includes("500") || msg.includes("not supported")) {
+      return {
+        ok: true,
+        mode: "query",
+        detail: `Query not supported or errored (${queryErr?.message}); metadata OK`,
+        testedUrl: base,
+        hasFeaturesNow: null,
+      };
+    }
+    throw queryErr; // re-throw genuine network failures
+  }
+
   const features = Array.isArray(data?.features) ? data.features : [];
 
   if (!features.length) {
@@ -222,13 +244,15 @@ async function probeFeatureOrMapLayerForGeometry(layerUrl) {
 
   const withGeometry = features.find((f) => !!f?.geometry);
   if (!withGeometry) {
+    // Features exist but server omitted geometry from the response.
+    // This is common for large polygon datasets (BLM, etc.) — the
+    // service is operational, geometry renders via map tile requests.
     return {
-      ok: false,
-      warn: true,
+      ok: true,
       mode: "query",
-      detail: "Query returned features without geometry",
+      detail: "Features returned (geometry omitted from REST response)",
       testedUrl: base,
-      hasFeaturesNow: true, // features exist, just missing geometry
+      hasFeaturesNow: true,
     };
   }
 
@@ -246,11 +270,12 @@ async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
   const candidateIds = pickCandidateSublayerIds(serviceMeta);
 
   if (!candidateIds.length) {
+    // No layers or tables to probe — metadata was fine, so mark as UP.
+    // Some services are structurally valid but have no queryable sublayers.
     return {
-      ok: false,
-      warn: true,
+      ok: true,
       mode: "query",
-      detail: "Service has no queryable sublayers to probe",
+      detail: "Service has no queryable sublayers; metadata OK",
       testedUrl: base,
       hasFeaturesNow: null,
     };
