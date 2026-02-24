@@ -400,22 +400,31 @@ function setBusy(isBusy) {
     let serviceDownNoticeShown = false;
 
     const serviceDownModal = {
-        show(downItems, sourceLabel, refreshedAt) {
-            if (!serviceDownModalEl || !serviceDownListEl || !downItems || !downItems.length) return;
+        show(downItems, warnItems, sourceLabel, refreshedAt) {
+            const allItems = (downItems || []).concat(warnItems || []);
+            if (!serviceDownModalEl || !serviceDownListEl || !allItems.length) return;
 
             const sourceText = sourceLabel === "r2"
                 ? "from cached service checks"
                 : "from live fallback checks";
             const refreshedText = refreshedAt ? ` (last refresh ${refreshedAt})` : "";
 
+            const parts = [];
+            if (downItems.length) parts.push(`${downItems.length} DOWN`);
+            if (warnItems.length) parts.push(`${warnItems.length} degraded`);
+
             if (serviceDownSummaryEl) {
-                serviceDownSummaryEl.textContent = `${downItems.length} service${downItems.length !== 1 ? "s" : ""} marked DOWN ${sourceText}${refreshedText}.`;
+                serviceDownSummaryEl.textContent = `${parts.join(", ")} service${allItems.length !== 1 ? "s" : ""} detected ${sourceText}${refreshedText}.`;
             }
 
-            serviceDownListEl.innerHTML = downItems.map(it => {
+            serviceDownListEl.innerHTML = allItems.map(it => {
+                const statusClass = it._warnLevel === "WARN" ? "service-warn-item" : "service-down-item";
+                const badge = it._warnLevel === "WARN"
+                    ? '<span class="service-badge warn">DEGRADED</span>'
+                    : '<span class="service-badge down">DOWN</span>';
                 return `
-                    <li class="service-down-item">
-                        <div class="service-down-item-title">${escapeHtml(it.title || "Unnamed Service")}</div>
+                    <li class="${statusClass}">
+                        <div class="service-down-item-title">${badge} ${escapeHtml(it.title || "Unnamed Service")}</div>
                         <div class="service-down-item-meta">${escapeHtml(it.kind || "Service")}</div>
                         <div class="service-down-item-url"><a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">${escapeHtml(it.url)}</a></div>
                     </li>`;
@@ -451,8 +460,12 @@ function setBusy(isBusy) {
             if (hasHistory === false) return false;
             return true; // true or unknown/null => still show as potentially impactful
         });
-        if (!downItems.length) return;
-        serviceDownModal.show(downItems, sourceLabel, refreshedAt);
+        // Also collect WARN items (only from R2 source, not fallback pings)
+        const warnItems = (sourceLabel === "r2")
+            ? items.filter(it => serviceStatus.get(it.url) === "WARN").map(it => ({ ...it, _warnLevel: "WARN" }))
+            : [];
+        if (!downItems.length && !warnItems.length) return;
+        serviceDownModal.show(downItems, warnItems, sourceLabel, refreshedAt);
     }
 
 
@@ -1444,6 +1457,8 @@ function clearAll() {
             const status = serviceStatus.get(e.cfg.url);
             const statusIcon = (status === "DOWN") 
                 ? `<span class="status-warning" title="Service is DOWN">⚠️</span>` 
+                : (status === "WARN")
+                ? `<span class="status-degraded" title="Service degraded">⚡</span>`
                 : "";
             
             return `
@@ -1519,6 +1534,8 @@ function clearAll() {
             const status = serviceStatus.get(l.url);
             const statusIcon = (status === "DOWN") 
                 ? `<span class="status-warning" title="Service is DOWN">⚠️</span>` 
+                : (status === "WARN")
+                ? `<span class="status-degraded" title="Service degraded">⚡</span>`
                 : "";
 
             const checked = isChecked ? "checked" : "";
@@ -1603,6 +1620,8 @@ cb.addEventListener("change", async () => {
             const status = serviceStatus.get(e.cfg.url);
             const statusIcon = (status === "DOWN")
                 ? `<span class="status-warning" title="Service is DOWN">⚠️</span>`
+                : (status === "WARN")
+                ? `<span class="status-degraded" title="Service degraded">⚡</span>`
                 : "";
             return `
                 <div class="toggle-row">
@@ -1656,6 +1675,8 @@ cb.addEventListener("change", async () => {
             const status = serviceStatus.get(l.url);
             const statusIcon = (status === "DOWN")
                 ? `<span class="status-warning" title="Service is DOWN">⚠️</span>`
+                : (status === "WARN")
+                ? `<span class="status-degraded" title="Service degraded">⚡</span>`
                 : "";
             return `
                 <div class="toggle-row">

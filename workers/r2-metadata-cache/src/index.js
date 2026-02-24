@@ -127,50 +127,48 @@ function pickCandidateSublayerIds(meta) {
     .slice(0, DATA_PROBE_LAYER_LIMIT);
 }
 
-async function queryLayerFeatureCount(layerUrl) {
-  const base = stripQueryAndSlash(layerUrl);
-  const countUrl = `${base}/query?where=1%3D1&returnCountOnly=true&f=json`;
-  const data = await fetchJsonRobust(countUrl, FETCH_TIMEOUT_MS);
-  const count = Number(data?.count);
-  if (!Number.isFinite(count)) {
-    throw new Error("Feature count query returned invalid count");
+// Note: detectFeaturePresence has been merged into the data probe functions
+// to avoid querying the same sublayers twice. Each probe now returns
+// { ...probeResult, hasFeaturesNow: true|false|null }.
+
+/**
+ * Compute normallyHasFeatures with decay.
+ * Once a service has features, it stays true for up to DECAY_THRESHOLD
+ * consecutive refreshes where hasFeaturesNow !== true.  After that it
+ * resets to null (unknown) so it can be re-evaluated.
+ */
+const FEATURES_DECAY_THRESHOLD = 6; // ~36 hours at 6-hour refresh schedule
+
+function computeNormallyHasFeatures(previousEntry, hasFeaturesNow) {
+  // Current refresh found features → sticky true, reset counter
+  if (hasFeaturesNow === true) {
+    return { normallyHasFeatures: true, featuresAbsentCount: 0 };
   }
-  return count;
+
+  // No previous history at all → unknown
+  if (!previousEntry || previousEntry.normallyHasFeatures == null) {
+    return { normallyHasFeatures: null, featuresAbsentCount: 0 };
+  }
+
+  // Previous said true but current didn't find features → increment counter
+  if (previousEntry.normallyHasFeatures === true) {
+    const prevCount = Number(previousEntry.featuresAbsentCount) || 0;
+    const newCount = prevCount + 1;
+    if (newCount >= FEATURES_DECAY_THRESHOLD) {
+      // Decayed — reset to unknown so we stop suppressing warnings
+      return { normallyHasFeatures: null, featuresAbsentCount: 0 };
+    }
+    return { normallyHasFeatures: true, featuresAbsentCount: newCount };
+  }
+
+  // Previous was false or null → keep as-is
+  return {
+    normallyHasFeatures: previousEntry.normallyHasFeatures,
+    featuresAbsentCount: Number(previousEntry.featuresAbsentCount) || 0,
+  };
 }
 
-async function detectFeaturePresence(url, serviceMeta) {
-  const kind = detectServiceKind(url);
-  if (kind === "feature-layer" || kind === "map-layer") {
-    try {
-      const count = await queryLayerFeatureCount(url);
-      return count > 0;
-    } catch {
-      return null;
-    }
-  }
-
-  if (kind === "feature-root" || kind === "map-root") {
-    const base = stripQueryAndSlash(url);
-    const ids = pickCandidateSublayerIds(serviceMeta);
-    if (!ids.length) return null;
-
-    let hadAnyFalse = false;
-    for (const id of ids) {
-      try {
-        const count = await queryLayerFeatureCount(`${base}/${id}`);
-        if (count > 0) return true;
-        hadAnyFalse = true;
-      } catch {
-        // keep probing remaining sublayers
-      }
-    }
-    return hadAnyFalse ? false : null;
-  }
-
-  return null;
-}
-
-function extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures) {
+function extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures, featuresAbsentCount) {
   return {
     dataProbe: probeResult,
     currentVersion: body.currentVersion ?? null,
@@ -194,6 +192,7 @@ function extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFe
     advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
     hasFeaturesNow,
     normallyHasFeatures,
+    featuresAbsentCount: featuresAbsentCount ?? 0,
     probedAt: new Date().toISOString(),
   };
 }
@@ -217,6 +216,7 @@ async function probeFeatureOrMapLayerForGeometry(layerUrl) {
       mode: "query",
       detail: "Query succeeded but returned 0 features",
       testedUrl: base,
+      hasFeaturesNow: false,
     };
   }
 
@@ -228,6 +228,7 @@ async function probeFeatureOrMapLayerForGeometry(layerUrl) {
       mode: "query",
       detail: "Query returned features without geometry",
       testedUrl: base,
+      hasFeaturesNow: true, // features exist, just missing geometry
     };
   }
 
@@ -236,6 +237,7 @@ async function probeFeatureOrMapLayerForGeometry(layerUrl) {
     mode: "query",
     detail: "Feature query returned geometry",
     testedUrl: base,
+    hasFeaturesNow: true,
   };
 }
 
@@ -250,19 +252,25 @@ async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
       mode: "query",
       detail: "Service has no queryable sublayers to probe",
       testedUrl: base,
+      hasFeaturesNow: null,
     };
   }
 
   const errors = [];
   const warnings = [];
+  let anyHasFeatures = false;
+  let anyChecked = false;
   for (const id of candidateIds) {
     const layerUrl = `${base}/${id}`;
     try {
       const pass = await probeFeatureOrMapLayerForGeometry(layerUrl);
+      if (pass?.hasFeaturesNow === true) anyHasFeatures = true;
+      if (pass?.hasFeaturesNow != null) anyChecked = true;
       if (pass?.ok) {
         return {
           ...pass,
           detail: `${pass.detail} (sublayer ${id})`,
+          hasFeaturesNow: true,
         };
       }
       if (pass?.warn) {
@@ -274,11 +282,14 @@ async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
         warn: false,
         mode: "query",
         detail: `Sublayer ${id} probe did not return a valid result`,
+        hasFeaturesNow: anyHasFeatures ? true : anyChecked ? false : null,
       };
     } catch (err) {
       errors.push(`/${id}: ${err?.message || String(err)}`);
     }
   }
+
+  const computedHasFeatures = anyHasFeatures ? true : anyChecked ? false : null;
 
   if (warnings.length && !errors.length) {
     return {
@@ -287,6 +298,7 @@ async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
       mode: "query",
       detail: `Sublayers reachable but no feature geometry available (${warnings.join("; ")})`,
       testedUrl: base,
+      hasFeaturesNow: computedHasFeatures,
     };
   }
 
@@ -297,6 +309,7 @@ async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
       mode: "query",
       detail: `Partial probe warnings (${warnings.join("; ")}); errors (${errors.join("; ")})`,
       testedUrl: base,
+      hasFeaturesNow: computedHasFeatures,
     };
   }
 
@@ -332,6 +345,7 @@ async function probeImageServer(serviceUrl, serviceMeta) {
     mode: "exportImage",
     detail: "Image export test returned raster data URL",
     testedUrl: base,
+    hasFeaturesNow: null, // N/A for imagery
   };
 }
 
@@ -348,6 +362,7 @@ async function probeGeocodeServer(serviceUrl) {
       mode: "suggest",
       detail: "Geocode suggest returned 0 suggestions",
       testedUrl: base,
+      hasFeaturesNow: null, // N/A for geocode
     };
   }
 
@@ -356,6 +371,7 @@ async function probeGeocodeServer(serviceUrl) {
     mode: "suggest",
     detail: "Geocode suggest returned candidates",
     testedUrl: base,
+    hasFeaturesNow: null, // N/A for geocode
   };
 }
 
@@ -379,6 +395,7 @@ async function runDataProbe(url, serviceMeta) {
     mode: "metadata-only",
     detail: "No data probe implemented for this endpoint type",
     testedUrl: stripQueryAndSlash(url),
+    hasFeaturesNow: null,
   };
 }
 
@@ -447,6 +464,8 @@ async function probeService(url, previousEntry = null) {
       } catch (metaErr2) {
         const elapsed = Date.now() - started;
         const msg = metaErr2?.message || metaErr?.message || String(metaErr2 || metaErr);
+        const { normallyHasFeatures, featuresAbsentCount } =
+          computeNormallyHasFeatures(previousEntry, null);
         return {
           url,
           status: "DOWN",
@@ -458,59 +477,46 @@ async function probeService(url, previousEntry = null) {
             detail: `Metadata request failed: ${msg}`,
           },
           hasFeaturesNow: null,
-          normallyHasFeatures: !!(previousEntry && previousEntry.normallyHasFeatures),
+          normallyHasFeatures,
+          featuresAbsentCount,
           probedAt: new Date().toISOString(),
         };
       }
     }
 
-    const elapsed = Date.now() - started;
-    const hasFeaturesNow = await detectFeaturePresence(url, body);
-    const normallyHasFeatures = !!(
-      (previousEntry && previousEntry.normallyHasFeatures) ||
-      hasFeaturesNow === true
-    );
-
     // Data-level probe (query geometry / export imagery / geocode suggest)
+    // The probe functions now also return hasFeaturesNow, eliminating
+    // the separate detectFeaturePresence pass over the same sublayers.
     let probeResult;
     try {
       probeResult = await runDataProbe(url, body);
-
-      if (probeResult && probeResult.warn) {
-        return {
-          url,
-          status: "WARN",
-          error: probeResult.detail || "Data probe warning",
-          responseMs: elapsed,
-          ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures),
-        };
-      }
-
-      if (probeResult && probeResult.ok === false && !probeResult.warn) {
-        return {
-          url,
-          status: "WARN",
-          error: `Data probe warning: ${probeResult.detail || "Unknown probe issue"}`,
-          responseMs: elapsed,
-          ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures),
-        };
-      }
     } catch (probeErr) {
+      const elapsed = Date.now() - started;
+      const errDetail = probeErr?.message || String(probeErr);
+      const failProbe = { ok: false, mode: "data", detail: errDetail };
+      const { normallyHasFeatures, featuresAbsentCount } =
+        computeNormallyHasFeatures(previousEntry, null);
       return {
         url,
         status: "WARN",
-        error: `Data probe warning: ${probeErr?.message || String(probeErr)}`,
+        error: `Data probe warning: ${errDetail}`,
         responseMs: elapsed,
-        dataProbe: {
-          ok: false,
-          mode: "data",
-          detail: probeErr?.message || String(probeErr),
-        },
-        ...extractServiceMetadata(body, {
-          ok: false,
-          mode: "data",
-          detail: probeErr?.message || String(probeErr),
-        }, hasFeaturesNow, normallyHasFeatures),
+        ...extractServiceMetadata(body, failProbe, null, normallyHasFeatures, featuresAbsentCount),
+      };
+    }
+
+    const elapsed = Date.now() - started;
+    const hasFeaturesNow = probeResult?.hasFeaturesNow ?? null;
+    const { normallyHasFeatures, featuresAbsentCount } =
+      computeNormallyHasFeatures(previousEntry, hasFeaturesNow);
+
+    if (probeResult && (probeResult.warn || (probeResult.ok === false))) {
+      return {
+        url,
+        status: "WARN",
+        error: probeResult.detail || "Data probe warning",
+        responseMs: elapsed,
+        ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures, featuresAbsentCount),
       };
     }
 
@@ -519,16 +525,19 @@ async function probeService(url, previousEntry = null) {
       url,
       status: "UP",
       responseMs: elapsed,
-      ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures),
+      ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures, featuresAbsentCount),
     };
   } catch (err) {
+    const { normallyHasFeatures, featuresAbsentCount } =
+      computeNormallyHasFeatures(previousEntry, null);
     return {
       url,
       status: "DOWN",
       error: err?.message || String(err),
       responseMs: Date.now() - started,
       hasFeaturesNow: null,
-      normallyHasFeatures: !!(previousEntry && previousEntry.normallyHasFeatures),
+      normallyHasFeatures,
+      featuresAbsentCount,
       probedAt: new Date().toISOString(),
     };
   }
