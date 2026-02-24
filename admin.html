@@ -290,6 +290,35 @@
   .sample-preview tr:hover td { background: var(--table-hover); }
   .sample-preview .sample-meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
   .sample-preview .sample-loading { font-size: 12px; color: var(--muted); padding: 12px 0; }
+
+  /* Source badges */
+  .src-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; }
+  .src-blm       { background: #fff8e1; color: #f57f17; }
+  .src-usfws     { background: #e8f5e9; color: #2e7d32; }
+  .src-usgs      { background: #e3f2fd; color: #1565c0; }
+  .src-esri      { background: #f3e5f5; color: #7b1fa2; }
+  .src-fema      { background: #fce4ec; color: #c62828; }
+  .src-bia       { background: #fff3e0; color: #e65100; }
+  .src-usfs      { background: #e0f2f1; color: #00695c; }
+  .src-unknown   { background: var(--table-header); color: var(--muted); }
+  [data-theme="dark"] .src-blm       { background: rgba(245,127,23,0.2); color: #fbbf24; }
+  [data-theme="dark"] .src-usfws     { background: rgba(74,222,128,0.2); color: #4ade80; }
+  [data-theme="dark"] .src-usgs      { background: rgba(96,165,250,0.2); color: #60a5fa; }
+  [data-theme="dark"] .src-esri      { background: rgba(192,132,252,0.2); color: #c084fc; }
+  [data-theme="dark"] .src-fema      { background: rgba(251,113,133,0.2); color: #fb7185; }
+  [data-theme="dark"] .src-bia       { background: rgba(251,146,60,0.2); color: #fb923c; }
+  [data-theme="dark"] .src-usfs      { background: rgba(94,234,212,0.2); color: #5eead4; }
+  [data-theme="dark"] .src-unknown   { background: var(--table-header); color: var(--muted); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .src-blm       { background: rgba(245,127,23,0.2); color: #fbbf24; }
+    :root:not([data-theme="light"]) .src-usfws     { background: rgba(74,222,128,0.2); color: #4ade80; }
+    :root:not([data-theme="light"]) .src-usgs      { background: rgba(96,165,250,0.2); color: #60a5fa; }
+    :root:not([data-theme="light"]) .src-esri      { background: rgba(192,132,252,0.2); color: #c084fc; }
+    :root:not([data-theme="light"]) .src-fema      { background: rgba(251,113,133,0.2); color: #fb7185; }
+    :root:not([data-theme="light"]) .src-bia       { background: rgba(251,146,60,0.2); color: #fb923c; }
+    :root:not([data-theme="light"]) .src-usfs      { background: rgba(94,234,212,0.2); color: #5eead4; }
+    :root:not([data-theme="light"]) .src-unknown   { background: var(--table-header); color: var(--muted); }
+  }
 </style>
 </head>
 <body>
@@ -381,12 +410,22 @@
         <option value="realty">Realty</option>
         <option value="_none">No Permit Types</option>
       </select>
+      <select id="filterSource" onchange="renderReportTable()">
+        <option value="">All Sources</option>
+        <option value="BLM">BLM</option>
+        <option value="USFWS">USFWS</option>
+        <option value="USGS">USGS</option>
+        <option value="Esri Living Atlas">Esri Living Atlas</option>
+        <option value="FEMA">FEMA</option>
+        <option value="BIA">BIA</option>
+        <option value="USFS">USFS</option>
+      </select>
       <button class="btn btn-primary" onclick="openLayerModal('report')">+ Add Dataset</button>
       <button class="btn btn-outline" onclick="checkReportHealth()" id="checkReportHealthBtn">🔍 Check Health</button>
     </div>
     <table class="layer-table">
       <thead><tr>
-        <th style="width:50px">Status</th><th>Title</th><th>Category</th><th>Permit Types</th><th>Type</th><th>URL</th><th style="width:80px"></th>
+        <th style="width:50px">Status</th><th>Title</th><th>Source</th><th>Category</th><th>Permit Types</th><th>Type</th><th>URL</th><th style="width:80px"></th>
       </tr></thead>
       <tbody id="reportTbody"></tbody>
     </table>
@@ -401,7 +440,7 @@
     </div>
     <table class="layer-table">
       <thead><tr>
-        <th style="width:50px">Status</th><th>Title</th><th>Group</th><th>Visible</th><th>URL</th><th style="width:80px"></th>
+        <th style="width:50px">Status</th><th>Title</th><th>Source</th><th>Group</th><th>Visible</th><th>URL</th><th style="width:80px"></th>
       </tr></thead>
       <tbody id="selectionTbody"></tbody>
     </table>
@@ -569,6 +608,36 @@ const sublayerCache = new Map();
 
 // Track which layers are expanded to show sublayers
 const expandedLayers = new Set();
+
+// ── Source detection from URL hostname ──
+var SOURCE_RULES = [
+  { pattern: /gis\.blm\.gov/i,                           label: 'BLM',              css: 'blm' },
+  { pattern: /arcgis\.com\/.*KbxwQRRfWyEYLgp4/i,         label: 'BLM',              css: 'blm' },
+  { pattern: /arcgis\.com\/.*FiaPA4ga0iQKduv3/i,         label: 'BLM',              css: 'blm' },
+  { pattern: /arcgis\.com\/.*QVENGdaPbd4LUkLV/i,         label: 'USFWS',            css: 'usfws' },
+  { pattern: /fwsprimary\.wim\.usgs\.gov/i,               label: 'USFWS',            css: 'usfws' },
+  { pattern: /arcgis\.com\/.*U7I2hMhPtOeGx0fs/i,         label: 'USGS',             css: 'usgs' },
+  { pattern: /arcgis\.com\/.*v01gqwM5QqNysAAi/i,         label: 'USGS',             css: 'usgs' },
+  { pattern: /nationalmap\.gov/i,                         label: 'USGS',             css: 'usgs' },
+  { pattern: /arcgis\.com\/.*P3ePLMYs2RVChkJx/i,         label: 'Esri Living Atlas', css: 'esri' },
+  { pattern: /geocode\.arcgis\.com/i,                     label: 'Esri',             css: 'esri' },
+  { pattern: /hazards\.fema\.gov/i,                       label: 'FEMA',             css: 'fema' },
+  { pattern: /biamaps\.geoplatform\.gov/i,                label: 'BIA',              css: 'bia' },
+  { pattern: /apps\.fs\.usda\.gov/i,                      label: 'USFS',             css: 'usfs' }
+];
+
+function detectSource(url) {
+  if (!url) return { label: 'Unknown', css: 'unknown' };
+  for (var i = 0; i < SOURCE_RULES.length; i++) {
+    if (SOURCE_RULES[i].pattern.test(url)) return { label: SOURCE_RULES[i].label, css: SOURCE_RULES[i].css };
+  }
+  return { label: 'Unknown', css: 'unknown' };
+}
+
+function sourceBadge(url) {
+  var src = detectSource(url);
+  return '<span class="src-badge src-' + src.css + '">' + esc(src.label) + '</span>';
+}
 
 // ── Theme toggle ──
 function initTheme() {
@@ -865,6 +934,7 @@ function renderReportTable() {
   var search = (document.getElementById('searchReport').value || '').toLowerCase();
   var filterCat = document.getElementById('filterCategory').value;
   var filterPT = document.getElementById('filterPermitType').value;
+  var filterSrc = document.getElementById('filterSource').value;
 
   // Build a Set of all selection layer URLs for cross-reference badges
   var selectionUrlSet = new Set((config.selectionLayers || []).map(function(sl) { return sl.url.replace(/\/?$/, ''); }));
@@ -878,6 +948,7 @@ function renderReportTable() {
       if (filterPT === '_none') { if (pts.length > 0) return false; }
       else { if (!pts.includes(filterPT)) return false; }
     }
+    if (filterSrc && detectSource(l.url).label !== filterSrc) return false;
     return true;
   });
 
@@ -905,6 +976,7 @@ function renderReportTable() {
     html += '<tr' + (l.excluded ? ' class="excluded-row"' : '') + '>';
     html += '<td style="text-align:center">' + healthDot + '</td>';
     html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + excludedBadge + alsoSelBadge + '</td>';
+    html += '<td>' + sourceBadge(l.url) + '</td>';
     html += '<td>' + catBadge(l.category) + '</td>';
     html += '<td>' + permitTypeBadges(l.permitTypes) + '</td>';
     html += '<td>' + esc(l.serviceType || '—') + '</td>';
@@ -927,6 +999,7 @@ function renderReportTable() {
         html += '<tr class="sublayer-row">';
         html += '<td style="text-align:center">' + subHealthDot + '</td>';
         html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
+        html += '<td>' + sourceBadge(subUrl) + '</td>';
         html += '<td>' + catBadge(l.category) + '</td>';
         html += '<td>' + permitTypeBadges(l.permitTypes) + '</td>';
         html += '<td>' + esc(sub.type || '—') + '</td>';
@@ -940,7 +1013,7 @@ function renderReportTable() {
       });
     }
   });
-  if (!filtered.length) html = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No layers match filters</td></tr>';
+  if (!filtered.length) html = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No layers match filters</td></tr>';
   document.getElementById('reportTbody').innerHTML = html;
 }
 
@@ -995,6 +1068,7 @@ function renderSelectionTable() {
     html += '<tr>';
     html += '<td style="text-align:center">' + healthDot + '</td>';
     html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + alsoRepBadge + '</td>';
+    html += '<td>' + sourceBadge(l.url) + '</td>';
     html += '<td>' + esc(l.group || '—') + '</td>';
     html += '<td>' + (l.visible ? 'Yes' : 'No') + '</td>';
     html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
@@ -1015,6 +1089,7 @@ function renderSelectionTable() {
         html += '<tr class="sublayer-row">';
         html += '<td style="text-align:center">' + subHealthDot + '</td>';
         html += '<td><span class="sublayer-indent">└</span> ' + esc(sub.name) + '</td>';
+        html += '<td>' + sourceBadge(subUrl) + '</td>';
         html += '<td colspan="2"><span style="color:var(--muted);font-size:11px">' + esc(sub.type || '') + '</span></td>';
         html += '<td class="url-cell" title="' + esc(subUrl) + '">' + esc(subUrl) + '</td>';
         if (isRegSel) {
@@ -1026,7 +1101,7 @@ function renderSelectionTable() {
       });
     }
   });
-  if (!filtered.length) html = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No layers found</td></tr>';
+  if (!filtered.length) html = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No layers found</td></tr>';
   document.getElementById('selectionTbody').innerHTML = html;
 }
 
