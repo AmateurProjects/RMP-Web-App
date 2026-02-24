@@ -1834,11 +1834,75 @@ function checkLayerHealth(layers, renderFn, btnId) {
 }
 
 function checkReportHealth() {
-  checkLayerHealth(config.reportLayers || [], renderReportTable, 'checkReportHealthBtn');
+  checkLayerHealth(config.reportLayers || [], renderReportTable, 'checkReportHealthBtn')
+    .then(function() { return autoRegisterDiscoveredSublayers('report'); });
 }
 
 function checkSelectionHealth() {
-  checkLayerHealth(config.selectionLayers || [], renderSelectionTable, 'checkSelectionHealthBtn');
+  checkLayerHealth(config.selectionLayers || [], renderSelectionTable, 'checkSelectionHealthBtn')
+    .then(function() { return autoRegisterDiscoveredSublayers('selection'); });
+}
+
+/**
+ * After health check finishes, auto-register any discovered sublayers
+ * that aren't already in the config. Each sublayer inherits its parent's
+ * category, permitTypes, serviceType, etc.
+ */
+async function autoRegisterDiscoveredSublayers(tableType) {
+  if (!config) return;
+  var arrayKey = tableType === 'report' ? 'reportLayers' : 'selectionLayers';
+  if (!config[arrayKey]) config[arrayKey] = [];
+  var layers = config[arrayKey];
+  var registeredUrls = new Set(layers.map(function(l) { return (l.url || '').replace(/\/?$/, ''); }));
+  var added = [];
+
+  sublayerCache.forEach(function(subs, parentUrl) {
+    if (!subs || !subs.length) return;
+    var parentNorm = parentUrl.replace(/\/?$/, '');
+    // Find the parent layer in this table type
+    var parent = layers.find(function(l) { return (l.url || '').replace(/\/?$/, '') === parentNorm; });
+    if (!parent) return;
+
+    subs.forEach(function(sub) {
+      // Skip group layers — they aren't queryable
+      var subType = String(sub.type || '').toLowerCase();
+      if (subType.indexOf('group') >= 0) return;
+
+      var subUrl = parentNorm + '/' + sub.id;
+      if (registeredUrls.has(subUrl)) return; // already registered
+
+      if (tableType === 'report') {
+        var newLayer = {
+          title: sub.name,
+          url: subUrl,
+          category: parent.category || 'special',
+          permitTypes: (parent.permitTypes || []).slice(),
+          serviceType: parent.serviceType || 'feature'
+        };
+        if (parent.summaryPlugin) newLayer.summaryPlugin = parent.summaryPlugin;
+        config.reportLayers.push(newLayer);
+      } else {
+        config.selectionLayers.push({
+          title: sub.name,
+          url: subUrl,
+          visible: parent.visible || false,
+          group: parent.group || 'default'
+        });
+      }
+      registeredUrls.add(subUrl);
+      added.push(sub.name);
+    });
+  });
+
+  if (added.length) {
+    try {
+      await pushConfig('Auto-register ' + added.length + ' discovered sublayer' + (added.length !== 1 ? 's' : ''));
+      toast('Added ' + added.length + ' sublayer' + (added.length !== 1 ? 's' : '') + ' to config');
+      renderAll();
+    } catch(e) {
+      toast('Failed to save sublayers: ' + e.message, true);
+    }
+  }
 }
 
 // ── Sublayer Health Checks (metadata + query probe) ──
