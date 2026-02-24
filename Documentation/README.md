@@ -56,8 +56,30 @@ Plugins are matched by: (1) explicit `summaryPlugin` field in config, (2) title-
 - View/search/filter all layers by category and tier
 - Add, edit, or delete report and selection layers
 - Edit reference layer URLs
-- Run service health checks (pings each endpoint)
+- Run service health checks in the Admin UI (metadata + query/data probes for configured endpoints)
 - Commits changes directly to `config.json` in the repo
+
+### Health Check Consistency (Worker + Admin)
+
+Service URL health checks are intentionally aligned between:
+
+- Worker probe path (`workers/r2-metadata-cache/src/index.js`) used to refresh R2 metadata
+- Admin UI probe path (`admin.html`) used by **Check Health** buttons
+
+Both paths use the same rules:
+
+- Detect endpoint kind from URL (`FeatureServer` layer/root, `MapServer` layer/root, `ImageServer`, `GeocodeServer`)
+- Run endpoint-appropriate data probe:
+  - feature/map layer: `query` with `returnGeometry=true`
+  - feature/map root: probe candidate sublayers (bounded sample)
+  - image service: `exportImage`
+  - geocode service: `suggest`
+- Apply matching status semantics:
+  - `OK`: metadata and probe succeeded
+  - `WARN`: endpoint reachable but probe returned empty/no-geometry results
+  - `DOWN` (worker) / `err` (admin): HTTP/network/ArcGIS/probe failure
+
+When changing health-check behavior, update both files in the same PR to keep app/runtime and admin diagnostics consistent.
 
 ### Performance Optimizations
 

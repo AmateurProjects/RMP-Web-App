@@ -1192,6 +1192,9 @@ async function saveConfig() {
 }
 
 // ── Health Check Helpers ──
+var DATA_PROBE_LAYER_LIMIT = 5;
+var DATA_PROBE_FEATURE_LIMIT = 1;
+
 function healthDotHtml(health) {
   if (!health) return '<span class="health-dot" title="Not checked"></span>';
   if (health.status === 'checking') return '<span class="health-dot checking" title="Checking…"></span>';
@@ -1201,36 +1204,160 @@ function healthDotHtml(health) {
   return '<span class="health-dot"></span>';
 }
 
-// Helper: run a feature query to verify a layer can actually return data
-function probeQuery(url) {
-  var base = url.replace(/\/?$/, '');
-  var isImage = /ImageServer\b/i.test(base);
-  var probeUrl;
-  if (isImage) {
-    // ImageServer: use /info/Statistics or simple identify; fall back to exportImage
-    probeUrl = base + '/query?where=1%3D1&returnCountOnly=true&f=json';
-  } else {
-    probeUrl = base + '/query?where=1%3D1&returnCountOnly=true&resultRecordCount=1&f=json';
-  }
-  return fetch(probeUrl, { mode: 'cors' })
+function stripQueryAndSlash(url) {
+  return String(url || '').split('?')[0].replace(/\/+$/, '');
+}
+
+function detectServiceKind(url) {
+  var base = stripQueryAndSlash(url);
+  if (/\/ImageServer$/i.test(base)) return 'image-root';
+  if (/\/FeatureServer\/\d+$/i.test(base)) return 'feature-layer';
+  if (/\/FeatureServer$/i.test(base)) return 'feature-root';
+  if (/\/MapServer\/\d+$/i.test(base)) return 'map-layer';
+  if (/\/MapServer$/i.test(base)) return 'map-root';
+  if (/\/GeocodeServer$/i.test(base)) return 'geocode';
+  return 'other';
+}
+
+function pickCandidateSublayerIds(meta) {
+  var layers = (meta && Array.isArray(meta.layers)) ? meta.layers : [];
+  return layers
+    .filter(function (l) { return Number.isFinite(Number(l && l.id)); })
+    .map(function (l) { return Number(l.id); })
+    .slice(0, DATA_PROBE_LAYER_LIMIT);
+}
+
+function fetchJsonChecked(url) {
+  return fetch(url, { mode: 'cors' })
     .then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     })
     .then(function (data) {
       if (data && data.error) {
-        throw new Error((data.error.code || '') + ': ' + (data.error.message || 'Query error'));
+        throw new Error((data.error.code || '') + ': ' + (data.error.message || 'ArcGIS error'));
       }
-      // Count-only success still needs feature presence for full "ok".
-      var count = Number(data && data.count);
-      if (!isFinite(count)) {
-        return { ok: false, warn: true, noFeatures: true, count: 0, detail: 'query returned no count' };
-      }
-      if (count <= 0) {
-        return { ok: false, warn: true, noFeatures: true, count: 0, detail: 'query returned no features' };
-      }
-      return { ok: true, warn: false, noFeatures: false, count: count, detail: 'query returned features' };
+      return data;
     });
+}
+
+function probeFeatureOrMapLayerForGeometry(layerUrl) {
+  var base = stripQueryAndSlash(layerUrl);
+  var queryUrl = base + '/query?where=1%3D1&outFields=*'
+    + '&returnGeometry=true'
+    + '&resultRecordCount=' + DATA_PROBE_FEATURE_LIMIT
+    + '&f=json';
+
+  return fetchJsonChecked(queryUrl).then(function (data) {
+    var features = (data && Array.isArray(data.features)) ? data.features : [];
+    if (!features.length) {
+      return { ok: false, warn: true, mode: 'query', detail: 'query succeeded but returned 0 features' };
+    }
+    var hasGeom = features.some(function (f) { return !!(f && f.geometry); });
+    if (!hasGeom) {
+      return { ok: false, warn: true, mode: 'query', detail: 'query returned features without geometry' };
+    }
+    return { ok: true, warn: false, mode: 'query', detail: 'feature query returned geometry' };
+  });
+}
+
+function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
+  var base = stripQueryAndSlash(serviceUrl);
+  var ids = pickCandidateSublayerIds(serviceMeta);
+  if (!ids.length) {
+    return Promise.resolve({ ok: false, warn: true, mode: 'query', detail: 'service has no queryable sublayers to probe' });
+  }
+
+  var warnings = [];
+  var errors = [];
+
+  function next(i) {
+    if (i >= ids.length) {
+      if (warnings.length && !errors.length) {
+        return { ok: false, warn: true, mode: 'query', detail: 'sublayers reachable but no feature geometry available (' + warnings.join('; ') + ')' };
+      }
+      if (warnings.length && errors.length) {
+        return { ok: false, warn: true, mode: 'query', detail: 'partial probe warnings (' + warnings.join('; ') + '); errors (' + errors.join('; ') + ')' };
+      }
+      return { ok: false, warn: false, mode: 'query', detail: 'no sublayer returned geometry (' + errors.join('; ') + ')' };
+    }
+
+    var id = ids[i];
+    var layerUrl = base + '/' + id;
+    return probeFeatureOrMapLayerForGeometry(layerUrl)
+      .then(function (probe) {
+        if (probe && probe.ok) {
+          return { ok: true, warn: false, mode: 'query', detail: probe.detail + ' (sublayer ' + id + ')' };
+        }
+        if (probe && probe.warn) {
+          warnings.push('/' + id + ': ' + probe.detail);
+        } else {
+          errors.push('/' + id + ': invalid probe result');
+        }
+        return next(i + 1);
+      })
+      .catch(function (err) {
+        errors.push('/' + id + ': ' + (err && err.message ? err.message : String(err)));
+        return next(i + 1);
+      });
+  }
+
+  return next(0);
+}
+
+function probeImageService(serviceUrl, serviceMeta) {
+  var base = stripQueryAndSlash(serviceUrl);
+  var ext = (serviceMeta && (serviceMeta.extent || serviceMeta.fullExtent)) || null;
+  var sr = (ext && ext.spatialReference) || (serviceMeta && serviceMeta.spatialReference) || {};
+  var wkid = sr.latestWkid || sr.wkid || 4326;
+
+  if (!ext || [ext.xmin, ext.ymin, ext.xmax, ext.ymax].some(function (v) { return !Number.isFinite(Number(v)); })) {
+    return Promise.resolve({ ok: false, warn: false, mode: 'exportImage', detail: 'image service extent unavailable for export probe' });
+  }
+
+  var exportUrl = base + '/exportImage'
+    + '?bbox=' + ext.xmin + ',' + ext.ymin + ',' + ext.xmax + ',' + ext.ymax
+    + '&bboxSR=' + wkid
+    + '&imageSR=' + wkid
+    + '&size=64,64'
+    + '&format=png'
+    + '&f=json';
+
+  return fetchJsonChecked(exportUrl).then(function (data) {
+    if (!data || (!data.href && !data.url)) {
+      return { ok: false, warn: false, mode: 'exportImage', detail: 'exportImage did not return an image URL' };
+    }
+    return { ok: true, warn: false, mode: 'exportImage', detail: 'image export returned raster URL' };
+  });
+}
+
+function probeGeocodeService(serviceUrl) {
+  var base = stripQueryAndSlash(serviceUrl);
+  var suggestUrl = base + '/suggest?text=denver&maxSuggestions=1&f=json';
+  return fetchJsonChecked(suggestUrl).then(function (data) {
+    var suggestions = (data && Array.isArray(data.suggestions)) ? data.suggestions : [];
+    if (!suggestions.length) {
+      return { ok: false, warn: true, mode: 'suggest', detail: 'geocode suggest returned 0 suggestions' };
+    }
+    return { ok: true, warn: false, mode: 'suggest', detail: 'geocode suggest returned candidates' };
+  });
+}
+
+function runRobustDataProbe(url, serviceMeta) {
+  var kind = detectServiceKind(url);
+  if (kind === 'feature-layer' || kind === 'map-layer') {
+    return probeFeatureOrMapLayerForGeometry(url);
+  }
+  if (kind === 'feature-root' || kind === 'map-root') {
+    return probeFeatureOrMapRootForGeometry(url, serviceMeta);
+  }
+  if (kind === 'image-root') {
+    return probeImageService(url, serviceMeta);
+  }
+  if (kind === 'geocode') {
+    return probeGeocodeService(url);
+  }
+  return Promise.resolve({ ok: true, warn: false, mode: 'metadata-only', detail: 'no data probe implemented for this endpoint type' });
 }
 
 // ── Sample data preview for modal ──
@@ -1386,7 +1513,8 @@ function checkLayerHealth(layers, renderFn, btnId) {
       while (running < concurrency && qi < queue.length) {
         (function (layer) {
           running++;
-          var testUrl = layer.url.replace(/\/?$/, '') + '?f=json';
+          var baseUrl = stripQueryAndSlash(layer.url);
+          var testUrl = baseUrl + '?f=json';
           var start = Date.now();
           fetch(testUrl, { mode: 'cors' })
             .then(function (r) {
@@ -1402,30 +1530,22 @@ function checkLayerHealth(layers, renderFn, btnId) {
                     sublayerCache.set(layer.url, null);
                     return;
                   }
-                  // MapServer/FeatureServer with sublayers — delegate query test to sublayer checks
+                  // Keep sublayer listing for table expansion
+                  var subsToCheck = null;
                   if (data.layers && Array.isArray(data.layers) && data.layers.length > 0) {
-                    healthCache.set(layer.url, { status: 'ok', ms: ms });
                     var subs = data.layers.map(function (sub) {
                       return { id: sub.id, name: sub.name, type: sub.type || sub.geometryType || 'layer' };
                     });
                     sublayerCache.set(layer.url, subs);
                     expandedLayers.add(layer.url);
-                    checkSublayerHealth(layer.url, subs, renderFn);
-                    return;
+                    subsToCheck = subs;
                   }
-                  if (data.services && Array.isArray(data.services)) {
-                    healthCache.set(layer.url, { status: 'ok', ms: ms });
-                    var subs = data.services.map(function (svc) {
-                      return { id: svc.name, name: svc.name.split('/').pop(), type: svc.type };
-                    });
-                    sublayerCache.set(layer.url, subs);
-                    expandedLayers.add(layer.url);
-                    checkSublayerHealth(layer.url, subs, renderFn);
-                    return;
+
+                  if ((!data.layers || !Array.isArray(data.layers) || !data.layers.length) && !(data.services && Array.isArray(data.services))) {
+                    sublayerCache.set(layer.url, null);
                   }
-                  // Single-layer endpoint (no sublayers) — run feature query probe
-                  sublayerCache.set(layer.url, null);
-                  return probeQuery(layer.url)
+
+                  return runRobustDataProbe(layer.url, data)
                     .then(function (probe) {
                       var totalMs = Date.now() - start;
                       if (probe && probe.ok) {
@@ -1443,10 +1563,16 @@ function checkLayerHealth(layers, renderFn, btnId) {
                           ms: totalMs
                         });
                       }
+                      if (subsToCheck && subsToCheck.length) {
+                        checkSublayerHealth(layer.url, subsToCheck, renderFn);
+                      }
                     })
                     .catch(function (qErr) {
                       var totalMs = Date.now() - start;
-                      healthCache.set(layer.url, { status: 'warn', error: qErr.message || 'Query probe failed', ms: totalMs });
+                      healthCache.set(layer.url, { status: 'err', error: qErr.message || 'Probe failed', ms: totalMs });
+                      if (subsToCheck && subsToCheck.length) {
+                        checkSublayerHealth(layer.url, subsToCheck, renderFn);
+                      }
                     });
                 }).catch(function (parseErr) {
                   // Response was 200 but not valid JSON (HTML error page)
@@ -1521,8 +1647,8 @@ function checkSublayerHealth(parentUrl, subs, renderFn) {
               healthCache.set(subUrl, { status: 'err', error: errCode + ': ' + errMsg, ms: ms });
               return;
             }
-            // Metadata OK — now run feature query probe
-            return probeQuery(subUrl)
+            // Metadata OK — now run same robust probe as Worker
+            return runRobustDataProbe(subUrl, data)
               .then(function (probe) {
                 var totalMs = Date.now() - start;
                 if (probe && probe.ok) {
@@ -1543,7 +1669,7 @@ function checkSublayerHealth(parentUrl, subs, renderFn) {
               })
               .catch(function (qErr) {
                 var totalMs = Date.now() - start;
-                healthCache.set(subUrl, { status: 'warn', error: qErr.message || 'Query probe failed', ms: totalMs });
+                healthCache.set(subUrl, { status: 'err', error: qErr.message || 'Probe failed', ms: totalMs });
               });
           }).catch(function () {
             healthCache.set(subUrl, { status: 'err', error: 'Non-JSON response', ms: Date.now() - start });

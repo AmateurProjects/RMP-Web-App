@@ -104,12 +104,24 @@ async function probeFeatureOrMapLayerForGeometry(layerUrl) {
   const features = Array.isArray(data?.features) ? data.features : [];
 
   if (!features.length) {
-    throw new Error("Query returned 0 features");
+    return {
+      ok: false,
+      warn: true,
+      mode: "query",
+      detail: "Query succeeded but returned 0 features",
+      testedUrl: base,
+    };
   }
 
   const withGeometry = features.find((f) => !!f?.geometry);
   if (!withGeometry) {
-    throw new Error("Query returned features without geometry");
+    return {
+      ok: false,
+      warn: true,
+      mode: "query",
+      detail: "Query returned features without geometry",
+      testedUrl: base,
+    };
   }
 
   return {
@@ -129,17 +141,50 @@ async function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
   }
 
   const errors = [];
+  const warnings = [];
   for (const id of candidateIds) {
     const layerUrl = `${base}/${id}`;
     try {
       const pass = await probeFeatureOrMapLayerForGeometry(layerUrl);
+      if (pass?.ok) {
+        return {
+          ...pass,
+          detail: `${pass.detail} (sublayer ${id})`,
+        };
+      }
+      if (pass?.warn) {
+        warnings.push(`/${id}: ${pass.detail}`);
+        continue;
+      }
       return {
-        ...pass,
-        detail: `${pass.detail} (sublayer ${id})`,
+        ok: false,
+        warn: false,
+        mode: "query",
+        detail: `Sublayer ${id} probe did not return a valid result`,
       };
     } catch (err) {
       errors.push(`/${id}: ${err?.message || String(err)}`);
     }
+  }
+
+  if (warnings.length && !errors.length) {
+    return {
+      ok: false,
+      warn: true,
+      mode: "query",
+      detail: `Sublayers reachable but no feature geometry available (${warnings.join("; ")})`,
+      testedUrl: base,
+    };
+  }
+
+  if (warnings.length && errors.length) {
+    return {
+      ok: false,
+      warn: true,
+      mode: "query",
+      detail: `Partial probe warnings (${warnings.join("; ")}); errors (${errors.join("; ")})`,
+      testedUrl: base,
+    };
   }
 
   throw new Error(`No sublayer returned geometry (${errors.join("; ")})`);
@@ -184,7 +229,13 @@ async function probeGeocodeServer(serviceUrl) {
   const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
 
   if (!suggestions.length) {
-    throw new Error("Geocode suggest returned 0 suggestions");
+    return {
+      ok: false,
+      warn: true,
+      mode: "suggest",
+      detail: "Geocode suggest returned 0 suggestions",
+      testedUrl: base,
+    };
   }
 
   return {
@@ -298,6 +349,46 @@ async function probeService(url) {
     let probeResult;
     try {
       probeResult = await runDataProbe(url, body);
+
+      if (probeResult && probeResult.warn) {
+        return {
+          url,
+          status: "WARN",
+          error: probeResult.detail || "Data probe warning",
+          responseMs: elapsed,
+          dataProbe: probeResult,
+          currentVersion: body.currentVersion ?? null,
+          serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
+          type: body.type ?? null,
+          geometryType: body.geometryType ?? null,
+          capabilities: body.capabilities ?? null,
+          fields: (body.fields || []).map((f) => ({
+            name: f.name,
+            alias: f.alias,
+            type: f.type,
+          })),
+          layers: (body.layers || []).map((l) => ({
+            id: l.id,
+            name: l.name,
+          })),
+          spatialReference: body.spatialReference ?? null,
+          extent: body.extent ?? body.fullExtent ?? null,
+          maxRecordCount: body.maxRecordCount ?? null,
+          supportedQueryFormats: body.supportedQueryFormats ?? null,
+          advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
+          probedAt: new Date().toISOString(),
+        };
+      }
+
+      if (probeResult && probeResult.ok === false && !probeResult.warn) {
+        return {
+          url,
+          status: "DOWN",
+          error: `Data probe failed: ${probeResult.detail || "Unknown probe failure"}`,
+          responseMs: elapsed,
+          dataProbe: probeResult,
+        };
+      }
     } catch (probeErr) {
       return {
         url,
