@@ -4217,7 +4217,7 @@ ${getA11yWidgetBlock()}
 
                 let fixedExtent = null;
                 const ext = selectionGeom?.extent;
-                if (ext && ext.expand) fixedExtent = ext.expand(paddingFactor);
+                if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
 
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
@@ -4310,7 +4310,7 @@ ${getA11yWidgetBlock()}
                                     if (fixedExtent) {
                                         await view.goTo(fixedExtent, { animate: false });
                                     } else {
-                                        await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                     }
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
@@ -4403,6 +4403,8 @@ ${getA11yWidgetBlock()}
                                 tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
                                 try { await tempLayer.when(); } catch (e) { /* continue */ }
                                 thickenLayerSymbology(tempLayer, tempGeomType);
+                                tempLayer.minScale = 0;
+                                tempLayer.maxScale = 0;
                                 const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression);
 
                                 setVisibilityForScreenshot(tempLayer);
@@ -4410,7 +4412,7 @@ ${getA11yWidgetBlock()}
                                 if (fixedExtent) {
                                     await view.goTo(fixedExtent, { animate: false });
                                 } else {
-                                    await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                 }
                                 await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                 await waitForViewStationary(800);
@@ -4419,6 +4421,7 @@ ${getA11yWidgetBlock()}
                                 dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 view.map.remove(tempLayer);
                                 _removeOverlays(view, overlays);
+                                restoreVisibility();
                             } else {
                                 // Tab hidden — defer screenshot for later
                                 screenshotDeferred = true;
@@ -4491,7 +4494,7 @@ ${getA11yWidgetBlock()}
                                         setVisibilityForScreenshot(tempImg);
                                         await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
                                         if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                         await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -4513,7 +4516,7 @@ ${getA11yWidgetBlock()}
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                         if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -4746,7 +4749,7 @@ ${getA11yWidgetBlock()}
 
             let fixedExtent = null;
             const ext = selectionGeom?.extent;
-            if (ext && ext.expand) fixedExtent = ext.expand(paddingFactor);
+            if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
 
             const targets = lastReportRowsByLayer
                 .filter(x => x?.hasCoverage || (x?.count || 0) > 0)
@@ -4855,7 +4858,7 @@ ${getA11yWidgetBlock()}
                                 setVisibilityForScreenshot(temp);
                                 await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                 if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                 await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                 await waitForViewStationary(800);
                                 updateAoiMask(true);
@@ -4952,7 +4955,7 @@ ${getA11yWidgetBlock()}
                             setVisibilityForScreenshot(temp);
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
                             if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                            else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                            else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                             await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
                             await waitForViewStationary(800);
                             updateAoiMask(true);
@@ -5039,7 +5042,7 @@ ${getA11yWidgetBlock()}
                                     setVisibilityForScreenshot(temp);
                                     await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                     if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                    else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                     await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5061,7 +5064,7 @@ ${getA11yWidgetBlock()}
                                     setVisibilityForScreenshot(temp);
                                     await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
                                     if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                    else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                    else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                     await waitForLayerReadyToCapture(temp, view, { timeoutMs: 15000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5396,7 +5399,7 @@ ${getA11yWidgetBlock()}
 
                 let fixedExtent = null;
                 const ext = selectionGeom?.extent;
-                if (ext && ext.expand) fixedExtent = ext.expand(paddingFactor);
+                if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
 
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
@@ -5497,7 +5500,7 @@ ${getA11yWidgetBlock()}
                                     if (fixedExtent) {
                                         await view.goTo(fixedExtent, { animate: false });
                                     } else {
-                                        await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                     }
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
@@ -5602,7 +5605,7 @@ ${getA11yWidgetBlock()}
                                     if (fixedExtent) {
                                         await view.goTo(fixedExtent, { animate: false });
                                     } else {
-                                        await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                     }
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
@@ -5710,7 +5713,7 @@ ${getA11yWidgetBlock()}
                                         setVisibilityForScreenshot(temp);
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
                                         if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -5734,7 +5737,7 @@ ${getA11yWidgetBlock()}
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                        else await view.goTo(selectionGeom.extent.expand(1.15), { animate: false });
+                                        else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);

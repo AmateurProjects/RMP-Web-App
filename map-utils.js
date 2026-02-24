@@ -251,7 +251,9 @@ define([
             return shoelaceSum(ring) <= 0 ? ring : [...ring].reverse();
         }
 
-        const expandedExt = viewExt.expand(5);
+        // Clone before expand — Extent.expand() mutates in place and would
+        // corrupt the view's cached extent, causing progressive zoom-out.
+        const expandedExt = viewExt.clone().expand(5);
 
         // Outer ring must be CLOCKWISE for the non-zero winding fill rule
         const outerRing = ensureClockwise([
