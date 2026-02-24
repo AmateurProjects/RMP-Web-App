@@ -447,7 +447,9 @@ function setBusy(isBusy) {
         const downItems = items.filter(it => {
             if (serviceStatus.get(it.url) !== "DOWN") return false;
             if (sourceLabel !== "r2") return true;
-            return serviceStatus.get(it.url + "::normallyHasFeatures") === true;
+            const hasHistory = serviceStatus.get(it.url + "::normallyHasFeatures");
+            if (hasHistory === false) return false;
+            return true; // true or unknown/null => still show as potentially impactful
         });
         if (!downItems.length) return;
         serviceDownModal.show(downItems, sourceLabel, refreshedAt);
@@ -1800,7 +1802,10 @@ async function checkServiceStatusBackground() {
                     if (meta.serviceDescription) {
                         serviceStatus.set(url + "::desc", meta.serviceDescription);
                     }
-                    serviceStatus.set(url + "::normallyHasFeatures", !!(meta && meta.normallyHasFeatures));
+                    const hasFeatureHistory = meta && typeof meta.normallyHasFeatures === "boolean"
+                        ? meta.normallyHasFeatures
+                        : null;
+                    serviceStatus.set(url + "::normallyHasFeatures", hasFeatureHistory);
                 }
 
                 // Recheck cached DOWN statuses in-browser to avoid worker-only false downs
