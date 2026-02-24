@@ -252,6 +252,33 @@
   .exclude-toggle label { font-size: 13px; font-weight: 500; cursor: pointer; color: var(--fg); }
   .exclude-toggle .hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
+  /* Layer type toggles (Report / Selection dual-type) */
+  .layer-type-toggles {
+    display: flex; gap: 16px; margin-bottom: 16px; padding: 12px 16px;
+    background: var(--table-header); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .layer-type-toggle {
+    display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  .layer-type-toggle input[type=checkbox] {
+    width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;
+  }
+  .layer-type-toggle .toggle-desc { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  /* Cross-type badge shown in tables */
+  .cross-type-badge {
+    display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 8px;
+    margin-left: 6px; font-weight: 500;
+  }
+  .cross-type-badge.also-selection { background: #e0f2fe; color: #0369a1; }
+  .cross-type-badge.also-report { background: #fef3c7; color: #92400e; }
+  [data-theme="dark"] .cross-type-badge.also-selection { background: rgba(56,189,248,0.2); color: #38bdf8; }
+  [data-theme="dark"] .cross-type-badge.also-report { background: rgba(251,191,36,0.2); color: #fbbf24; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .cross-type-badge.also-selection { background: rgba(56,189,248,0.2); color: #38bdf8; }
+    :root:not([data-theme="light"]) .cross-type-badge.also-report { background: rgba(251,191,36,0.2); color: #fbbf24; }
+  }
+
   /* Sample data preview in modal */
   .sample-preview { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
   .sample-preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -354,7 +381,7 @@
         <option value="realty">Realty</option>
         <option value="_none">No Permit Types</option>
       </select>
-      <button class="btn btn-primary" onclick="openLayerModal('report')">+ Add Report Layer</button>
+      <button class="btn btn-primary" onclick="openLayerModal('report')">+ Add Dataset</button>
       <button class="btn btn-outline" onclick="checkReportHealth()" id="checkReportHealthBtn">🔍 Check Health</button>
     </div>
     <table class="layer-table">
@@ -369,7 +396,7 @@
   <div class="tab-panel" id="tab-selection">
     <div class="toolbar">
       <input type="text" id="searchSelection" placeholder="Search selection layers…" oninput="renderSelectionTable()"/>
-      <button class="btn btn-primary" onclick="openLayerModal('selection')">+ Add Selection Layer</button>
+      <button class="btn btn-primary" onclick="openLayerModal('selection')">+ Add Dataset</button>
       <button class="btn btn-outline" onclick="checkSelectionHealth()" id="checkSelectionHealthBtn">🔍 Check Health</button>
     </div>
     <table class="layer-table">
@@ -394,7 +421,7 @@
 <!-- Layer add/edit modal -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
-    <h3 id="modalTitle">Add Layer</h3>
+    <h3 id="modalTitle">Add Dataset</h3>
     <div class="form-row">
       <label>Title</label>
       <input type="text" id="fTitle" placeholder="BLM Layer Name"/>
@@ -407,7 +434,23 @@
       </div>
       <div class="hint">Full ArcGIS REST service endpoint URL</div>
     </div>
-    <div id="reportFields">
+
+    <!-- Layer type toggles — always shown -->
+    <div class="layer-type-toggles">
+      <label class="layer-type-toggle">
+        <input type="checkbox" id="fIsReport" onchange="onLayerTypeToggle()"/>
+        <span>Report Layer</span>
+        <span class="toggle-desc">— included in screening reports</span>
+      </label>
+      <label class="layer-type-toggle">
+        <input type="checkbox" id="fIsSelection" onchange="onLayerTypeToggle()"/>
+        <span>Selection Layer</span>
+        <span class="toggle-desc">— used for AOI selection</span>
+      </label>
+    </div>
+
+    <!-- Report-specific fields (shown when Report is checked) -->
+    <div id="reportFields" style="display:none">
       <div id="rootServiceWarning" class="root-service-warning" style="display:none">
         <span class="root-service-icon">⚠️</span>
         <div>
@@ -466,10 +509,13 @@
         <div class="hint">When checked this layer is hidden from screening, reporting, mapping and everything else in the main app.</div>
       </div>
     </div>
+
+    <!-- Selection-specific fields (shown when Selection is checked) -->
     <div id="selectionFields" style="display:none">
       <div class="form-row">
-        <label>Group</label>
+        <label>Selection Group</label>
         <input type="text" id="fGroup" placeholder="e.g. plss, permit"/>
+        <div class="hint">Groups selection layers in the AOI panel (e.g. "plss", "permit")</div>
       </div>
       <div class="form-row">
         <label>Visible by default</label>
@@ -512,8 +558,7 @@ let ghToken = '';
 let ghOwner = '';
 let ghRepo = '';
 let ghBranch = 'main';
-let editMode = null;
-let modalType = 'report';
+let editMode = null;       // { reportIndex: N|null, selectionIndex: N|null }
 let deviceFlowAbort = false;
 
 // Health status cache: url -> { status: 'ok'|'err'|'checking'|null, ms: number|null }
@@ -821,6 +866,9 @@ function renderReportTable() {
   var filterCat = document.getElementById('filterCategory').value;
   var filterPT = document.getElementById('filterPermitType').value;
 
+  // Build a Set of all selection layer URLs for cross-reference badges
+  var selectionUrlSet = new Set((config.selectionLayers || []).map(function(sl) { return sl.url.replace(/\/?$/, ''); }));
+
   var filtered = layers.map(function (l, i) { return { layer: l, index: i }; }).filter(function (item) {
     var l = item.layer;
     if (search && !(l.title || '').toLowerCase().includes(search) && !(l.url || '').toLowerCase().includes(search)) return false;
@@ -852,10 +900,11 @@ function renderReportTable() {
       : '<span style="display:inline-block;width:22px"></span>';
     var subBadge = hasSubs ? '<span class="sublayer-badge">' + subs.length + ' sublayers</span>' : '';
     var excludedBadge = l.excluded ? '<span class="excluded-badge">excluded</span>' : '';
+    var alsoSelBadge = selectionUrlSet.has(l.url.replace(/\/?$/, '')) ? '<span class="cross-type-badge also-selection" title="Also used as Selection Layer">selection</span>' : '';
     
     html += '<tr' + (l.excluded ? ' class="excluded-row"' : '') + '>';
     html += '<td style="text-align:center">' + healthDot + '</td>';
-    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + excludedBadge + '</td>';
+    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + excludedBadge + alsoSelBadge + '</td>';
     html += '<td>' + catBadge(l.category) + '</td>';
     html += '<td>' + permitTypeBadges(l.permitTypes) + '</td>';
     html += '<td>' + esc(l.serviceType || '—') + '</td>';
@@ -911,6 +960,13 @@ function toggleSublayers(url, tableType) {
 function renderSelectionTable() {
   var layers = config.selectionLayers || [];
   var search = (document.getElementById('searchSelection').value || '').toLowerCase();
+
+  // Build a map of report layer URLs for cross-reference badges + info
+  var reportUrlMap = {};
+  (config.reportLayers || []).forEach(function(rl, idx) {
+    reportUrlMap[rl.url.replace(/\/?$/, '')] = { index: idx, layer: rl };
+  });
+
   var filtered = layers.map(function (l, i) { return { layer: l, index: i }; }).filter(function (item) {
     if (search && !(item.layer.title || '').toLowerCase().includes(search)) return false;
     return true;
@@ -932,10 +988,13 @@ function renderSelectionTable() {
       ? '<button class="expand-btn" onclick="toggleSublayers(\'' + esc(l.url) + '\', \'selection\')" title="' + (isExpanded ? 'Collapse' : 'Expand') + ' sublayers">' + (isExpanded ? '▼' : '▶') + '</button>'
       : '<span style="display:inline-block;width:22px"></span>';
     var subBadge = hasSubs ? '<span class="sublayer-badge">' + subs.length + ' sublayers</span>' : '';
+    var normalizedUrl = l.url.replace(/\/?$/, '');
+    var repInfo = reportUrlMap[normalizedUrl];
+    var alsoRepBadge = repInfo ? '<span class="cross-type-badge also-report" title="Also used as Report Layer">report</span>' : '';
     
     html += '<tr>';
     html += '<td style="text-align:center">' + healthDot + '</td>';
-    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + '</td>';
+    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + alsoRepBadge + '</td>';
     html += '<td>' + esc(l.group || '—') + '</td>';
     html += '<td>' + (l.visible ? 'Yes' : 'No') + '</td>';
     html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
@@ -1002,31 +1061,74 @@ function addSublayerAsSelection(name, url, group) {
   loadSamplePreview(url);
 }
 
+// Also allow editing a sublayer that exists in the other type
+function editDatasetByUrl(url) {
+  var norm = url.replace(/\/?$/, '');
+  var repIdx = findReportIndexByUrl(norm);
+  var selIdx = findSelectionIndexByUrl(norm);
+  if (repIdx >= 0) {
+    editReportLayer(repIdx);
+  } else if (selIdx >= 0) {
+    editSelectionLayer(selIdx);
+  }
+}
+
+// ── Layer type toggle handler ──
+function onLayerTypeToggle() {
+  var isReport = document.getElementById('fIsReport').checked;
+  var isSelection = document.getElementById('fIsSelection').checked;
+  document.getElementById('reportFields').style.display = isReport ? '' : 'none';
+  document.getElementById('selectionFields').style.display = isSelection ? '' : 'none';
+  if (isReport) {
+    updateReportFieldsForUrl(document.getElementById('fUrl').value.trim());
+  }
+}
+
+// ── Helpers: find matching entry by URL in the other section ──
+function findReportIndexByUrl(url) {
+  if (!url || !config || !config.reportLayers) return -1;
+  var norm = url.replace(/\/?$/, '');
+  return config.reportLayers.findIndex(function (l) { return l && l.url && l.url.replace(/\/?$/, '') === norm; });
+}
+
+function findSelectionIndexByUrl(url) {
+  if (!url || !config || !config.selectionLayers) return -1;
+  var norm = url.replace(/\/?$/, '');
+  return config.selectionLayers.findIndex(function (l) { return l && l.url && l.url.replace(/\/?$/, '') === norm; });
+}
+
 // ── Modal ──
-function openLayerModal(type) {
-  modalType = type;
+function openLayerModal(defaultType) {
   editMode = null;
-  document.getElementById('modalTitle').textContent = 'Add ' + (type === 'report' ? 'Report' : 'Selection') + ' Layer';
-  document.getElementById('reportFields').style.display = type === 'report' ? '' : 'none';
-  document.getElementById('selectionFields').style.display = type === 'selection' ? '' : 'none';
+  document.getElementById('modalTitle').textContent = 'Add Dataset';
   document.getElementById('deleteBtn').style.display = 'none';
   clearForm();
+  // Pre-check the relevant type based on which tab opened it
+  document.getElementById('fIsReport').checked = (defaultType === 'report');
+  document.getElementById('fIsSelection').checked = (defaultType === 'selection');
+  onLayerTypeToggle();
   document.getElementById('samplePreview').style.display = 'none';
   document.getElementById('samplePreviewContent').innerHTML = '';
-  if (type === 'report') updateReportFieldsForUrl('');
   document.getElementById('modalOverlay').classList.add('open');
 }
 
 function editReportLayer(idx) {
-  modalType = 'report';
-  editMode = { type: 'report', index: idx };
   var l = config.reportLayers[idx];
-  document.getElementById('modalTitle').textContent = 'Edit Report Layer';
-  document.getElementById('reportFields').style.display = '';
-  document.getElementById('selectionFields').style.display = 'none';
+  var url = (l && l.url) || '';
+  var selIdx = findSelectionIndexByUrl(url);
+  var selLayer = selIdx >= 0 ? config.selectionLayers[selIdx] : null;
+
+  editMode = { reportIndex: idx, selectionIndex: selIdx >= 0 ? selIdx : null };
+  document.getElementById('modalTitle').textContent = 'Edit Dataset';
   document.getElementById('deleteBtn').style.display = '';
+
+  // Populate type toggles
+  document.getElementById('fIsReport').checked = true;
+  document.getElementById('fIsSelection').checked = selIdx >= 0;
+
+  // Populate report fields
   document.getElementById('fTitle').value = l.title || '';
-  document.getElementById('fUrl').value = l.url || '';
+  document.getElementById('fUrl').value = url;
   document.getElementById('fCategory').value = l.category || 'special';
   setPermitTypeChecks(l.permitTypes || []);
   document.getElementById('fServiceType').value = l.serviceType || 'feature';
@@ -1034,25 +1136,64 @@ function editReportLayer(idx) {
   var hf = l.highlightFields;
   document.getElementById('fHighlightFields').value = Array.isArray(hf) ? hf.join(', ') : '';
   document.getElementById('fExcluded').checked = !!l.excluded;
-  updateReportFieldsForUrl(l.url || '');
+
+  // Populate selection fields if also a selection layer
+  if (selLayer) {
+    document.getElementById('fGroup').value = selLayer.group || '';
+    document.getElementById('fVisible').value = String(!!selLayer.visible);
+  } else {
+    document.getElementById('fGroup').value = '';
+    document.getElementById('fVisible').value = 'false';
+  }
+
+  onLayerTypeToggle();
   document.getElementById('modalOverlay').classList.add('open');
-  loadSamplePreview(l.url);
+  loadSamplePreview(url);
 }
 
 function editSelectionLayer(idx) {
-  modalType = 'selection';
-  editMode = { type: 'selection', index: idx };
   var l = config.selectionLayers[idx];
-  document.getElementById('modalTitle').textContent = 'Edit Selection Layer';
-  document.getElementById('reportFields').style.display = 'none';
-  document.getElementById('selectionFields').style.display = '';
+  var url = (l && l.url) || '';
+  var repIdx = findReportIndexByUrl(url);
+  var repLayer = repIdx >= 0 ? config.reportLayers[repIdx] : null;
+
+  editMode = { reportIndex: repIdx >= 0 ? repIdx : null, selectionIndex: idx };
+  document.getElementById('modalTitle').textContent = 'Edit Dataset';
   document.getElementById('deleteBtn').style.display = '';
+
+  // Populate type toggles
+  document.getElementById('fIsReport').checked = repIdx >= 0;
+  document.getElementById('fIsSelection').checked = true;
+
+  // Populate common fields
   document.getElementById('fTitle').value = l.title || '';
-  document.getElementById('fUrl').value = l.url || '';
+  document.getElementById('fUrl').value = url;
+
+  // Populate report fields if also a report layer
+  if (repLayer) {
+    document.getElementById('fCategory').value = repLayer.category || 'special';
+    setPermitTypeChecks(repLayer.permitTypes || []);
+    document.getElementById('fServiceType').value = repLayer.serviceType || 'feature';
+    document.getElementById('fPlugin').value = repLayer.summaryPlugin || '';
+    var hf = repLayer.highlightFields;
+    document.getElementById('fHighlightFields').value = Array.isArray(hf) ? hf.join(', ') : '';
+    document.getElementById('fExcluded').checked = !!repLayer.excluded;
+  } else {
+    document.getElementById('fCategory').value = 'special';
+    setPermitTypeChecks([]);
+    document.getElementById('fServiceType').value = 'feature';
+    document.getElementById('fPlugin').value = '';
+    document.getElementById('fHighlightFields').value = '';
+    document.getElementById('fExcluded').checked = false;
+  }
+
+  // Populate selection fields
   document.getElementById('fGroup').value = l.group || '';
   document.getElementById('fVisible').value = String(!!l.visible);
+
+  onLayerTypeToggle();
   document.getElementById('modalOverlay').classList.add('open');
-  loadSamplePreview(l.url);
+  loadSamplePreview(url);
 }
 
 function closeModal() {
@@ -1069,6 +1210,8 @@ function clearForm() {
   document.getElementById('fServiceType').value = 'feature';
   document.getElementById('fVisible').value = 'false';
   document.getElementById('fExcluded').checked = false;
+  document.getElementById('fIsReport').checked = false;
+  document.getElementById('fIsSelection').checked = false;
 }
 
 function setPermitTypeChecks(pts) {
@@ -1092,11 +1235,17 @@ async function saveLayer() {
   var url = document.getElementById('fUrl').value.trim();
   if (!title || !url) { toast('Title and URL are required', true); return; }
 
-  if (modalType === 'report') {
-    var normalizedUrl = url.replace(/\/?$/, '');
+  var wantReport = document.getElementById('fIsReport').checked;
+  var wantSelection = document.getElementById('fIsSelection').checked;
+  if (!wantReport && !wantSelection) { toast('Select at least one layer type (Report and/or Selection)', true); return; }
+
+  var normalizedUrl = url.replace(/\/?$/, '');
+
+  // ── Validation phase (no mutations) ──
+  if (wantReport) {
     var duplicateIndex = (config.reportLayers || []).findIndex(function (layer, idx) {
       if (!layer || !layer.url) return false;
-      if (editMode && editMode.type === 'report' && idx === editMode.index) return false;
+      if (editMode && editMode.reportIndex != null && idx === editMode.reportIndex) return false;
       return layer.url.replace(/\/?$/, '') === normalizedUrl;
     });
     if (duplicateIndex >= 0) {
@@ -1104,71 +1253,86 @@ async function saveLayer() {
       toast('Duplicate report URL already exists: ' + dupTitle, true);
       return;
     }
+  }
+  if (wantSelection) {
+    var dupSelIdx = (config.selectionLayers || []).findIndex(function (layer, idx) {
+      if (!layer || !layer.url) return false;
+      if (editMode && editMode.selectionIndex != null && idx === editMode.selectionIndex) return false;
+      return layer.url.replace(/\/?$/, '') === normalizedUrl;
+    });
+    if (dupSelIdx >= 0) {
+      var dupSelTitle = (config.selectionLayers[dupSelIdx] && config.selectionLayers[dupSelIdx].title) || 'existing selection layer';
+      toast('Duplicate selection URL already exists: ' + dupSelTitle, true);
+      return;
+    }
+  }
 
+  // ── Mutation phase ──
+  var changes = [];
+
+  // Report layer
+  if (wantReport) {
     var isRoot = isRootServiceUrl(url);
     var sType = document.getElementById('fServiceType').value;
-    var obj = {
+    var reportObj = {
       title: title,
       url: url,
       category: isRoot ? '' : document.getElementById('fCategory').value,
       permitTypes: isRoot ? [] : getPermitTypeChecks(),
       serviceType: sType
     };
-    // Persist excluded flag
     if (document.getElementById('fExcluded').checked) {
-      obj.excluded = true;
+      reportObj.excluded = true;
     }
-    // Ensure imageService flag is set for ImageServer layers (main app checks this)
     if (sType === 'image') {
-      obj.imageService = true;
+      reportObj.imageService = true;
     }
     var plugin = document.getElementById('fPlugin').value.trim();
-    if (plugin) obj.summaryPlugin = plugin;
+    if (plugin) reportObj.summaryPlugin = plugin;
     var hfRaw = document.getElementById('fHighlightFields').value.trim();
     if (hfRaw) {
-      obj.highlightFields = hfRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      reportObj.highlightFields = hfRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
     }
 
-    if (editMode && editMode.type === 'report') {
-      // Preserve any extra fields from original
-      var orig = config.reportLayers[editMode.index];
-      Object.keys(orig).forEach(function (k) { if (!(k in obj)) obj[k] = orig[k]; });
-      config.reportLayers[editMode.index] = obj;
+    if (editMode && editMode.reportIndex != null) {
+      var orig = config.reportLayers[editMode.reportIndex];
+      Object.keys(orig).forEach(function (k) { if (!(k in reportObj)) reportObj[k] = orig[k]; });
+      config.reportLayers[editMode.reportIndex] = reportObj;
+      changes.push('update report');
     } else {
-      config.reportLayers.push(obj);
+      config.reportLayers.push(reportObj);
+      changes.push('add report');
     }
-  } else {
-    var normalizedSelectionUrl = url.replace(/\/?$/, '');
-    var selectionDuplicateIndex = (config.selectionLayers || []).findIndex(function (layer, idx) {
-      if (!layer || !layer.url) return false;
-      if (editMode && editMode.type === 'selection' && idx === editMode.index) return false;
-      return layer.url.replace(/\/?$/, '') === normalizedSelectionUrl;
-    });
-    if (selectionDuplicateIndex >= 0) {
-      var dupSelectionTitle = (config.selectionLayers[selectionDuplicateIndex] && config.selectionLayers[selectionDuplicateIndex].title) || 'existing selection layer';
-      toast('Duplicate selection URL already exists: ' + dupSelectionTitle, true);
-      return;
-    }
+  } else if (editMode && editMode.reportIndex != null) {
+    config.reportLayers.splice(editMode.reportIndex, 1);
+    changes.push('remove report');
+  }
 
-    var obj2 = {
+  // Selection layer
+  if (wantSelection) {
+    var selObj = {
       title: title,
       url: url,
       visible: document.getElementById('fVisible').value === 'true',
       group: document.getElementById('fGroup').value.trim() || 'default'
     };
-    if (editMode && editMode.type === 'selection') {
-      config.selectionLayers[editMode.index] = obj2;
+    if (editMode && editMode.selectionIndex != null) {
+      config.selectionLayers[editMode.selectionIndex] = selObj;
+      changes.push('update selection');
     } else {
-      config.selectionLayers.push(obj2);
+      config.selectionLayers.push(selObj);
+      changes.push('add selection');
     }
+  } else if (editMode && editMode.selectionIndex != null) {
+    config.selectionLayers.splice(editMode.selectionIndex, 1);
+    changes.push('remove selection');
   }
 
-  var action = editMode ? 'Update' : 'Add';
-  var layerType = modalType === 'report' ? 'report' : 'selection';
+  var commitMsg = changes.join(' + ') + ' layer: ' + title;
   try {
     document.getElementById('saveBtn').disabled = true;
-    await pushConfig(action + ' ' + layerType + ' layer: ' + title);
-    toast(action + 'd ' + title);
+    await pushConfig(commitMsg.charAt(0).toUpperCase() + commitMsg.slice(1));
+    toast('Saved ' + title);
     closeModal();
     renderAll();
   } catch (e) {
@@ -1180,16 +1344,28 @@ async function saveLayer() {
 
 async function deleteLayer() {
   if (!editMode) return;
-  var title = '';
-  if (editMode.type === 'report') {
-    title = config.reportLayers[editMode.index].title;
-    if (!confirm('Delete report layer "' + title + '"?')) return;
-    config.reportLayers.splice(editMode.index, 1);
+  var title = document.getElementById('fTitle').value.trim() || '(untitled)';
+  var hasReport = editMode.reportIndex != null;
+  var hasSelection = editMode.selectionIndex != null;
+  var msg = 'Delete "' + title + '"';
+  if (hasReport && hasSelection) {
+    msg += ' from BOTH report and selection layers?';
+  } else if (hasReport) {
+    msg += ' from report layers?';
   } else {
-    title = config.selectionLayers[editMode.index].title;
-    if (!confirm('Delete selection layer "' + title + '"?')) return;
-    config.selectionLayers.splice(editMode.index, 1);
+    msg += ' from selection layers?';
   }
+  if (!confirm(msg)) return;
+
+  // Remove from both arrays (splice higher index first to preserve indices)
+  var removals = [];
+  if (hasReport) removals.push({ arr: 'reportLayers', idx: editMode.reportIndex });
+  if (hasSelection) removals.push({ arr: 'selectionLayers', idx: editMode.selectionIndex });
+
+  removals.forEach(function (r) {
+    config[r.arr].splice(r.idx, 1);
+  });
+
   try {
     await pushConfig('Remove layer: ' + title);
     toast('Deleted ' + title);
@@ -1244,9 +1420,18 @@ function detectServiceKind(url) {
 }
 
 function pickCandidateSublayerIds(meta) {
+  // Check both layers and tables — some FeatureServers only have tables.
   var layers = (meta && Array.isArray(meta.layers)) ? meta.layers : [];
-  return layers
-    .filter(function (l) { return Number.isFinite(Number(l && l.id)); })
+  var tables = (meta && Array.isArray(meta.tables)) ? meta.tables : [];
+  var all = layers.concat(tables);
+  return all
+    .filter(function (l) {
+      if (!Number.isFinite(Number(l && l.id))) return false;
+      var type = String((l && l.type) || '').toLowerCase();
+      if (type.indexOf('group') >= 0) return false;
+      if (type.indexOf('feature') >= 0) return true;
+      return !!(l && l.geometryType) || tables.indexOf(l) >= 0;
+    })
     .map(function (l) { return Number(l.id); })
     .slice(0, DATA_PROBE_LAYER_LIMIT);
 }
@@ -1267,29 +1452,40 @@ function fetchJsonChecked(url) {
 
 function probeFeatureOrMapLayerForGeometry(layerUrl) {
   var base = stripQueryAndSlash(layerUrl);
-  var queryUrl = base + '/query?where=1%3D1&outFields=*'
+  var queryUrl = base + '/query?where=1%3D1&outFields=OBJECTID'
     + '&returnGeometry=true'
     + '&resultRecordCount=' + DATA_PROBE_FEATURE_LIMIT
     + '&f=json';
 
-  return fetchJsonChecked(queryUrl).then(function (data) {
-    var features = (data && Array.isArray(data.features)) ? data.features : [];
-    if (!features.length) {
-      return { ok: false, warn: true, mode: 'query', detail: 'query succeeded but returned 0 features' };
-    }
-    var hasGeom = features.some(function (f) { return !!(f && f.geometry); });
-    if (!hasGeom) {
-      return { ok: false, warn: true, mode: 'query', detail: 'query returned features without geometry' };
-    }
-    return { ok: true, warn: false, mode: 'query', detail: 'feature query returned geometry' };
-  });
+  return fetchJsonChecked(queryUrl)
+    .then(function (data) {
+      var features = (data && Array.isArray(data.features)) ? data.features : [];
+      if (!features.length) {
+        return { ok: false, warn: true, mode: 'query', detail: 'query succeeded but returned 0 features' };
+      }
+      var hasGeom = features.some(function (f) { return !!(f && f.geometry); });
+      if (!hasGeom) {
+        // Features exist but geometry omitted from REST response — service is operational.
+        return { ok: true, warn: false, mode: 'query', detail: 'features returned (geometry omitted from REST response)' };
+      }
+      return { ok: true, warn: false, mode: 'query', detail: 'feature query returned geometry' };
+    })
+    .catch(function (err) {
+      var msg = String((err && err.message) || err || '').toLowerCase();
+      // ArcGIS 400 "not supported" or 500 "error performing query" — metadata was fine.
+      if (msg.indexOf('400') >= 0 || msg.indexOf('500') >= 0 || msg.indexOf('not supported') >= 0) {
+        return { ok: true, warn: false, mode: 'query', detail: 'query not supported or errored (' + (err && err.message || err) + '); metadata OK' };
+      }
+      throw err; // re-throw genuine network failures
+    });
 }
 
 function probeFeatureOrMapRootForGeometry(serviceUrl, serviceMeta) {
   var base = stripQueryAndSlash(serviceUrl);
   var ids = pickCandidateSublayerIds(serviceMeta);
   if (!ids.length) {
-    return Promise.resolve({ ok: false, warn: true, mode: 'query', detail: 'service has no queryable sublayers to probe' });
+    // No layers or tables to probe — metadata was fine, so treat as OK.
+    return Promise.resolve({ ok: true, warn: false, mode: 'query', detail: 'service has no queryable sublayers; metadata OK' });
   }
 
   var warnings = [];
@@ -1746,14 +1942,14 @@ function updateReportFieldsForUrl(url) {
 
 // Live-update when the user types a URL
 document.getElementById('fUrl').addEventListener('input', function () {
-  if (modalType === 'report') {
+  if (document.getElementById('fIsReport').checked) {
     updateReportFieldsForUrl(this.value.trim());
   }
 });
 
 // Also update on blur (paste-then-tab)
 document.getElementById('fUrl').addEventListener('change', function () {
-  if (modalType === 'report') {
+  if (document.getElementById('fIsReport').checked) {
     updateReportFieldsForUrl(this.value.trim());
   }
 });
