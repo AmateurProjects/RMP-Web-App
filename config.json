@@ -792,6 +792,1305 @@
         "grazing"
       ],
       "serviceType": "feature"
+    },
+    {
+      "title": "Proposed Critical Habitat Features",
+      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/USFWS_Critical_Habitat/FeatureServer/2",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "BLM Natl Grazing Pasture Polygons",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Grazing_Pasture_Polygons/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "row"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Oil and Gas Leases",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Leases/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Ungulate Migration",
+      "url": "https://services.arcgis.com/U7I2hMhPtOeGx0fs/arcgis/rest/services/Ungulate_Migration/FeatureServer/0",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "row",
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "ePlanning Comment Point",
+      "url": "https://gis.blm.gov/arcgis/rest/services/ePlanning/BLM_Natl_Epl_Comment/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "ePlanning Comment Map Polyline",
+      "url": "https://gis.blm.gov/arcgis/rest/services/ePlanning/BLM_Natl_Epl_Comment/FeatureServer/1",
+      "category": "authorizations",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "EPL_CMT_MAP_POLY",
+      "url": "https://gis.blm.gov/arcgis/rest/services/ePlanning/BLM_Natl_Epl_Comment/FeatureServer/2",
+      "category": "authorizations",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "BLM Administrative Unit Office Points",
+      "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "BLM Administrative Unit State Boundary Generalized",
+      "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer/1",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "BLM Administrative Unit District Boundary Generalized",
+      "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer/2",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "BLM Administrative Unit Field Boundary Generalized",
+      "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer/3",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "BLM Administrative Unit Other Boundary Generalized",
+      "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer/4",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Mining Claims- Not Closed",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Not_Closed/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining",
+        "oil-gas",
+        "row"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Leases, Permits,and Easements",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_Leases_Permits_Esmts/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "realty",
+        "row",
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "BIA AIAN National LAR",
+      "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_National_LAR/MapServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NFHL Availability",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/0",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "FIRM Panels",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/3",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "LOMRs",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/1",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "LOMAs",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/34",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Political Jurisdictions",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/22",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Profile Baselines",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/17",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Cross-Sections",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/14",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Base Flood Elevations",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/16",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Levees",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/23",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Seclusion Boundaries",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/29",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Coastal Transects",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/15",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Transect Baselines",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/18",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "General Structures",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/24",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "River Mile Markers",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/7",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Water Areas",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/32",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "PLSS",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/5",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Limit of Moderate Wave Action",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/19",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flood Hazard Boundaries",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/27",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flood Hazard Zones",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/28",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Primary Frontal Dunes",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/25",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Base Index",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/4",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Topographic Low Confidence Areas",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/6",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Datum Conversion Points",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/8",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Coastal Gages",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/9",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Gages",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/10",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Nodes",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/11",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "High Water Marks",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/12",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Station Start Points",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/13",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Hydrologic Reaches",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/26",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Alluvial Fans",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/30",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Subbasins",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/31",
+      "category": "environmental",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Geothermal Leases",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Geothermal_Leases/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas",
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Coal Cases",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Coal_Cases/FeatureServer/1",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining",
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "FWSBoundaries",
+      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/National_Wildlife_Refuge_System_Boundaries/FeatureServer/0",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Point",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/0",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Point Event",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/1",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Line - Large Scale ",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/2",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flow Direction",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/3",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flowline - Small Scale",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/4",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flowline - Small Scale (HI, PR, VI, Pacific Territories)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/5",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flowline - Large Scale",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/6",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Area - Small Scale",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/7",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Area - Small Scale (HI, PR, VI, Pacific Territories)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/8",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Area - Large Scale",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/9",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Waterbody - Small Scale",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/10",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Waterbody - Small Scale (HI, PR, VI, Pacific Territories)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/11",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Waterbody - Large Scale",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/testbreak/12",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "WBDLine",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/0",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "2-digit HU (Region)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/1",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "4-digit HU (Subregion)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/2",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "6-digit HU (Basin)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/3",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "8-digit HU  (Subbasin)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/4",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "10-digit HU (Watershed)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/5",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "12-digit HU (Subwatershed)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "14-digit HU",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/7",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "16-digit HU",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/8",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Roadless Areas: 2001 Roadless Rule",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_InventoriedRoadlessAreas2001_01/MapServer/0",
+      "category": "special",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Ground Transportation Linear Feature",
+      "url": "https://gis.blm.gov/arcgis/rest/services/transportation/BLM_Natl_GTLF/MapServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "row",
+        "oil-gas",
+        "mining"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Mining Claims-Closed",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Closed/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Oil Shale Leases",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_Shale_Leases/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas",
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Oil and Gas Agreements",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Agreements/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Oil and Gas Participating Areas",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Participating_Areas/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Non-Energy Leasables",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Non_Energy_Leasables/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "realty",
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Locatable Notices",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Notices/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Mineral Materials",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mineral_Materials/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Plans of Operations",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Plans_Of_Operations/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Riparian",
+      "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Riparian/MapServer/0",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Riparian Mapping Areas",
+      "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Riparian/MapServer/1",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusGage",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/0",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusSink",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/1",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPoint",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/2",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NetworkNHDFlowline",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/3",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NonNetworkNHDFlowline",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/4",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "FlowDirection",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/5",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusWall",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/6",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDLine",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/7",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDArea",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/8",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDWaterbody",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/9",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusCatchment",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/10",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusBoundaryUnit",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/11",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "WBDHU12",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/12",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Administrative Forest Boundaries - National Extent",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer/0",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Administrative Forest Boundaries - Regional Extent",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer/1",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "BIA AIAN Tribal Statistical Areas",
+      "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_Tribal_Statistical_Areas/MapServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "National Wilderness Areas",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_Wilderness_01/MapServer/0",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Land Use Planning Area Boundary Existing Polygons",
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_LandUsePlanningBoundaries/MapServer/0",
+      "category": "land-use",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NFHL Availability",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/0",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "FIRM Panels",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/3",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "LOMRs",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/1",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "LOMAs",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/34",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Political Jurisdictions",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/22",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Profile Baselines",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/17",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Water Lines",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/20",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Cross-Sections",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/14",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Base Flood Elevations",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/16",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Levees",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/23",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Seclusion Boundaries",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/29",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Coastal Transects",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/15",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Transect Baselines",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/18",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "General Structures",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/24",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "River Mile Markers",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/7",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Water Areas",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/32",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "PLSS",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/5",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Limit of Moderate Wave Action",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/19",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flood Hazard Boundaries",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/27",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Flood Hazard Zones",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/28",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Primary Frontal Dunes",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/25",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Base Index",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/4",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Topographic Low Confidence Areas",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/6",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Datum Conversion Points",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/8",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Coastal Gages",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/9",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Gages",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/10",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Nodes",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/11",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "High Water Marks",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/12",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Station Start Points",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/13",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Hydrologic Reaches",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/26",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Alluvial Fans",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/30",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Subbasins",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING/20/31",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "PADUS4_1FeeManagers",
+      "url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Fee_Managers_PADUS/FeatureServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
     }
   ],
   "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
