@@ -19,10 +19,11 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Trigger Worker refresh
+      - name: Trigger Worker refresh (batched)
         env:
           WORKER_URL: ${{ secrets.METADATA_WORKER_URL }}
           REFRESH_SECRET: ${{ secrets.METADATA_REFRESH_SECRET }}
+          BATCH_SIZE: 10
         run: |
           set -euo pipefail
 
@@ -31,23 +32,60 @@ jobs:
             exit 1
           fi
 
-          RESPONSE=$(curl -sf -w "\n%{http_code}" \
-            -X POST "${WORKER_URL}/refresh" \
-            -H "X-Refresh-Secret: ${REFRESH_SECRET}" \
-            -H "Content-Type: application/json")
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          echo "HTTP status: $HTTP_CODE"
-          echo "Response: $BODY"
-
-          if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "::error::Refresh failed with HTTP $HTTP_CODE"
-            exit 1
-          fi
-
           echo "### Metadata Refresh Results" >> $GITHUB_STEP_SUMMARY
-          echo '```json' >> $GITHUB_STEP_SUMMARY
-          echo "$BODY" | python3 -m json.tool >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          OFFSET=0
+          BATCH=1
+          TOTAL_UP=0
+          TOTAL_WARN=0
+          TOTAL_DOWN=0
+
+          while true; do
+            echo "── Batch $BATCH (offset=$OFFSET, limit=$BATCH_SIZE) ──"
+
+            RESPONSE=$(curl -sf -w "\n%{http_code}" \
+              -X POST "${WORKER_URL}/refresh?offset=${OFFSET}&limit=${BATCH_SIZE}" \
+              -H "X-Refresh-Secret: ${REFRESH_SECRET}" \
+              -H "Content-Type: application/json")
+
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+
+            echo "  HTTP $HTTP_CODE"
+            echo "  $BODY"
+
+            if [ "$HTTP_CODE" -ne 200 ]; then
+              echo "::error::Batch $BATCH failed with HTTP $HTTP_CODE"
+              exit 1
+            fi
+
+            # Extract batch probed count
+            PROBED=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); b=d.get('batch'); print(b['probed'] if b else 0)" 2>/dev/null || echo "0")
+            BATCH_UP=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('batchResults',{}).get('up',0))" 2>/dev/null || echo "0")
+            BATCH_WARN=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('batchResults',{}).get('warn',0))" 2>/dev/null || echo "0")
+            BATCH_DOWN=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('batchResults',{}).get('down',0))" 2>/dev/null || echo "0")
+
+            TOTAL_UP=$((TOTAL_UP + BATCH_UP))
+            TOTAL_WARN=$((TOTAL_WARN + BATCH_WARN))
+            TOTAL_DOWN=$((TOTAL_DOWN + BATCH_DOWN))
+
+            echo "  Probed: $PROBED (UP=$BATCH_UP WARN=$BATCH_WARN DOWN=$BATCH_DOWN)"
+
+            echo "**Batch $BATCH** (offset=$OFFSET): $PROBED probed — UP=$BATCH_UP, WARN=$BATCH_WARN, DOWN=$BATCH_DOWN" >> $GITHUB_STEP_SUMMARY
+
+            # If this batch probed fewer than BATCH_SIZE, we've hit the end
+            if [ "$PROBED" -lt "$BATCH_SIZE" ]; then
+              break
+            fi
+
+            OFFSET=$((OFFSET + BATCH_SIZE))
+            BATCH=$((BATCH + 1))
+
+            # Brief pause between batches to avoid rate limits
+            sleep 2
+          done
+
+          echo ""
+          echo "═══ Refresh complete: $BATCH batches, UP=$TOTAL_UP WARN=$TOTAL_WARN DOWN=$TOTAL_DOWN ═══"
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "**Totals:** UP=$TOTAL_UP, WARN=$TOTAL_WARN, DOWN=$TOTAL_DOWN" >> $GITHUB_STEP_SUMMARY

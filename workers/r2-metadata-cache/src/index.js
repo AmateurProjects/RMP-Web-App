@@ -669,6 +669,11 @@ async function handleRefresh(request, env) {
     return json({ error: "Unauthorized" }, 401, env);
   }
 
+  // Parse optional batch parameters from query string
+  const reqUrl = new URL(request.url);
+  const batchOffset = Math.max(0, parseInt(reqUrl.searchParams.get("offset") || "0", 10) || 0);
+  const batchLimit  = parseInt(reqUrl.searchParams.get("limit") || "0", 10) || 0; // 0 = all
+
   // 1. Fetch config.json from GitHub
   let config;
   try {
@@ -678,39 +683,60 @@ async function handleRefresh(request, env) {
   }
 
   // 2. Collect all service URLs
-  const urls = collectServiceUrls(config);
+  const allUrls = collectServiceUrls(config);
 
-  // 2b. Load previous cache for historical feature-presence context
+  // Apply batch slice (offset/limit)
+  const urls = batchLimit > 0
+    ? allUrls.slice(batchOffset, batchOffset + batchLimit)
+    : allUrls;
+
+  const isBatch = batchLimit > 0;
+
+  // 2b. Load previous cache for historical context + merge base
+  let previousBlob = null;
   let previousLayers = {};
   try {
     const prevObj = await env.METADATA_BUCKET.get(R2_KEY);
     if (prevObj) {
-      const prev = await prevObj.json();
-      previousLayers = (prev && prev.layers) || {};
+      previousBlob = await prevObj.json();
+      previousLayers = (previousBlob && previousBlob.layers) || {};
     }
   } catch {
     previousLayers = {};
   }
 
-  // 3. Probe each service with bounded concurrency
+  // 3. Probe each service in this batch with bounded concurrency
   const probeFns = urls.map((url) => () => probeService(url, previousLayers[url] || null));
   const results = await parallelLimit(probeFns, MAX_CONCURRENCY);
 
-  // 4. Build metadata blob
-  const layers = {};
+  // 4. Build / merge metadata blob
+  // For batched refreshes, merge new results into existing cache.
+  // For full refreshes, start fresh.
+  const layers = isBatch && previousBlob ? { ...previousBlob.layers } : {};
+
+  let batchUp = 0;
+  let batchWarn = 0;
+  let batchDown = 0;
+  for (const r of results) {
+    layers[r.url] = r;
+    if (r.status === "UP") batchUp++;
+    else if (r.status === "WARN") batchWarn++;
+    else batchDown++;
+  }
+
+  // Recompute totals from the full merged layer set
   let upCount = 0;
   let warnCount = 0;
   let downCount = 0;
-  for (const r of results) {
-    layers[r.url] = r;
-    if (r.status === "UP") upCount++;
-    else if (r.status === "WARN") warnCount++;
+  for (const entry of Object.values(layers)) {
+    if (entry.status === "UP") upCount++;
+    else if (entry.status === "WARN") warnCount++;
     else downCount++;
   }
 
   const blob = {
     lastRefresh: new Date().toISOString(),
-    totalLayers: urls.length,
+    totalLayers: Object.keys(layers).length,
     upCount,
     warnCount,
     downCount,
@@ -727,6 +753,8 @@ async function handleRefresh(request, env) {
       ok: true,
       lastRefresh: blob.lastRefresh,
       totalLayers: blob.totalLayers,
+      batch: isBatch ? { offset: batchOffset, limit: batchLimit, probed: urls.length } : null,
+      batchResults: { up: batchUp, warn: batchWarn, down: batchDown },
       upCount,
       warnCount,
       downCount,
