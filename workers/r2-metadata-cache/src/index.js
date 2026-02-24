@@ -18,8 +18,8 @@
  */
 
 const R2_KEY = "metadata.json";
-const FETCH_TIMEOUT_MS = 20000;
-const FETCH_RETRY_ATTEMPTS = 1;
+const FETCH_TIMEOUT_MS = 30000;
+const FETCH_RETRY_ATTEMPTS = 2;
 const MAX_CONCURRENCY = 4;
 const DATA_PROBE_LAYER_LIMIT = 5;
 const DATA_PROBE_FEATURE_LIMIT = 1;
@@ -116,9 +116,86 @@ function detectServiceKind(url) {
 function pickCandidateSublayerIds(meta) {
   const layers = Array.isArray(meta?.layers) ? meta.layers : [];
   return layers
-    .filter((l) => Number.isFinite(Number(l?.id)))
+    .filter((l) => {
+      if (!Number.isFinite(Number(l?.id))) return false;
+      const type = String(l?.type || "").toLowerCase();
+      if (type.includes("group")) return false;
+      if (type.includes("feature")) return true;
+      return !!l?.geometryType;
+    })
     .map((l) => Number(l.id))
     .slice(0, DATA_PROBE_LAYER_LIMIT);
+}
+
+async function queryLayerFeatureCount(layerUrl) {
+  const base = stripQueryAndSlash(layerUrl);
+  const countUrl = `${base}/query?where=1%3D1&returnCountOnly=true&f=json`;
+  const data = await fetchJsonRobust(countUrl, FETCH_TIMEOUT_MS);
+  const count = Number(data?.count);
+  if (!Number.isFinite(count)) {
+    throw new Error("Feature count query returned invalid count");
+  }
+  return count;
+}
+
+async function detectFeaturePresence(url, serviceMeta) {
+  const kind = detectServiceKind(url);
+  if (kind === "feature-layer" || kind === "map-layer") {
+    try {
+      const count = await queryLayerFeatureCount(url);
+      return count > 0;
+    } catch {
+      return null;
+    }
+  }
+
+  if (kind === "feature-root" || kind === "map-root") {
+    const base = stripQueryAndSlash(url);
+    const ids = pickCandidateSublayerIds(serviceMeta);
+    if (!ids.length) return null;
+
+    let hadAnyFalse = false;
+    for (const id of ids) {
+      try {
+        const count = await queryLayerFeatureCount(`${base}/${id}`);
+        if (count > 0) return true;
+        hadAnyFalse = true;
+      } catch {
+        // keep probing remaining sublayers
+      }
+    }
+    return hadAnyFalse ? false : null;
+  }
+
+  return null;
+}
+
+function extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures) {
+  return {
+    dataProbe: probeResult,
+    currentVersion: body.currentVersion ?? null,
+    serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
+    type: body.type ?? null,
+    geometryType: body.geometryType ?? null,
+    capabilities: body.capabilities ?? null,
+    fields: (body.fields || []).map((f) => ({
+      name: f.name,
+      alias: f.alias,
+      type: f.type,
+    })),
+    layers: (body.layers || []).map((l) => ({
+      id: l.id,
+      name: l.name,
+    })),
+    spatialReference: body.spatialReference ?? null,
+    extent: body.extent ?? body.fullExtent ?? null,
+    maxRecordCount: body.maxRecordCount ?? null,
+    supportedQueryFormats: body.supportedQueryFormats ?? null,
+    advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
+    hasFeaturesNow,
+    normallyHasFeatures,
+    probedAt: new Date().toISOString(),
+  };
 }
 
 async function probeFeatureOrMapLayerForGeometry(layerUrl) {
@@ -354,7 +431,7 @@ function collectServiceUrls(config) {
 
 // ── Probe one service ────────────────────────────────────────────────────────
 
-async function probeService(url) {
+async function probeService(url, previousEntry = null) {
   const sep = url.includes("?") ? "&" : "?";
   const pjsonUrl = url.endsWith("?f=json") ? url : `${url}${sep}f=json`;
 
@@ -364,23 +441,35 @@ async function probeService(url) {
     try {
       body = await fetchJsonRobust(pjsonUrl, FETCH_TIMEOUT_MS);
     } catch (metaErr) {
-      const elapsed = Date.now() - started;
-      const msg = metaErr?.message || String(metaErr);
-      return {
-        url,
-        status: "DOWN",
-        error: msg,
-        responseMs: elapsed,
-        dataProbe: {
-          ok: false,
-          mode: "metadata",
-          detail: `Metadata request failed: ${msg}`,
-        },
-        probedAt: new Date().toISOString(),
-      };
+      try {
+        // Last-chance metadata verification with a longer timeout window
+        body = await fetchJsonRobust(pjsonUrl, FETCH_TIMEOUT_MS * 2);
+      } catch (metaErr2) {
+        const elapsed = Date.now() - started;
+        const msg = metaErr2?.message || metaErr?.message || String(metaErr2 || metaErr);
+        return {
+          url,
+          status: "DOWN",
+          error: msg,
+          responseMs: elapsed,
+          dataProbe: {
+            ok: false,
+            mode: "metadata",
+            detail: `Metadata request failed: ${msg}`,
+          },
+          hasFeaturesNow: null,
+          normallyHasFeatures: !!(previousEntry && previousEntry.normallyHasFeatures),
+          probedAt: new Date().toISOString(),
+        };
+      }
     }
 
     const elapsed = Date.now() - started;
+    const hasFeaturesNow = await detectFeaturePresence(url, body);
+    const normallyHasFeatures = !!(
+      (previousEntry && previousEntry.normallyHasFeatures) ||
+      hasFeaturesNow === true
+    );
 
     // Data-level probe (query geometry / export imagery / geocode suggest)
     let probeResult;
@@ -393,27 +482,7 @@ async function probeService(url) {
           status: "WARN",
           error: probeResult.detail || "Data probe warning",
           responseMs: elapsed,
-          dataProbe: probeResult,
-          currentVersion: body.currentVersion ?? null,
-          serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
-          type: body.type ?? null,
-          geometryType: body.geometryType ?? null,
-          capabilities: body.capabilities ?? null,
-          fields: (body.fields || []).map((f) => ({
-            name: f.name,
-            alias: f.alias,
-            type: f.type,
-          })),
-          layers: (body.layers || []).map((l) => ({
-            id: l.id,
-            name: l.name,
-          })),
-          spatialReference: body.spatialReference ?? null,
-          extent: body.extent ?? body.fullExtent ?? null,
-          maxRecordCount: body.maxRecordCount ?? null,
-          supportedQueryFormats: body.supportedQueryFormats ?? null,
-          advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
-          probedAt: new Date().toISOString(),
+          ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures),
         };
       }
 
@@ -423,27 +492,7 @@ async function probeService(url) {
           status: "WARN",
           error: `Data probe warning: ${probeResult.detail || "Unknown probe issue"}`,
           responseMs: elapsed,
-          dataProbe: probeResult,
-          currentVersion: body.currentVersion ?? null,
-          serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
-          type: body.type ?? null,
-          geometryType: body.geometryType ?? null,
-          capabilities: body.capabilities ?? null,
-          fields: (body.fields || []).map((f) => ({
-            name: f.name,
-            alias: f.alias,
-            type: f.type,
-          })),
-          layers: (body.layers || []).map((l) => ({
-            id: l.id,
-            name: l.name,
-          })),
-          spatialReference: body.spatialReference ?? null,
-          extent: body.extent ?? body.fullExtent ?? null,
-          maxRecordCount: body.maxRecordCount ?? null,
-          supportedQueryFormats: body.supportedQueryFormats ?? null,
-          advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
-          probedAt: new Date().toISOString(),
+          ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures),
         };
       }
     } catch (probeErr) {
@@ -457,26 +506,11 @@ async function probeService(url) {
           mode: "data",
           detail: probeErr?.message || String(probeErr),
         },
-        currentVersion: body.currentVersion ?? null,
-        serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
-        type: body.type ?? null,
-        geometryType: body.geometryType ?? null,
-        capabilities: body.capabilities ?? null,
-        fields: (body.fields || []).map((f) => ({
-          name: f.name,
-          alias: f.alias,
-          type: f.type,
-        })),
-        layers: (body.layers || []).map((l) => ({
-          id: l.id,
-          name: l.name,
-        })),
-        spatialReference: body.spatialReference ?? null,
-        extent: body.extent ?? body.fullExtent ?? null,
-        maxRecordCount: body.maxRecordCount ?? null,
-        supportedQueryFormats: body.supportedQueryFormats ?? null,
-        advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
-        probedAt: new Date().toISOString(),
+        ...extractServiceMetadata(body, {
+          ok: false,
+          mode: "data",
+          detail: probeErr?.message || String(probeErr),
+        }, hasFeaturesNow, normallyHasFeatures),
       };
     }
 
@@ -485,27 +519,7 @@ async function probeService(url) {
       url,
       status: "UP",
       responseMs: elapsed,
-      dataProbe: probeResult,
-      currentVersion: body.currentVersion ?? null,
-      serviceDescription: (body.serviceDescription || body.description || "").slice(0, 500),
-      type: body.type ?? null,
-      geometryType: body.geometryType ?? null,
-      capabilities: body.capabilities ?? null,
-      fields: (body.fields || []).map((f) => ({
-        name: f.name,
-        alias: f.alias,
-        type: f.type,
-      })),
-      layers: (body.layers || []).map((l) => ({
-        id: l.id,
-        name: l.name,
-      })),
-      spatialReference: body.spatialReference ?? null,
-      extent: body.extent ?? body.fullExtent ?? null,
-      maxRecordCount: body.maxRecordCount ?? null,
-      supportedQueryFormats: body.supportedQueryFormats ?? null,
-      advancedQueryCapabilities: body.advancedQueryCapabilities ?? null,
-      probedAt: new Date().toISOString(),
+      ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures),
     };
   } catch (err) {
     return {
@@ -513,6 +527,8 @@ async function probeService(url) {
       status: "DOWN",
       error: err?.message || String(err),
       responseMs: Date.now() - started,
+      hasFeaturesNow: null,
+      normallyHasFeatures: !!(previousEntry && previousEntry.normallyHasFeatures),
       probedAt: new Date().toISOString(),
     };
   }
@@ -655,8 +671,20 @@ async function handleRefresh(request, env) {
   // 2. Collect all service URLs
   const urls = collectServiceUrls(config);
 
+  // 2b. Load previous cache for historical feature-presence context
+  let previousLayers = {};
+  try {
+    const prevObj = await env.METADATA_BUCKET.get(R2_KEY);
+    if (prevObj) {
+      const prev = await prevObj.json();
+      previousLayers = (prev && prev.layers) || {};
+    }
+  } catch {
+    previousLayers = {};
+  }
+
   // 3. Probe each service with bounded concurrency
-  const probeFns = urls.map((url) => () => probeService(url));
+  const probeFns = urls.map((url) => () => probeService(url, previousLayers[url] || null));
   const results = await parallelLimit(probeFns, MAX_CONCURRENCY);
 
   // 4. Build metadata blob

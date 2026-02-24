@@ -444,7 +444,11 @@ function setBusy(isBusy) {
 
     function maybeShowDownServiceWarning(items, sourceLabel, refreshedAt) {
         if (serviceDownNoticeShown || !items || !items.length) return;
-        const downItems = items.filter(it => serviceStatus.get(it.url) === "DOWN");
+        const downItems = items.filter(it => {
+            if (serviceStatus.get(it.url) !== "DOWN") return false;
+            if (sourceLabel !== "r2") return true;
+            return serviceStatus.get(it.url + "::normallyHasFeatures") === true;
+        });
         if (!downItems.length) return;
         serviceDownModal.show(downItems, sourceLabel, refreshedAt);
     }
@@ -1796,7 +1800,37 @@ async function checkServiceStatusBackground() {
                     if (meta.serviceDescription) {
                         serviceStatus.set(url + "::desc", meta.serviceDescription);
                     }
+                    serviceStatus.set(url + "::normallyHasFeatures", !!(meta && meta.normallyHasFeatures));
                 }
+
+                // Recheck cached DOWN statuses in-browser to avoid worker-only false downs
+                const cachedDownItems = items.filter(it => serviceStatus.get(it.url) === "DOWN");
+                if (cachedDownItems.length) {
+                    const rechecks = await Promise.allSettled(
+                        cachedDownItems.map(async (it) => {
+                            const pjsonUrl = normalizePjsonUrl(it.url);
+                            try {
+                                await fetchJsonWithTimeout(pjsonUrl, timeoutMs, { noCache: true });
+                                return { url: it.url, status: "UP" };
+                            } catch (e) {
+                                return { url: it.url, status: "DOWN" };
+                            }
+                        })
+                    );
+
+                    let recovered = 0;
+                    for (const r of rechecks) {
+                        if (r.status === "fulfilled") {
+                            const prev = serviceStatus.get(r.value.url);
+                            serviceStatus.set(r.value.url, r.value.status);
+                            if (prev === "DOWN" && r.value.status === "UP") recovered++;
+                        }
+                    }
+                    if (recovered > 0) {
+                        console.log(`[metadata-cache] Recovered ${recovered} cached DOWN service(s) via live browser recheck`);
+                    }
+                }
+
                 renderLayerToggles(map);
                 maybeShowDownServiceWarning(items, "r2", cached.lastRefresh || null);
                 console.log(`[metadata-cache] Loaded ${Object.keys(cached.layers).length} layers from R2 (refreshed ${cached.lastRefresh})`);
