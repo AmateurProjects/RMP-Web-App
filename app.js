@@ -3500,9 +3500,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 console.warn("[Search] goTo failed:", e);
             }
 
-            // Update mask
-            if (typeof updateAoiMask === "function") updateAoiMask();
-
             setStatus(`Selected: ${feature.layerTitle || "feature"} — ready to screen`);
         });
 
@@ -3639,9 +3636,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 if (view && geometry && geometry.extent) {
                     view.goTo(geometry.extent.expand(1.3), { animate: true, duration: 600 });
                 }
-
-                // Update mask
-                if (typeof updateAoiMask === "function") updateAoiMask();
 
                 const bufLabel = bufferMiles > 0 ? " with " + bufferMiles + " mi buffer" : "";
                 showUploadStatus("✅ <b>" + configHelpers.escapeHtml(result.fileName) + "</b> loaded" + bufLabel, "success");
@@ -3934,7 +3928,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 selectionGeom = generalizeAoiIfNeeded(buffered) || buffered;
                 setAoiGeometry(selectionGeom);
                 resetCoverageCacheForAoi(selectionGeom);
-                if (typeof updateAoiMask === "function") updateAoiMask();
                 if (view && selectionGeom.extent) {
                     view.goTo(selectionGeom.extent.expand(1.3), { animate: true, duration: 600 });
                 }
@@ -3958,7 +3951,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 aoiOriginalGeom = null;
                 setAoiGeometry(selectionGeom);
                 resetCoverageCacheForAoi(selectionGeom);
-                if (typeof updateAoiMask === "function") updateAoiMask();
                 if (view && selectionGeom.extent) {
                     view.goTo(selectionGeom.extent.expand(1.3), { animate: true, duration: 600 });
                 }
