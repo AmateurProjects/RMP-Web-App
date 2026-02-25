@@ -5546,10 +5546,12 @@ ${getA11yWidgetBlock()}
                     lockViewContainer();
                     console.log("[buildReportInBackground] view container locked");
 
-                    if (fixedExtent) {
-                        await view.goTo(fixedExtent, { animate: false });
-                        await waitForViewStationary(800);
-                    }
+                    // Wait for the resize to fully settle before any goTo
+                    await waitForViewStationary(1000);
+
+                    // Zoom to AOI extent + padding and hold this extent for every layer screenshot
+                    await view.goTo(fixedExtent || selectionGeom.extent.clone().expand(1.25), { animate: false });
+                    await waitForViewStationary(800);
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
                     console.log("[buildReportInBackground] starting pre-load phase…");
