@@ -1509,9 +1509,11 @@ function stripQueryAndSlash(url) {
 function detectServiceKind(url) {
   var base = stripQueryAndSlash(url);
   if (/\/ImageServer$/i.test(base)) return 'image-root';
-  if (/\/FeatureServer\/\d+$/i.test(base)) return 'feature-layer';
+  // Only match sublayer URLs where the digits DIRECTLY follow /FeatureServer/ or /MapServer/
+  // (no extra path segments like /TESTBREAKING/20)
+  if (/\/FeatureServer\/\d+$/i.test(base) && !/\/FeatureServer\/.+\/\d+$/i.test(base)) return 'feature-layer';
   if (/\/FeatureServer$/i.test(base)) return 'feature-root';
-  if (/\/MapServer\/\d+$/i.test(base)) return 'map-layer';
+  if (/\/MapServer\/\d+$/i.test(base) && !/\/MapServer\/.+\/\d+$/i.test(base)) return 'map-layer';
   if (/\/MapServer$/i.test(base)) return 'map-root';
   if (/\/GeocodeServer$/i.test(base)) return 'geocode';
   return 'other';
@@ -1674,6 +1676,13 @@ function runRobustDataProbe(url, serviceMeta) {
   }
   if (kind === 'geocode') {
     return probeGeocodeService(url);
+  }
+  // 'other' — unrecognized URL structure (e.g. /MapServer/TESTBREAKING/20)
+  // Flag as a warning so bogus/malformed URLs don't show green
+  var base = stripQueryAndSlash(url);
+  var hasBogusSegments = /\/(FeatureServer|MapServer)\/.+\/\d+$/i.test(base);
+  if (hasBogusSegments) {
+    return Promise.resolve({ ok: false, warn: true, mode: 'structure-check', detail: 'URL has extra path segments between service type and sublayer ID — likely invalid' });
   }
   return Promise.resolve({ ok: true, warn: false, mode: 'metadata-only', detail: 'no data probe implemented for this endpoint type' });
 }
