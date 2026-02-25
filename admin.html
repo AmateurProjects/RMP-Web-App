@@ -105,6 +105,14 @@
   .stat-card .num { font-size: 24px; font-weight: 700; color: var(--accent); }
   .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 
+  /* Save banner */
+  .save-banner { display: none; align-items: center; gap: 10px; padding: 8px 14px; margin-bottom: 12px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; color: #92400e; font-size: 13px; font-weight: 500; }
+  .save-banner.visible { display: flex; }
+  .save-banner .save-count { font-weight: 700; }
+  [data-theme="dark"] .save-banner { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.4); color: #fbbf24; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .save-banner { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.4); color: #fbbf24; } }
+  .save-banner .btn { margin-left: auto; }
+
   /* Toolbar */
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
   .toolbar input[type="text"] { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--card); color: var(--fg); }
@@ -454,6 +462,10 @@
       <button class="btn btn-outline" onclick="registerDiscoveredSublayers('report')" title="Register discovered sublayers into config (run Check Health first)">📥 Register Sublayers</button>
       <button class="btn btn-outline" onclick="deduplicateLayers('report')" title="Remove duplicate root entries, cascaded sublayers, and exact URL duplicates">🧹 Deduplicate</button>
     </div>
+    <div class="save-banner" id="saveBanner">
+      <span>⚠️ You have <span class="save-count" id="saveCount">0</span> unsaved change(s)</span>
+      <button class="btn btn-primary" onclick="saveAllChanges()" id="saveAllBtn">💾 Save All Changes</button>
+    </div>
     <table class="layer-table">
       <thead><tr>
         <th style="width:50px">Status</th><th>Title</th><th>Source</th><th>Category</th><th>Permit Types</th><th>Type</th><th>URL</th><th style="width:80px"></th>
@@ -742,6 +754,49 @@ async function loadConfig() {
   config = JSON.parse(json);
 }
 
+// ── Dirty tracking for batch saves ──
+var configDirty = false;
+var pendingChangeCount = 0;
+
+function markDirty() {
+  configDirty = true;
+  pendingChangeCount++;
+  var banner = document.getElementById('saveBanner');
+  var countEl = document.getElementById('saveCount');
+  if (banner) banner.classList.add('visible');
+  if (countEl) countEl.textContent = pendingChangeCount;
+}
+
+function clearDirty() {
+  configDirty = false;
+  pendingChangeCount = 0;
+  var banner = document.getElementById('saveBanner');
+  if (banner) banner.classList.remove('visible');
+}
+
+async function saveAllChanges() {
+  var btn = document.getElementById('saveAllBtn');
+  if (btn) btn.disabled = true;
+  try {
+    await pushConfig('Batch update: ' + pendingChangeCount + ' inline change(s) via Layer Admin');
+    clearDirty();
+    renderAll();
+    toast('All changes saved');
+  } catch (e) {
+    toast('Save failed: ' + e.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Warn before leaving with unsaved changes
+window.addEventListener('beforeunload', function(e) {
+  if (configDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 async function pushConfig(message) {
   const content = btoa(unescape(encodeURIComponent(JSON.stringify(config, null, 2) + '\n')));
   await ghFetch('/repos/' + ghOwner + '/' + ghRepo + '/contents/config.json', {
@@ -755,6 +810,7 @@ async function pushConfig(message) {
     })
   });
   await loadConfig();
+  clearDirty(); // Any pushConfig resets dirty state since config is now fresh from GitHub
 }
 
 // ── Auth helpers ──
@@ -1082,32 +1138,28 @@ function renderReportTable() {
 }
 
 // ── Inline table-row handlers ──
-async function inlineUpdateCategory(idx, value) {
+function inlineUpdateCategory(idx, value) {
   var layer = config.reportLayers[idx];
   if (!layer) return;
   layer.category = value;
-  try {
-    await pushConfig('Update category → ' + value + ' for ' + layer.title);
-    renderAll();
-    toast('Category updated');
-  } catch (e) { toast('Save failed: ' + e.message, true); }
+  markDirty();
+  renderAll();
+  toast('Category updated (unsaved)');
 }
 
-async function inlineUpdatePermitTypes(idx, container) {
+function inlineUpdatePermitTypes(idx, container) {
   var layer = config.reportLayers[idx];
   if (!layer) return;
   var checks = container.querySelectorAll('input[type="checkbox"]');
   var pts = [];
   checks.forEach(function(cb) { if (cb.checked) pts.push(cb.value); });
   layer.permitTypes = pts;
-  try {
-    await pushConfig('Update permitTypes for ' + layer.title);
-    renderAll();
-    toast('Permit types updated');
-  } catch (e) { toast('Save failed: ' + e.message, true); }
+  markDirty();
+  renderAll();
+  toast('Permit types updated (unsaved)');
 }
 
-async function inlineToggleExcluded(idx, checked) {
+function inlineToggleExcluded(idx, checked) {
   var layer = config.reportLayers[idx];
   if (!layer) return;
   if (checked) {
@@ -1115,14 +1167,12 @@ async function inlineToggleExcluded(idx, checked) {
   } else {
     delete layer.excluded;
   }
-  try {
-    await pushConfig((checked ? 'Exclude' : 'Include') + ' layer: ' + layer.title);
-    renderAll();
-    toast(checked ? 'Layer excluded' : 'Layer included');
-  } catch (e) { toast('Save failed: ' + e.message, true); }
+  markDirty();
+  renderAll();
+  toast((checked ? 'Layer excluded' : 'Layer included') + ' (unsaved)');
 }
 
-async function inlineToggleSelection(idx, checked) {
+function inlineToggleSelection(idx, checked) {
   var layer = config.reportLayers[idx];
   if (!layer) return;
   var normalizedUrl = layer.url.replace(/\/?$/, '');
@@ -1146,11 +1196,9 @@ async function inlineToggleSelection(idx, checked) {
       return sl.url.replace(/\/?$/, '') !== normalizedUrl;
     });
   }
-  try {
-    await pushConfig((checked ? 'Add' : 'Remove') + ' selection layer: ' + layer.title);
-    renderAll();
-    toast(checked ? 'Added as selection layer' : 'Removed from selection layers');
-  } catch (e) { toast('Save failed: ' + e.message, true); }
+  markDirty();
+  renderAll();
+  toast((checked ? 'Added as selection layer' : 'Removed from selection layers') + ' (unsaved)');
 }
 
 function toggleSublayers(url, tableType) {
