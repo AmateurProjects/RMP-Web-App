@@ -474,6 +474,7 @@ function setBusy(isBusy) {
 
     let view = null;
     let selectionGeom = null;
+    let aoiOriginalGeom = null;      // pre-buffer geometry for reset
     let aoiSource = null;            // "draw" | "select" | "upload"
     let aoiSourceLayerTitle = null;  // optional: which selection layer was clicked
     let map = null; // <-- add (so PLSS buttons can add/remove selection layers)
@@ -832,6 +833,7 @@ function setActiveTab(tabName) {
         if (sketch) sketch.cancel();
         currentInteractionMode = "select";
         selectionGeom = null;
+        aoiOriginalGeom = null;
         aoiSource = null;
         aoiSourceLayerTitle = null;
         aoiSourceLayerUrl = null;
@@ -952,6 +954,13 @@ function setActiveTab(tabName) {
             else if (aoiSourceLayerTitle) sourceEl.textContent = aoiSourceLayerTitle;
             else sourceEl.textContent = "Map selection";
         }
+
+        // Reset the confirm-section buffer panel
+        const confirmBufInput = document.getElementById("aoiConfirmBufferInput");
+        const confirmBufReset = document.getElementById("aoiConfirmBufferReset");
+        if (confirmBufInput) confirmBufInput.value = "";
+        if (confirmBufReset) confirmBufReset.classList.add("hidden");
+        document.querySelectorAll(".confirm-buf-preset").forEach(b => b.classList.remove("active"));
     }
 
     let wizLocationDebounce = null;
@@ -1328,6 +1337,7 @@ function clearAll() {
     if (sketch) sketch.cancel();
 
     selectionGeom = null;
+    aoiOriginalGeom = null;
     aoiSourceObjectId = null;
     aoiSourceObjectIdField = null;
     aoiSource = null;
@@ -2832,6 +2842,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     setAoiGeometry(fullGeom);
                     setGeometryFromSelection(fullGeom);
                     resetCoverageCacheForAoi(fullGeom);
+                    aoiOriginalGeom = fullGeom; // store for optional buffering
 
                     aoiSource = "select";
                     aoiSourceLayerTitle = activeSelectionLayer?.title || null;
@@ -3443,6 +3454,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             // Set the geometry as the AOI (generalize before storing)
             geom = generalizeAoiIfNeeded(geom) || geom;
             selectionGeom = geom;
+            aoiOriginalGeom = geom; // store for optional buffering
             aoiSource = "search";
             aoiSourceLayerTitle = feature.layerTitle || null;
             aoiSourceLayerUrl = feature.layerUrl || null;
@@ -3588,6 +3600,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
                 geometry = generalizeAoiIfNeeded(geometry) || geometry;
                 selectionGeom = geometry;
+                aoiOriginalGeom = result.geometry; // store pre-buffer geometry for re-buffering
                 aoiSource = "upload";
                 aoiSourceLayerTitle = result.fileName;
                 setAoiGeometry(geometry);
@@ -3884,6 +3897,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 finalGeom = geom;
             }
 
+            // Store original drawn geometry for potential re-buffering
+            aoiOriginalGeom = geom;
+
             setAoiGeometry(finalGeom);
             resetCoverageCacheForAoi(finalGeom);
             aoiSource = "draw";
@@ -3939,6 +3955,80 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const input = document.getElementById("drawBufferInput");
                 if (input) input.value = btn.dataset.val;
                 document.querySelectorAll(".draw-buf-preset").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+            });
+        });
+
+        // ── Confirm-section buffer panel (universal, works for all AOI methods) ──
+        const confirmBufApply = document.getElementById("aoiConfirmBufferApply");
+        const confirmBufReset = document.getElementById("aoiConfirmBufferReset");
+
+        if (confirmBufApply) {
+            confirmBufApply.addEventListener("click", () => {
+                const input = document.getElementById("aoiConfirmBufferInput");
+                const val = parseFloat(input ? input.value : "");
+                if (isNaN(val) || val <= 0) {
+                    setStatus("Enter a buffer distance greater than 0.");
+                    return;
+                }
+                if (val > 50) {
+                    setStatus("Buffer cannot exceed 50 miles.");
+                    return;
+                }
+
+                // Save original geometry before first buffer
+                if (!aoiOriginalGeom) aoiOriginalGeom = selectionGeom;
+
+                const buffered = uploadAoiModule.applyBuffer([aoiOriginalGeom], val);
+                if (!buffered) {
+                    setStatus("Buffer operation failed. Try a different value.");
+                    return;
+                }
+
+                selectionGeom = generalizeAoiIfNeeded(buffered) || buffered;
+                setAoiGeometry(selectionGeom);
+                resetCoverageCacheForAoi(selectionGeom);
+                if (typeof updateAoiMask === "function") updateAoiMask();
+                if (view && selectionGeom.extent) {
+                    view.goTo(selectionGeom.extent.expand(1.3), { animate: true, duration: 600 });
+                }
+                if (runBtn) runBtn.disabled = false;
+
+                // Refresh the confirmation card with new area
+                populateAoiConfirmation();
+                // Re-set the input value and reset button since populateAoiConfirmation clears them
+                if (input) input.value = val;
+                if (confirmBufReset) confirmBufReset.classList.remove("hidden");
+
+                setStatus("Buffer applied (" + val + " mi)");
+            });
+        }
+
+        if (confirmBufReset) {
+            confirmBufReset.addEventListener("click", () => {
+                if (!aoiOriginalGeom) return;
+
+                selectionGeom = aoiOriginalGeom;
+                aoiOriginalGeom = null;
+                setAoiGeometry(selectionGeom);
+                resetCoverageCacheForAoi(selectionGeom);
+                if (typeof updateAoiMask === "function") updateAoiMask();
+                if (view && selectionGeom.extent) {
+                    view.goTo(selectionGeom.extent.expand(1.3), { animate: true, duration: 600 });
+                }
+                if (runBtn) runBtn.disabled = false;
+
+                populateAoiConfirmation();
+                setStatus("Buffer removed — original geometry restored");
+            });
+        }
+
+        // Confirm buffer preset buttons
+        document.querySelectorAll(".confirm-buf-preset").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const input = document.getElementById("aoiConfirmBufferInput");
+                if (input) input.value = btn.dataset.val;
+                document.querySelectorAll(".confirm-buf-preset").forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
             });
         });

@@ -373,10 +373,15 @@ define([
         var result = _toAoiGeometry(geojsonFC, viewSR);
 
         return {
-            geometry:     result.geometry,
-            featureCount: result.featureCount,
-            fileName:     file.name,
-            fileType:     fileType
+            geometry:      result.geometry,
+            allGeometries: result.allGeometries,
+            featureCount:  result.featureCount,
+            geometryType:  result.geometryType,
+            hasPoints:     result.hasPoints,
+            hasLines:      result.hasLines,
+            hasPolygons:   result.hasPolygons,
+            fileName:      file.name,
+            fileType:      fileType
         };
     }
 

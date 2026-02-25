@@ -625,6 +625,28 @@
                 <span class="aoi-confirm-value" id="wizAoiSource">—</span>
               </div>
             </div>
+            <!-- Optional buffer for any AOI method -->
+            <div id="aoiConfirmBufferPanel" class="upload-buffer-panel" style="margin-top:10px;">
+              <p class="upload-buffer-msg">Optionally add a buffer around your selected area.</p>
+              <div class="upload-buffer-row">
+                <label for="aoiConfirmBufferInput" class="upload-buffer-label">Buffer distance</label>
+                <div class="upload-buffer-input-wrap">
+                  <input type="number" id="aoiConfirmBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
+                  <span class="upload-buffer-unit">miles</span>
+                </div>
+              </div>
+              <div class="upload-buffer-presets confirm-buffer-presets">
+                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="0.25">¼ mi</button>
+                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="0.5">½ mi</button>
+                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="1">1 mi</button>
+                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="2">2 mi</button>
+                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="5">5 mi</button>
+              </div>
+              <div class="upload-buffer-actions">
+                <button type="button" id="aoiConfirmBufferApply" class="btn primary">Apply Buffer</button>
+                <button type="button" id="aoiConfirmBufferReset" class="btn subtle hidden">Reset to Original</button>
+              </div>
+            </div>
             <!-- Large AOI warning (populated dynamically) -->
             <div id="aoiSizeWarning" class="aoi-size-warning hidden"></div>
 
