@@ -117,7 +117,6 @@ require([
     const wizardStep2 = document.getElementById("wizardStep2");
     const wizardStep3 = document.getElementById("wizardStep3");
     const wizScreenBtn = document.getElementById("wizScreenBtn");
-    const wizBackToStep1 = document.getElementById("wizBackToStep1");
     const wizNewScreening = document.getElementById("wizNewScreening");
     const wizFullReport = document.getElementById("wizFullReport");
     const wizStopDrawBtn = document.getElementById("wizStopDrawBtn");
@@ -3457,11 +3456,24 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             setAoiGeometry(geom);
             setGeometryFromSelection(geom);
 
-            // Zoom to the selected feature
-            if (geom.type === "point") {
-                view.goTo({ target: geom, zoom: 14 }, { animate: true, duration: 800 });
-            } else {
-                view.goTo(geom, { animate: true, duration: 800 });
+            // Zoom to the selected feature — create a Graphic to force
+            // reliable auto-casting of the plain geometry JSON, then use
+            // the cast geometry's extent for a dependable goTo() target.
+            try {
+                const zoomGraphic = new Graphic({ geometry: geom });
+                const castGeom = zoomGraphic.geometry;
+                if (castGeom) {
+                    if (castGeom.type === "point") {
+                        view.goTo({ target: castGeom, zoom: 14 }, { animate: true, duration: 800 });
+                    } else {
+                        const target = castGeom.extent
+                            ? castGeom.extent.expand(1.5)
+                            : castGeom;
+                        view.goTo(target, { animate: true, duration: 800 });
+                    }
+                }
+            } catch (e) {
+                console.warn("[Search] goTo failed:", e);
             }
 
             // Update mask
@@ -3869,6 +3881,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const dbp = document.getElementById("drawBufferPanel");
                 if (dbp) dbp.classList.add("hidden");
 
+                // Reset draw tool button active state
+                document.querySelectorAll(".draw-tool-btn").forEach(b => b.classList.remove("active"));
+
                 // Reset wizard UI
                 if (wizFullReport) wizFullReport.disabled = true;
 
@@ -4051,16 +4066,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 goToWizardStep(2);
             });
         });
-
-        // Wizard navigation
-        if (wizBackToStep1) {
-            wizBackToStep1.addEventListener("click", () => {
-                // Full restart — clear everything and go back to permit type selection
-                clearAll();
-                goToWizardStep(1);
-                hideAoiMethodPanels();
-            });
-        }
 
         // Back to permit type — full reset (same as starting a new screening)
         const wizBackToPermitType = document.getElementById("wizBackToPermitType");
