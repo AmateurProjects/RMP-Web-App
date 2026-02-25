@@ -5431,19 +5431,12 @@ ${getA11yWidgetBlock()}
                 const ext = selectionGeom?.extent;
                 if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
 
-                // Pre-compute an explicit center + scale so every goTo uses
-                // deterministic values instead of relying on the MapView's
-                // internal extent→scale conversion (which can be stale after
-                // lockViewContainer resizes the div).
-                const _MPP = 0.000264583862; // meters-per-pixel at 96 DPI (ArcGIS constant)
-                const _ssW = width;
-                const _ssH = Math.round(width * 0.5625);
-                const _targetExt = fixedExtent || selectionGeom.extent.clone().expand(1.25);
-                const _fixedCenter = _targetExt.center;
-                const _fixedScale  = Math.max(
-                    _targetExt.width  / (_ssW * _MPP),
-                    _targetExt.height / (_ssH * _MPP)
-                );
+                // _fixedCenter and _fixedScale are captured AFTER
+                // lockViewContainer + view.goTo(fixedExtent) so that
+                // ArcGIS computes the scale correctly (with Mercator
+                // latitude correction and the actual viewport dimensions).
+                let _fixedCenter = (fixedExtent || selectionGeom.extent).center;
+                let _fixedScale  = null; // set after initial goTo
 
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
@@ -5481,16 +5474,30 @@ ${getA11yWidgetBlock()}
                     lockViewContainer();
                     console.log("[buildReportInBackground] view container locked");
 
-                    // Wait for the resize to fully settle before any goTo
-                    await new Promise(r => setTimeout(r, 600));
+                    // Poll until the MapView's internal width/height reflect
+                    // the locked container dimensions – without this, goTo
+                    // computes the wrong scale from stale viewport metrics.
+                    const _targetW = width;
+                    const _targetH = Math.round(width * 0.5625);
+                    const _resizeT0 = Date.now();
+                    while (Date.now() - _resizeT0 < 4000) {
+                        if (Math.abs(view.width - _targetW) < 10 &&
+                            Math.abs(view.height - _targetH) < 10) break;
+                        await new Promise(r => setTimeout(r, 80));
+                    }
+                    console.log(`[buildReportInBackground] view dims after lock: ${view.width}×${view.height} (target ${_targetW}×${_targetH})`);
+
+                    // Let ArcGIS compute the correct scale (handles Mercator
+                    // latitude distortion and actual viewport dimensions).
+                    const _goToTarget = fixedExtent || selectionGeom.extent.clone().expand(1.25);
+                    await view.goTo(_goToTarget, { animate: false });
                     await waitForViewStationary(1000);
 
-                    // Zoom to AOI extent + padding using explicit center/scale
-                    // (bypasses MapView's internal extent→scale which can be
-                    //  stale right after a container resize)
-                    await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
-                    await waitForViewStationary(800);
-                    console.log(`[buildReportInBackground] initial zoom: scale=${Math.round(view.scale)}, target=${Math.round(_fixedScale)}`);
+                    // Capture the correctly-computed scale for reuse across
+                    // all per-layer screenshots so we never re-derive it.
+                    _fixedScale  = view.scale;
+                    _fixedCenter = view.center;
+                    console.log(`[buildReportInBackground] initial zoom: viewScale=${Math.round(view.scale)}, viewCenter=${view.center.x.toFixed(0)},${view.center.y.toFixed(0)}`);
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
                     console.log("[buildReportInBackground] starting pre-load phase…");
