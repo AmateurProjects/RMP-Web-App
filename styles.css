@@ -3024,11 +3024,7 @@ body.cv-highcontrast {
 }
 
 /* AOI Confirm Section (within Step 2) */
-.aoi-confirm-section {
-    margin-top: 12px;
-    padding: 12px 16px 16px;
-    border-top: 1px solid var(--border-light);
-}
+/* .aoi-confirm-section is now a swipe slide — no extra styling needed */
 
 .aoi-confirm-card {
     background: var(--bg-light);

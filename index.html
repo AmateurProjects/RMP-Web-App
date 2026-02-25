@@ -508,29 +508,6 @@
                   <div class="row">
                     <button id="wizStopDrawBtn" class="btn subtle" type="button">Cancel Drawing</button>
                   </div>
-
-                  <!-- Draw buffer panel (shown after geometry is drawn) -->
-                  <div id="drawBufferPanel" class="upload-buffer-panel hidden">
-                    <p id="drawBufferMsg" class="upload-buffer-msg"></p>
-                    <div class="upload-buffer-row">
-                      <label for="drawBufferInput" class="upload-buffer-label">Buffer distance</label>
-                      <div class="upload-buffer-input-wrap">
-                        <input type="number" id="drawBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
-                        <span class="upload-buffer-unit">miles</span>
-                      </div>
-                    </div>
-                    <div class="upload-buffer-presets draw-buffer-presets">
-                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.25">¼ mi</button>
-                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="0.5">½ mi</button>
-                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="1">1 mi</button>
-                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="2">2 mi</button>
-                      <button type="button" class="upload-buffer-preset draw-buf-preset" data-val="5">5 mi</button>
-                    </div>
-                    <div class="upload-buffer-actions">
-                      <button type="button" id="drawBufferApply" class="btn primary">Apply Buffer</button>
-                      <button type="button" id="drawBufferSkip" class="btn subtle">No Buffer</button>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -607,54 +584,55 @@
                 </div>
               </div>
 
-            </div>
-          </div>
+              <!-- Slide 8: AOI Confirm / Your Project Area -->
+              <div class="aoi-swipe-slide" data-slide="confirm" id="aoiConfirmSection">
+                <button class="aoi-slide-back" type="button" data-back="true">‹ Back</button>
+                <div class="aoi-slide-header">
+                  <div class="wizard-question">Your Project Area</div>
+                </div>
+                <div class="aoi-confirm-card" id="aoiConfirmCard">
+                  <div class="aoi-confirm-row">
+                    <span class="aoi-confirm-label">Area</span>
+                    <span class="aoi-confirm-value" id="wizAoiAcres">—</span>
+                  </div>
+                  <div class="aoi-confirm-row">
+                    <span class="aoi-confirm-label">Location</span>
+                    <span class="aoi-confirm-value" id="wizAoiLocation">—</span>
+                  </div>
+                </div>
+                <!-- Optional buffer for any AOI method -->
+                <div id="aoiConfirmBufferPanel" class="upload-buffer-panel" style="margin-top:10px;">
+                  <p class="upload-buffer-msg">Optionally add a buffer around your selected area.</p>
+                  <div class="upload-buffer-row">
+                    <label for="aoiConfirmBufferInput" class="upload-buffer-label">Buffer distance</label>
+                    <div class="upload-buffer-input-wrap">
+                      <input type="number" id="aoiConfirmBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
+                      <span class="upload-buffer-unit">miles</span>
+                    </div>
+                  </div>
+                  <div class="upload-buffer-presets confirm-buffer-presets">
+                    <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="0.25">¼ mi</button>
+                    <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="0.5">½ mi</button>
+                    <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="1">1 mi</button>
+                    <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="2">2 mi</button>
+                    <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="5">5 mi</button>
+                  </div>
+                  <div class="upload-buffer-actions">
+                    <button type="button" id="aoiConfirmBufferApply" class="btn primary">Apply Buffer</button>
+                    <button type="button" id="aoiConfirmBufferReset" class="btn subtle hidden">Reset to Original</button>
+                  </div>
+                </div>
+                <!-- Large AOI warning (populated dynamically) -->
+                <div id="aoiSizeWarning" class="aoi-size-warning hidden"></div>
 
-        </div>
-
-          <!-- AOI Review & Confirm sub-section (shown after AOI is defined) -->
-          <div id="aoiConfirmSection" class="aoi-confirm-section hidden">
-            <div class="wizard-question" style="margin-top:14px;">Your Project Area</div>
-            <div class="aoi-confirm-card" id="aoiConfirmCard">
-              <div class="aoi-confirm-row">
-                <span class="aoi-confirm-label">Area</span>
-                <span class="aoi-confirm-value" id="wizAoiAcres">—</span>
-              </div>
-              <div class="aoi-confirm-row">
-                <span class="aoi-confirm-label">Defined by</span>
-                <span class="aoi-confirm-value" id="wizAoiSource">—</span>
-              </div>
-            </div>
-            <!-- Optional buffer for any AOI method -->
-            <div id="aoiConfirmBufferPanel" class="upload-buffer-panel" style="margin-top:10px;">
-              <p class="upload-buffer-msg">Optionally add a buffer around your selected area.</p>
-              <div class="upload-buffer-row">
-                <label for="aoiConfirmBufferInput" class="upload-buffer-label">Buffer distance</label>
-                <div class="upload-buffer-input-wrap">
-                  <input type="number" id="aoiConfirmBufferInput" class="upload-buffer-input" min="0.1" max="50" step="0.25" placeholder="e.g. 1">
-                  <span class="upload-buffer-unit">miles</span>
+                <div class="row" style="margin-top:14px;">
+                  <button id="wizScreenBtn" class="btn primary" type="button">🔍 Screen Project Area</button>
+                </div>
+                <div class="hint">
+                  Screening identifies which federal datasets cover your project area. You can then generate detailed reports for specific categories of interest.
                 </div>
               </div>
-              <div class="upload-buffer-presets confirm-buffer-presets">
-                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="0.25">¼ mi</button>
-                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="0.5">½ mi</button>
-                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="1">1 mi</button>
-                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="2">2 mi</button>
-                <button type="button" class="upload-buffer-preset confirm-buf-preset" data-val="5">5 mi</button>
-              </div>
-              <div class="upload-buffer-actions">
-                <button type="button" id="aoiConfirmBufferApply" class="btn primary">Apply Buffer</button>
-                <button type="button" id="aoiConfirmBufferReset" class="btn subtle hidden">Reset to Original</button>
-              </div>
-            </div>
-            <!-- Large AOI warning (populated dynamically) -->
-            <div id="aoiSizeWarning" class="aoi-size-warning hidden"></div>
 
-            <div class="row" style="margin-top:14px;">
-              <button id="wizScreenBtn" class="btn primary" type="button">🔍 Screen Project Area</button>
-            </div>
-            <div class="hint">
-              Screening identifies which federal datasets cover your project area. You can then generate detailed reports for specific categories of interest.
             </div>
           </div>
 

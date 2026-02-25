@@ -813,7 +813,7 @@ function setActiveTab(tabName) {
     }
 
     // Swipe slide index mapping
-    const aoiSlideMap = { methods: 0, search: 1, permit: 2, select: 3, draw: 4, upload: 5, namesearch: 6 };
+    const aoiSlideMap = { methods: 0, search: 1, permit: 2, select: 3, draw: 4, upload: 5, namesearch: 6, confirm: 7 };
 
     function swipeToAoiSlide(slideIndex) {
         const track = document.getElementById("aoiSwipeTrack");
@@ -843,8 +843,6 @@ function setActiveTab(tabName) {
         aoiGraphic = null;
         if (runBtn) runBtn.disabled = true;
         if (wizFullReport) wizFullReport.disabled = true;
-        const dbp = document.getElementById("drawBufferPanel");
-        if (dbp) dbp.classList.add("hidden");
         setStatus("");
 
         // Filter permit items when navigating to the permit slide
@@ -890,6 +888,10 @@ function setActiveTab(tabName) {
         // Hide all selection layers
         for (let i = 0; i < selectionLayers.length; i++) disableSelectionLayer(i);
         clearAllSelectionToolButtons();
+
+        // Hide buffer panels (upload)
+        const ubp = document.getElementById("uploadBufferPanel");
+        if (ubp) ubp.classList.add("hidden");
     }
 
     function setWizPlssActive(which) {
@@ -946,12 +948,41 @@ function setActiveTab(tabName) {
         } else {
             if (warningEl) warningEl.classList.add("hidden");
         }
-        const sourceEl = document.getElementById("wizAoiSource");
+        const sourceEl = document.getElementById("wizAoiLocation");
         if (sourceEl) {
-            if (aoiSource === "draw") sourceEl.textContent = "Custom drawn polygon";
-            else if (aoiSource === "upload") sourceEl.textContent = "Uploaded file: " + (aoiSourceLayerTitle || "unknown");
-            else if (aoiSourceLayerTitle) sourceEl.textContent = aoiSourceLayerTitle;
-            else sourceEl.textContent = "Map selection";
+            sourceEl.textContent = "…";
+            // Reverse-geocode the AOI centroid for a human-readable location
+            try {
+                const center = selectionGeom.extent
+                    ? selectionGeom.extent.center
+                    : selectionGeom;
+                // Project to lon/lat if needed
+                let lon, lat;
+                const sr = center.spatialReference;
+                if (sr && (sr.isWebMercator || sr.wkid === 102100 || sr.wkid === 3857)) {
+                    // Web Mercator → WGS84
+                    const DEG = 180 / Math.PI;
+                    lon = (center.x / 6378137) * DEG;
+                    lat = (Math.atan(Math.exp(center.y / 6378137)) * 2 - Math.PI / 2) * DEG;
+                } else if (sr && sr.wkid === 4326) {
+                    lon = center.x;
+                    lat = center.y;
+                } else {
+                    lon = center.x;
+                    lat = center.y;
+                }
+                const revUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location=${lon},${lat}&outSR=4326&f=json`;
+                fetch(revUrl).then(r => r.json()).then(data => {
+                    if (!data || !data.address) { sourceEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`; return; }
+                    const a = data.address;
+                    const parts = [a.Subregion || a.City || "", a.Region || ""].filter(Boolean);
+                    sourceEl.textContent = parts.length ? parts.join(", ") : `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+                }).catch(() => {
+                    sourceEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+                });
+            } catch (e) {
+                sourceEl.textContent = "—";
+            }
         }
 
         // Reset the confirm-section buffer panel
@@ -1351,9 +1382,7 @@ function clearAll() {
     const badgeEl = document.getElementById("wizStep2PermitBadge");
     if (badgeEl) badgeEl.textContent = "";
 
-    // Hide AOI confirm section
-    const confirmSec = document.getElementById("aoiConfirmSection");
-    if (confirmSec) confirmSec.classList.add("hidden");
+    // Hide AOI confirm section (swipe handles this now)
     
     // Clear results
     if (resultsEl) resultsEl.innerHTML = "";
@@ -1403,9 +1432,7 @@ function clearAll() {
     const uploadStatusEl = document.getElementById("uploadStatus");
     if (uploadStatusEl) uploadStatusEl.classList.add("hidden");
 
-    // Hide buffer panels (draw + upload + confirm)
-    const drawBufPanelEl = document.getElementById("drawBufferPanel");
-    if (drawBufPanelEl) drawBufPanelEl.classList.add("hidden");
+    // Hide buffer panels (upload + confirm)
     const uploadBufPanelEl = document.getElementById("uploadBufferPanel");
     if (uploadBufPanelEl) uploadBufPanelEl.classList.add("hidden");
 
@@ -1456,14 +1483,10 @@ function clearAll() {
         selectionGeom = generalizeAoiIfNeeded(geom) || null;
         if (runBtn) runBtn.disabled = !selectionGeom;
 
-        // Permitting mode: show AOI confirm section within Step 2 when AOI is defined
+        // Permitting mode: swipe to the AOI confirm slide when AOI is defined
         if (selectionGeom && currentAppMode === "permit" && currentWizardStep === 2) {
-            const cs = document.getElementById("aoiConfirmSection");
-            const wasHidden = cs && cs.classList.contains("hidden");
             populateAoiConfirmation();
-            if (cs) cs.classList.remove("hidden");
-            // Only scroll once when the confirm section first appears
-            if (wasHidden) scrollPanelToBottom();
+            swipeToAoiSlide(aoiSlideMap.confirm);
         }
     }
 
@@ -3132,31 +3155,19 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     if (autoBuf) geom = autoBuf;
                 }
 
-                // Show the geometry as a preview
+                // Finalize the drawn geometry as the AOI directly
+                // (buffer option is available in the AOI confirm section)
+                aoiOriginalGeom = geom;
+                aoiSource = "draw";
+                aoiSourceLayerTitle = null;
+                aoiSourceLayerUrl = null;
+                aoiSourceObjectId = null;
+                aoiSourceObjectIdField = null;
+                aoiSourceFeature = null;
                 setAoiGeometry(geom);
-
-                // Show the draw buffer panel (optional for all geometry types)
-                const drawBufPanel = document.getElementById("drawBufferPanel");
-                const drawBufMsg   = document.getElementById("drawBufferMsg");
-                const drawBufInput = document.getElementById("drawBufferInput");
-                const drawBufSkip  = document.getElementById("drawBufferSkip");
-
-                if (drawBufPanel) {
-                    const typeLabel = gType === "polyline" ? "line" : gType;
-                    if (drawBufMsg) drawBufMsg.innerHTML = "Optionally add a buffer around your drawn <strong>" + typeLabel + "</strong>.";
-                    if (drawBufInput) drawBufInput.value = "";
-                    if (drawBufSkip) drawBufSkip.classList.remove("hidden");
-
-                    // Store the (possibly auto-buffered) geometry for further buffer apply
-                    drawBufPanel._drawnGeom = geom;
-                    drawBufPanel.classList.remove("hidden");
-
-                    // Scroll the buffer options into view
-                    scrollPanelToBottom(drawBufPanel);
-
-                    // Clear active preset
-                    document.querySelectorAll(".draw-buf-preset").forEach(b => b.classList.remove("active"));
-                }
+                resetCoverageCacheForAoi(geom);
+                setGeometryFromSelection(geom);
+                setStatus("Drawn AOI ready");
             }
         });
 
@@ -3626,14 +3637,10 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 const bp = document.getElementById("uploadBufferPanel");
                 if (bp) bp.classList.add("hidden");
 
-                // Show AOI confirm section within Step 2
+                // Swipe to AOI confirm slide
                 if (currentAppMode === "permit" && currentWizardStep === 2) {
-                    const cs = document.getElementById("aoiConfirmSection");
-                    const wasHidden = cs && cs.classList.contains("hidden");
                     populateAoiConfirmation();
-                    if (cs) cs.classList.remove("hidden");
-                    // Only scroll once when the confirm section first appears
-                    if (wasHidden) scrollPanelToBottom();
+                    swipeToAoiSlide(aoiSlideMap.confirm);
                 }
             }
 
@@ -3851,8 +3858,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
                 // Immediately start drawing with the selected tool type
                 if (!sketch) return;
-                const dbp = document.getElementById("drawBufferPanel");
-                if (dbp) dbp.classList.add("hidden");
                 sketch.cancel();
                 currentInteractionMode = "draw";
                 sketch.create(currentDrawToolType);
@@ -3877,10 +3882,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 aoiGraphic = null;
                 if (runBtn) runBtn.disabled = true;
 
-                // Hide draw buffer panel
-                const dbp = document.getElementById("drawBufferPanel");
-                if (dbp) dbp.classList.add("hidden");
-
                 // Reset draw tool button active state
                 document.querySelectorAll(".draw-tool-btn").forEach(b => b.classList.remove("active"));
 
@@ -3890,81 +3891,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 setStatus("draw canceled");
             });
         }
-
-        // Draw buffer panel handlers
-        function finalizeDrawAoi(geom, bufferMiles) {
-            let finalGeom;
-            if (bufferMiles && bufferMiles > 0) {
-                finalGeom = uploadAoiModule.applyBuffer([geom], bufferMiles);
-                if (!finalGeom) {
-                    setStatus("Buffer operation failed.");
-                    return;
-                }
-            } else {
-                finalGeom = geom;
-            }
-
-            // Store original drawn geometry for potential re-buffering
-            aoiOriginalGeom = geom;
-
-            setAoiGeometry(finalGeom);
-            resetCoverageCacheForAoi(finalGeom);
-            aoiSource = "draw";
-            aoiSourceLayerTitle = null;
-            aoiSourceLayerUrl = null;
-            aoiSourceObjectId = null;
-            aoiSourceObjectIdField = null;
-            aoiSourceFeature = null;
-            setGeometryFromSelection(finalGeom);
-
-            const bufLabel = bufferMiles > 0 ? " with " + bufferMiles + " mi buffer" : "";
-            setStatus("Drawn AOI ready" + bufLabel);
-
-            // Hide buffer panel
-            const dbp = document.getElementById("drawBufferPanel");
-            if (dbp) dbp.classList.add("hidden");
-        }
-
-        const drawBufApply = document.getElementById("drawBufferApply");
-        const drawBufSkip  = document.getElementById("drawBufferSkip");
-        const drawBufPanel = document.getElementById("drawBufferPanel");
-
-        if (drawBufApply) {
-            drawBufApply.addEventListener("click", () => {
-                const input = document.getElementById("drawBufferInput");
-                const val = parseFloat(input ? input.value : "");
-                const geom = drawBufPanel ? drawBufPanel._drawnGeom : null;
-                if (!geom) return;
-
-                if (isNaN(val) || val <= 0) {
-                    finalizeDrawAoi(geom, 0);
-                    return;
-                }
-                if (val > 50) {
-                    setStatus("Buffer cannot exceed 50 miles.");
-                    return;
-                }
-                finalizeDrawAoi(geom, val);
-            });
-        }
-
-        if (drawBufSkip) {
-            drawBufSkip.addEventListener("click", () => {
-                const geom = drawBufPanel ? drawBufPanel._drawnGeom : null;
-                if (!geom) return;
-                finalizeDrawAoi(geom, 0);
-            });
-        }
-
-        // Draw buffer preset buttons
-        document.querySelectorAll(".draw-buf-preset").forEach(btn => {
-            btn.addEventListener("click", () => {
-                const input = document.getElementById("drawBufferInput");
-                if (input) input.value = btn.dataset.val;
-                document.querySelectorAll(".draw-buf-preset").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
-            });
-        });
 
         // ── Confirm-section buffer panel (universal, works for all AOI methods) ──
         const confirmBufApply = document.getElementById("aoiConfirmBufferApply");
