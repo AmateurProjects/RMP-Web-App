@@ -27,6 +27,10 @@ define([
     // ── Layer instance cache (avoid recreating FeatureLayer for every query) ──
     const _layerCache = new Map();  // url → FeatureLayer instance
 
+    // ── Pre-warm cache for report screenshot layers ──
+    // Loaded in background after screening so report-gen .when() resolves instantly.
+    const _reportLayerCache = new Map();  // lowercase url → loaded FeatureLayer
+
     /**
      * Get or create a FeatureLayer instance (avoids metadata re-fetch).
      */
@@ -1010,7 +1014,7 @@ define([
         // Build column labels depending on geometry type
         const extraCols = [];
         if (isPolygonLayer) {
-            extraCols.push('Acres', '% of AOI');
+            extraCols.push('Acres in AOI', '% of AOI');
         } else if (isPolylineLayer) {
             extraCols.push('Length (ft)', 'Length (mi)');
         }
@@ -1082,6 +1086,82 @@ define([
         `;
     }
 
+    // ── Report pre-warm helpers ────────────────────────────────
+
+    /**
+     * Pre-create and .load() FeatureLayer instances for every layer that
+     * passed the screening coverage check.  Called once in the background
+     * after screening completes so that when the user clicks "Generate
+     * Report", each tempLayer.when() resolves instantly (metadata already
+     * fetched).  Layers are stored by URL and reused via getPreWarmedLayer.
+     */
+    async function preWarmReportLayers(layerConfigs) {
+        const toLoad = [];
+        for (const cfg of layerConfigs) {
+            if (!cfg.url || !cfg.hasCoverage || cfg.__isImageService) continue;
+            const urlKey = String(cfg.url).replace(/\/+$/, '').toLowerCase();
+            if (_reportLayerCache.has(urlKey)) continue;
+
+            const fl = new FeatureLayer({
+                url: cfg.url,
+                outFields: ["*"],
+                visible: false
+            });
+            fl.minScale = 0;
+            fl.maxScale = 0;
+            _reportLayerCache.set(urlKey, fl);
+            toLoad.push(fl);
+        }
+        if (toLoad.length) {
+            await Promise.allSettled(toLoad.map(fl => fl.load().catch(() => null)));
+        }
+        console.log(`[pre-warm] ${toLoad.length} report layer(s) metadata pre-loaded`);
+    }
+
+    /**
+     * Return a pre-loaded FeatureLayer for the given URL, or null.
+     * The caller takes ownership — the instance is removed from the cache
+     * so it can be safely added to a map, mutated, and discarded.
+     */
+    function getPreWarmedLayer(url) {
+        const urlKey = String(url).replace(/\/+$/, '').toLowerCase();
+        const fl = _reportLayerCache.get(urlKey);
+        if (fl) {
+            _reportLayerCache.delete(urlKey);
+            return fl;
+        }
+        return null;
+    }
+
+    /** Clear the pre-warm cache (called on clearAll / AOI change). */
+    function clearPreWarmCache() {
+        _reportLayerCache.clear();
+    }
+
+    /**
+     * Fire computeLayerCoverageStats for every polygon layer that passed
+     * screening.  Results land in the existing coverageCache so the report
+     * generator gets instant cache hits instead of running the heavy
+     * geometry-intersection queries during report-gen time.
+     * Call this in the background (fire-and-forget) after screening.
+     */
+    async function preFireCoverageStats(layerConfigs, aoiGeom) {
+        if (!aoiGeom) return;
+        const tasks = [];
+        for (const cfg of layerConfigs) {
+            if (!cfg.hasCoverage || cfg.__isImageService) continue;
+            if (!cfg._layer || !cfg._exportQuery) continue;
+            const gt = cfg._layer.geometryType;
+            if (!gt || !String(gt).toLowerCase().includes('polygon')) continue;
+            tasks.push(computeLayerCoverageStats(cfg, aoiGeom).catch(() => null));
+        }
+        if (tasks.length) {
+            console.log(`[pre-warm] Pre-firing coverage stats for ${tasks.length} polygon layer(s)`);
+            await Promise.allSettled(tasks);
+            console.log(`[pre-warm] Coverage stats complete`);
+        }
+    }
+
     // ── Module entry point ──────────────────────────────────────
 
     function init(state) {
@@ -1124,6 +1204,12 @@ define([
 
             // Layer cache (shared across screening + report generation)
             getCachedLayer,
+
+            // Report pre-warm (background layer pre-loading)
+            preWarmReportLayers,
+            getPreWarmedLayer,
+            clearPreWarmCache,
+            preFireCoverageStats,
 
             // Utility
             sampleWithoutReplacement,

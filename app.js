@@ -570,6 +570,7 @@ function setBusy(isBusy) {
         querySingleLayer, querySingleLayerChunked, computeElevationStats,
         computeLayerCoverageStats, buildPerFeatureTable,
         getAoiKey, resetCoverageCacheForAoi, SQM_PER_ACRE,
+        preWarmReportLayers, preFireCoverageStats, clearPreWarmCache,
         sampleWithoutReplacement, makeTable
     } = queryEngine;
 
@@ -1402,6 +1403,7 @@ function clearAll() {
     if (runBtn) runBtn.disabled = true;
     setStatus("cleared");
     resetCoverageCacheForAoi(null);
+    clearPreWarmCache();
     setBusy(false);
 
     // Reset wizard-specific UI state
@@ -2221,6 +2223,17 @@ async function runAnalysis() {
 
         // Enable "View Report" button (for Advanced mode, if ever re-enabled)
         if (viewReportBtn) viewReportBtn.disabled = false;
+
+        // ── Background pre-warm for faster report generation ──
+        // Silently pre-load FeatureLayer metadata + pre-fire polygon
+        // coverage stats while the user reviews screening results.
+        // Everything is fire-and-forget — errors are swallowed.
+        if (lastReportRowsByLayer.length > 0) {
+            const preWarmGeom = getReportGeometry();
+            preWarmReportLayers(lastReportRowsByLayer)
+                .then(() => preFireCoverageStats(lastReportRowsByLayer, preWarmGeom))
+                .catch(() => {});
+        }
 
     } catch (e) {
         console.error(e);

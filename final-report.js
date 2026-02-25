@@ -4438,11 +4438,12 @@ ${getA11yWidgetBlock()}
 
                             if (!document.hidden) {
                                 // Tab visible — capture screenshot now
-                                const tempLayer = new FeatureLayer({
+                                const tempLayer = queryEngine.getPreWarmedLayer(item.url) || new FeatureLayer({
                                     url: item.url,
                                     outFields: ["*"],
                                     visible: false
                                 });
+                                tempLayer.visible = false;
                                 view.map.add(tempLayer);
                                 tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
                                 try { await tempLayer.when(); } catch (e) { /* continue */ }
@@ -4548,9 +4549,10 @@ ${getA11yWidgetBlock()}
                                         restoreVisibility();
                                     }
                                 } else {
-                                    const tempLayer = new FeatureLayer({
+                                    const tempLayer = queryEngine.getPreWarmedLayer(def.item.url) || new FeatureLayer({
                                         url: def.item.url, outFields: ["*"], visible: false
                                     });
+                                    tempLayer.visible = false;
                                     view.map.add(tempLayer);
                                     tempLayer.definitionExpression = def.item._exportQuery?.where || "1=1";
                                     try { await tempLayer.when(); } catch (e) {}
@@ -5021,13 +5023,12 @@ ${getA11yWidgetBlock()}
                     const deferToken = `__DEFERRED_MAP_${globalLayerIndex}__`;
 
                     if (!document.hidden) {
-                        const tempOpts = {
+                        const temp = queryEngine.getPreWarmedLayer(item.url) || new FeatureLayer({
                             url: item.url,
                             title: item.title,
                             outFields: ["*"],
                             visible: true
-                        };
-                        const temp = new FeatureLayer(tempOpts);
+                        });
                         temp.minScale = 0;
                         temp.maxScale = 0;
                         view.map.add(temp);
@@ -5136,8 +5137,9 @@ ${getA11yWidgetBlock()}
                                     restoreVisibility();
                                 }
                             } else {
-                                const tempOpts = { url: def.item.url, title: def.item.title, outFields: ["*"], visible: true };
-                                const temp = new FeatureLayer(tempOpts);
+                                const temp = queryEngine.getPreWarmedLayer(def.item.url) || new FeatureLayer({
+                                    url: def.item.url, title: def.item.title, outFields: ["*"], visible: true
+                                });
                                 temp.minScale = 0;
                                 temp.maxScale = 0;
                                 view.map.add(temp);
@@ -5723,11 +5725,12 @@ ${getA11yWidgetBlock()}
                             const deferToken = `__BG_DEFERRED_MAP_${i}__`;
 
                             if (!document.hidden) {
-                                const tempLayer = new FeatureLayer({
+                                const tempLayer = queryEngine.getPreWarmedLayer(item.url) || new FeatureLayer({
                                     url: item.url,
                                     outFields: ["*"],
                                     visible: false
                                 });
+                                tempLayer.visible = false;
                                 view.map.add(tempLayer);
                                 tempLayer.definitionExpression = item._exportQuery?.where || "1=1";
                                 try { await tempLayer.when(); } catch (e) { /* continue */ }
@@ -5860,9 +5863,10 @@ ${getA11yWidgetBlock()}
                                         restoreVisibility();
                                     }
                                 } else {
-                                    const tempLayer = new FeatureLayer({
+                                    const tempLayer = queryEngine.getPreWarmedLayer(def.item.url) || new FeatureLayer({
                                         url: def.item.url, outFields: ["*"], visible: false
                                     });
+                                    tempLayer.visible = false;
                                     view.map.add(tempLayer);
                                     tempLayer.definitionExpression = def.defExpr || "1=1";
                                     try { await tempLayer.when(); } catch (e) { /* continue */ }
