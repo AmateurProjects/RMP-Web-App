@@ -325,8 +325,7 @@ define([
     // CDN script tags for report package/share features
     // ────────────────────────────────────────────
     function getReportPackageCdnTags() {
-        return '<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"><\/script>\n' +
-               '    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js" crossorigin="anonymous"><\/script>';
+        return '<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"><\/script>';
     }
 
     // ────────────────────────────────────────────
@@ -447,7 +446,7 @@ define([
 '    return { shp: shpBuf, shx: shxBuf, dbf: _buildDbf(), prj: _WGS84_PRJ };',
 '}',
 '',
-'// ── Download Report Package (ZIP with CSV + PDF + Shapefile) ──',
+'// ── Download Report Package (ZIP with CSV + HTML + Shapefile) ──',
 'function downloadReportPackage() {',
 '    var btn = document.querySelector(".pkg-download-btn");',
 '    if (btn) { btn.disabled = true; btn.innerHTML = "\\u23F3 Building package\\u2026"; }',
@@ -471,95 +470,16 @@ define([
 '    }',
 '    var csv = csvBlocks.join("\\n");',
 '',
-'    // Hide UI chrome that should not appear in the PDF',
-'    var actBtns = document.querySelectorAll(".report-actions, .actions, .hint");',
-'    actBtns.forEach(function(el) { el.setAttribute("data-saved-display", el.style.display); el.style.display = "none"; });',
-'    // Hide fixed-position elements (a11y widget, back-to-top) — html2canvas',
-'    // renders them at incorrect positions and they create grey artifacts.',
-'    var fixedEls = document.querySelectorAll(".a11y-widget, .back-to-top");',
-'    fixedEls.forEach(function(el) { el.setAttribute("data-saved-display-f", el.style.display); el.style.display = "none"; });',
+'    // Build a self-contained HTML copy of the report (strip action buttons)',
+'    var clone = document.documentElement.cloneNode(true);',
+'    var stripSels = [".report-actions", ".actions", ".hint",',
+'        ".pkg-download-btn", ".share-report-btn", ".a11y-widget", ".back-to-top"];',
+'    stripSels.forEach(function(sel) {',
+'        clone.querySelectorAll(sel).forEach(function(el) { el.remove(); });',
+'    });',
+'    var reportHtml = "<!doctype html>" + clone.outerHTML;',
 '',
-'    var pdfProm;',
-'    if (typeof html2pdf !== "undefined") {',
-'        var pdfEl = document.querySelector(".cv-filter-wrap") || document.body;',
-'',
-'        // Temporarily remove color-vision filter classes from .cv-filter-wrap so the',
-'        // PDF renders with normal colors (filters confuse html2canvas).',
-'        var cvClasses = ["cv-protanopia","cv-deuteranopia","cv-tritanopia","cv-achromatopsia","cv-highcontrast"];',
-'        var savedCvClass = "";',
-'        var cvWrap = document.querySelector(".cv-filter-wrap") || document.body;',
-'        cvClasses.forEach(function(c) {',
-'            if (cvWrap.classList.contains(c)) { savedCvClass = c; cvWrap.classList.remove(c); }',
-'        });',
-'        // Also clear any leftover inline filter styles',
-'        var _savedFilter = pdfEl.style.filter || "";',
-'        var _savedWkFilter = pdfEl.style.webkitFilter || "";',
-'        pdfEl.style.filter = ""; pdfEl.style.webkitFilter = "";',
-'        cvWrap.style.filter = ""; cvWrap.style.webkitFilter = "";',
-'',
-'        // Scroll to top so html2canvas captures from the correct origin',
-'        var savedScrollY = window.scrollY;',
-'        window.scrollTo(0, 0);',
-'',
-'        pdfProm = html2pdf().set({',
-'            margin: [10, 5, 10, 5],',
-'            filename: "report.pdf",',
-'            image: { type: "jpeg", quality: 0.85 },',
-'            html2canvas: {',
-'                scale: 2,',
-'                useCORS: true,',
-'                allowTaint: true,',
-'                logging: false,',
-'                backgroundColor: "#fdfcfa",',
-'                windowWidth: 980,',
-'                scrollY: 0,',
-'                scrollX: 0,',
-'                x: 0,',
-'                y: 0,',
-'                removeContainer: true,',
-'                onclone: function(clonedDoc) {',
-'                    // Force tables to fit within page width (mirrors @media print rules)',
-'                    var scrollEls = clonedDoc.querySelectorAll(".table-scroll");',
-'                    scrollEls.forEach(function(el) { el.style.maxHeight = "none"; el.style.overflow = "visible"; });',
-'                    var tables = clonedDoc.querySelectorAll(".interactive-table");',
-'                    tables.forEach(function(t) { t.style.width = "100%"; t.style.fontSize = "9px"; t.style.tableLayout = "auto"; });',
-'                    // Hide UI chrome that does not belong in the PDF',
-'                    var hide = clonedDoc.querySelectorAll(".table-toolbar, .hidden-cols-bar, .col-hide-btn, .back-to-top, .a11y-widget");',
-'                    hide.forEach(function(el) { el.style.display = "none"; });',
-'                    // Wait for all images to finish loading',
-'                    var imgs = clonedDoc.querySelectorAll("img");',
-'                    var promises = [];',
-'                    imgs.forEach(function(img) {',
-'                        if (!img.complete) {',
-'                            promises.push(new Promise(function(resolve) {',
-'                                img.onload = resolve;',
-'                                img.onerror = resolve;',
-'                            }));',
-'                        }',
-'                    });',
-'                    return Promise.all(promises);',
-'                }',
-'            },',
-'            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },',
-'            pagebreak: { mode: ["css", "legacy"], avoid: [".section", "tr", "img", ".bucket-header"] }',
-'        }).from(pdfEl).outputPdf("arraybuffer").then(function(buf) {',
-'            pdfEl.style.filter = _savedFilter; pdfEl.style.webkitFilter = _savedWkFilter;',
-'            cvWrap.style.filter = ""; cvWrap.style.webkitFilter = "";',
-'            if (savedCvClass) cvWrap.classList.add(savedCvClass);',
-'            window.scrollTo(0, savedScrollY);',
-'            return buf;',
-'        }).catch(function(pdfErr) {',
-'            pdfEl.style.filter = _savedFilter; pdfEl.style.webkitFilter = _savedWkFilter;',
-'            cvWrap.style.filter = ""; cvWrap.style.webkitFilter = "";',
-'            if (savedCvClass) cvWrap.classList.add(savedCvClass);',
-'            window.scrollTo(0, savedScrollY);',
-'            throw pdfErr;',
-'        });',
-'    } else { pdfProm = Promise.resolve(null); }',
-'',
-'    pdfProm.then(function(pdfBuf) {',
-'        actBtns.forEach(function(el) { el.style.display = el.getAttribute("data-saved-display") || ""; });',
-'        fixedEls.forEach(function(el) { el.style.display = el.getAttribute("data-saved-display-f") || ""; });',
+'    try {',
 '        if (typeof JSZip === "undefined") {',
 '            alert("ZIP library not loaded. Please try again in a moment.");',
 '            if (btn) { btn.disabled = false; btn.innerHTML = "\\uD83D\\uDCE6 Download Report Package"; }',
@@ -567,7 +487,7 @@ define([
 '        }',
 '        var zip = new JSZip();',
 '        if (csv) zip.file("report_data.csv", csv);',
-'        if (pdfBuf) zip.file("report.pdf", pdfBuf);',
+'        zip.file("report.html", reportHtml);',
 '        if (typeof _aoiGeoJson !== "undefined" && _aoiGeoJson) {',
 '            var shpFiles = buildShapefileBuffers(_aoiGeoJson);',
 '            if (shpFiles) {',
@@ -582,22 +502,23 @@ define([
 '                features: [{ type: "Feature", properties: { name: "Area of Interest" }, geometry: _aoiGeoJson }]',
 '            }, null, 2));',
 '        }',
-'        return zip.generateAsync({ type: "blob" });',
-'    }).then(function(blob) {',
-'        if (!blob) return;',
-'        var url = URL.createObjectURL(blob);',
-'        var a = document.createElement("a");',
-'        a.href = url; a.download = "report_package.zip";',
-'        document.body.appendChild(a); a.click(); document.body.removeChild(a);',
-'        URL.revokeObjectURL(url);',
-'    }).catch(function(err) {',
+'        zip.generateAsync({ type: "blob" }).then(function(blob) {',
+'            var url = URL.createObjectURL(blob);',
+'            var a = document.createElement("a");',
+'            a.href = url; a.download = "report_package.zip";',
+'            document.body.appendChild(a); a.click(); document.body.removeChild(a);',
+'            URL.revokeObjectURL(url);',
+'        }).catch(function(err) {',
+'            console.error("Package error:", err);',
+'            alert("Failed to create report package: " + err.message);',
+'        }).finally(function() {',
+'            if (btn) { btn.disabled = false; btn.innerHTML = "\\uD83D\\uDCE6 Download Report Package"; }',
+'        });',
+'    } catch(err) {',
 '        console.error("Package error:", err);',
-'        actBtns.forEach(function(el) { el.style.display = el.getAttribute("data-saved-display") || ""; });',
-'        fixedEls.forEach(function(el) { el.style.display = el.getAttribute("data-saved-display-f") || ""; });',
 '        alert("Failed to create report package: " + err.message);',
-'    }).finally(function() {',
 '        if (btn) { btn.disabled = false; btn.innerHTML = "\\uD83D\\uDCE6 Download Report Package"; }',
-'    });',
+'    }',
 '}',
 '',
 '// ── Share Report (upload to R2, get shareable link) ──',
@@ -5510,6 +5431,20 @@ ${getA11yWidgetBlock()}
                 const ext = selectionGeom?.extent;
                 if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
 
+                // Pre-compute an explicit center + scale so every goTo uses
+                // deterministic values instead of relying on the MapView's
+                // internal extent→scale conversion (which can be stale after
+                // lockViewContainer resizes the div).
+                const _MPP = 0.000264583862; // meters-per-pixel at 96 DPI (ArcGIS constant)
+                const _ssW = width;
+                const _ssH = Math.round(width * 0.5625);
+                const _targetExt = fixedExtent || selectionGeom.extent.clone().expand(1.25);
+                const _fixedCenter = _targetExt.center;
+                const _fixedScale  = Math.max(
+                    _targetExt.width  / (_ssW * _MPP),
+                    _targetExt.height / (_ssH * _MPP)
+                );
+
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
                 const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
@@ -5547,11 +5482,15 @@ ${getA11yWidgetBlock()}
                     console.log("[buildReportInBackground] view container locked");
 
                     // Wait for the resize to fully settle before any goTo
+                    await new Promise(r => setTimeout(r, 600));
                     await waitForViewStationary(1000);
 
-                    // Zoom to AOI extent + padding and hold this extent for every layer screenshot
-                    await view.goTo(fixedExtent || selectionGeom.extent.clone().expand(1.25), { animate: false });
+                    // Zoom to AOI extent + padding using explicit center/scale
+                    // (bypasses MapView's internal extent→scale which can be
+                    //  stale right after a container resize)
+                    await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
                     await waitForViewStationary(800);
+                    console.log(`[buildReportInBackground] initial zoom: scale=${Math.round(view.scale)}, target=${Math.round(_fixedScale)}`);
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
                     console.log("[buildReportInBackground] starting pre-load phase…");
@@ -5641,11 +5580,7 @@ ${getA11yWidgetBlock()}
                                     await tempImg.when();
                                     setVisibilityForScreenshot(tempImg);
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    if (fixedExtent) {
-                                        await view.goTo(fixedExtent, { animate: false });
-                                    } else {
-                                        await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
-                                    }
+                                    await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5747,11 +5682,7 @@ ${getA11yWidgetBlock()}
                                 try {
                                     setVisibilityForScreenshot(tempLayer);
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                                    if (fixedExtent) {
-                                        await view.goTo(fixedExtent, { animate: false });
-                                    } else {
-                                        await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
-                                    }
+                                    await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5857,8 +5788,7 @@ ${getA11yWidgetBlock()}
                                         await temp.when();
                                         setVisibilityForScreenshot(temp);
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                        else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
+                                        await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -5882,8 +5812,7 @@ ${getA11yWidgetBlock()}
                                     try {
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
-                                        if (fixedExtent) await view.goTo(fixedExtent, { animate: false });
-                                        else await view.goTo(selectionGeom.extent.clone().expand(1.15), { animate: false });
+                                        await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);

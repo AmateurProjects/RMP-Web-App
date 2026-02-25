@@ -385,7 +385,7 @@ define([
         let targetScale = null;
 
         if (minScale > 0 && isFinite(minScale) && view.scale > minScale) {
-            targetScale = Math.max(1, Math.floor(minScale * 0.90));
+            targetScale = Math.max(1, Math.floor(minScale * 0.70));
         } else if (maxScale > 0 && isFinite(maxScale) && view.scale < maxScale) {
             targetScale = Math.ceil(maxScale * 1.10);
         }
