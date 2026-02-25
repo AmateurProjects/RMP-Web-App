@@ -408,50 +408,12 @@
       ]
     },
     {
-      "title": "BIA American Indian / Alaska Native Lands",
-      "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_National_LAR/MapServer",
-      "category": "land-status",
-      "serviceType": "map",
-      "permitTypes": [
-        "core"
-      ]
-    },
-    {
       "title": "FEMA National Flood Hazard Layer (NFHL)",
       "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/TESTBREAKING",
       "category": "environmental",
       "serviceType": "map",
       "permitTypes": [
         "core"
-      ]
-    },
-    {
-      "title": "USFWS National Wildlife Refuge Boundaries",
-      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/National_Wildlife_Refuge_System_Boundaries/FeatureServer",
-      "category": "special",
-      "serviceType": "feature",
-      "permitTypes": [
-        "core"
-      ]
-    },
-    {
-      "title": "BLM Geothermal Leases",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Geothermal_Leases/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "oil-gas",
-        "mining"
-      ]
-    },
-    {
-      "title": "BLM Coal Cases",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Coal_Cases/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "mining",
-        "oil-gas"
       ]
     },
     {
@@ -463,39 +425,6 @@
         "oil-gas",
         "mining",
         "row"
-      ]
-    },
-    {
-      "title": "Watershed Boundaries (WBD)",
-      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer",
-      "category": "environmental",
-      "serviceType": "map",
-      "permitTypes": [
-        "oil-gas",
-        "mining",
-        "row"
-      ]
-    },
-    {
-      "title": "USFS Inventoried Roadless Areas (2001)",
-      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_InventoriedRoadlessAreas2001_01/MapServer",
-      "category": "special",
-      "serviceType": "map",
-      "permitTypes": [
-        "oil-gas",
-        "mining",
-        "row"
-      ]
-    },
-    {
-      "title": "BLM GTLF Roads & Trails",
-      "url": "https://gis.blm.gov/arcgis/rest/services/transportation/BLM_Natl_GTLF/MapServer",
-      "category": "authorizations",
-      "serviceType": "map",
-      "permitTypes": [
-        "row",
-        "oil-gas",
-        "mining"
       ]
     },
     {
@@ -519,155 +448,12 @@
       ]
     },
     {
-      "title": "BLM Mining Claims (Closed)",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Closed/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "mining"
-      ]
-    },
-    {
-      "title": "BLM Oil Shale Leases",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_Shale_Leases/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "oil-gas",
-        "mining"
-      ]
-    },
-    {
-      "title": "BLM Oil and Gas Agreements",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Agreements/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "oil-gas"
-      ]
-    },
-    {
-      "title": "BLM Oil and Gas Participating Areas",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Participating_Areas/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "oil-gas"
-      ]
-    },
-    {
-      "title": "BLM Non-Energy Leasables",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Non_Energy_Leasables/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "realty",
-        "mining"
-      ]
-    },
-    {
-      "title": "BLM Mineral Materials",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mineral_Materials/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "mining"
-      ]
-    },
-    {
-      "title": "BLM Locatable Notices",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Notices/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "mining"
-      ]
-    },
-    {
-      "title": "BLM Locatable Plans of Operations",
-      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Plans_Of_Operations/FeatureServer",
-      "category": "authorizations",
-      "serviceType": "feature",
-      "permitTypes": [
-        "mining"
-      ]
-    },
-    {
       "title": "BLM Taylor Grazing Act Lands",
       "url": "https://gis.blm.gov/arcgis/rest/services/range/BLM_Natl_TGA/MapServer/9",
       "category": "land-use",
       "serviceType": "map",
       "permitTypes": [
         "grazing"
-      ]
-    },
-    {
-      "title": "NHDPlus High Resolution",
-      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer",
-      "category": "environmental",
-      "serviceType": "map",
-      "permitTypes": [
-        "oil-gas",
-        "mining",
-        "row"
-      ]
-    },
-    {
-      "title": "Riparian Areas (NWI)",
-      "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Riparian/MapServer",
-      "category": "environmental",
-      "serviceType": "map",
-      "permitTypes": [
-        "grazing",
-        "oil-gas",
-        "mining",
-        "row"
-      ]
-    },
-    {
-      "title": "USFS National Forest Boundaries",
-      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer",
-      "category": "special",
-      "serviceType": "map",
-      "permitTypes": [
-        "core"
-      ]
-    },
-    {
-      "title": "USFS Wilderness Areas",
-      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_Wilderness_01/MapServer",
-      "category": "special",
-      "serviceType": "map",
-      "permitTypes": [
-        "core"
-      ]
-    },
-    {
-      "title": "BIA Tribal Statistical Areas",
-      "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_Tribal_Statistical_Areas/MapServer",
-      "category": "land-status",
-      "serviceType": "map",
-      "permitTypes": [
-        "core"
-      ]
-    },
-    {
-      "title": "BLM Land Use Planning Boundaries",
-      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_LandUsePlanningBoundaries/MapServer",
-      "category": "land-use",
-      "serviceType": "map",
-      "permitTypes": [
-        "core"
-      ]
-    },
-    {
-      "title": "USGS PAD-US Protected Areas (Fee)",
-      "url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Fee_Managers_PADUS/FeatureServer",
-      "useServiceRenderer": true,
-      "category": "land-status",
-      "serviceType": "feature",
-      "permitTypes": [
-        "core"
       ]
     },
     {
@@ -706,6 +492,461 @@
         "core"
       ],
       "serviceType": "feature"
+    },
+    {
+      "title": "BIA AIAN National LAR",
+      "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_National_LAR/MapServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Geothermal Leases",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Geothermal_Leases/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas",
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "FWSBoundaries",
+      "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/National_Wildlife_Refuge_System_Boundaries/FeatureServer/0",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Coal Cases",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Coal_Cases/FeatureServer/1",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining",
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "WBDLine",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/0",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "2-digit HU (Region)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/1",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "4-digit HU (Subregion)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/2",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "6-digit HU (Basin)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/3",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "8-digit HU  (Subbasin)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/4",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "10-digit HU (Watershed)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/5",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "12-digit HU (Subwatershed)",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "14-digit HU",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/7",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "16-digit HU",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/8",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Roadless Areas: 2001 Roadless Rule",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_InventoriedRoadlessAreas2001_01/MapServer/0",
+      "category": "special",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Ground Transportation Linear Feature",
+      "url": "https://gis.blm.gov/arcgis/rest/services/transportation/BLM_Natl_GTLF/MapServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "row",
+        "oil-gas",
+        "mining"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Mining Claims-Closed",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Closed/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Oil Shale Leases",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_Shale_Leases/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas",
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Oil and Gas Agreements",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Agreements/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Oil and Gas Participating Areas",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Oil_and_Gas_Participating_Areas/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "oil-gas"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Non-Energy Leasables",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Non_Energy_Leasables/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "realty",
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Mineral Materials",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mineral_Materials/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Locatable Notices",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Notices/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "Plans of Operations",
+      "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Locatable_Plans_Of_Operations/FeatureServer/0",
+      "category": "authorizations",
+      "permitTypes": [
+        "mining"
+      ],
+      "serviceType": "feature"
+    },
+    {
+      "title": "NHDPlusGage",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/0",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusSink",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/1",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPoint",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/2",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NetworkNHDFlowline",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/3",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NonNetworkNHDFlowline",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/4",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "FlowDirection",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/5",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusWall",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/6",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDLine",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/7",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDArea",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/8",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDWaterbody",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/9",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusCatchment",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/10",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "NHDPlusBoundaryUnit",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/11",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "WBDHU12",
+      "url": "https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/12",
+      "category": "environmental",
+      "permitTypes": [
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Riparian",
+      "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Riparian/MapServer/0",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Riparian Mapping Areas",
+      "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Riparian/MapServer/1",
+      "category": "environmental",
+      "permitTypes": [
+        "grazing",
+        "oil-gas",
+        "mining",
+        "row"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Administrative Forest Boundaries - National Extent",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer/0",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Administrative Forest Boundaries - Regional Extent",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer/1",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "National Wilderness Areas",
+      "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_Wilderness_01/MapServer/0",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "BIA AIAN Tribal Statistical Areas",
+      "url": "https://biamaps.geoplatform.gov/server/rest/services/DivLTR/BIA_AIAN_Tribal_Statistical_Areas/MapServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "Land Use Planning Area Boundary Existing Polygons",
+      "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_LandUsePlanningBoundaries/MapServer/0",
+      "category": "land-use",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "map"
+    },
+    {
+      "title": "PADUS4_1FeeManagers",
+      "url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Fee_Managers_PADUS/FeatureServer/0",
+      "category": "land-status",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature",
+      "useServiceRenderer": true
     }
   ],
   "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
