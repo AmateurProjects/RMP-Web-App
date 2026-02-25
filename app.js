@@ -573,6 +573,7 @@ function setBusy(isBusy) {
         get view() { return view; },
         get map() { return map; },
         get selectionGeom() { return selectionGeom; },
+        get aoiOriginalGeom() { return aoiOriginalGeom; },
         get aoiLayer() { return aoiLayer; },
         get aoiMaskLayer() { return aoiMaskLayer; },
         get aoiGraphic() { return aoiGraphic; },

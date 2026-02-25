@@ -5427,16 +5427,24 @@ ${getA11yWidgetBlock()}
                 const paddingFactor = config?.visualReport?.paddingFactor ?? 1.12;
                 const width = config?.visualReport?.screenshotWidth ?? 1400;
 
+                // When a buffer was applied, selectionGeom is the large
+                // buffered polygon.  Zoom to the ORIGINAL (pre-buffer)
+                // geometry so the drawn AOI is prominent, with enough
+                // padding to show nearby buffer-area features.
+                const _origGeom = S.aoiOriginalGeom;
+                const _zoomGeom = _origGeom || selectionGeom;
+                const _zoomPad  = _origGeom ? 1.5 : paddingFactor; // wider pad when using original geom
+
                 let fixedExtent = null;
-                const ext = selectionGeom?.extent;
-                if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
+                const ext = _zoomGeom?.extent;
+                if (ext && ext.clone) fixedExtent = ext.clone().expand(_zoomPad);
 
                 // Explicit center + scale computed with Mercator latitude
                 // correction.  view.goTo(extent) is unreliable after
                 // lockViewContainer (produces ~100× wrong scale), so we
                 // compute the values ourselves and always pass
                 // { center, scale } to goTo.
-                const _targetExt  = fixedExtent || selectionGeom.extent.clone().expand(1.25);
+                const _targetExt  = fixedExtent || _zoomGeom.extent.clone().expand(1.5);
                 let   _fixedCenter = _targetExt.center;
                 let   _fixedScale  = null; // set after container lock
 
@@ -5503,9 +5511,13 @@ ${getA11yWidgetBlock()}
                             _targetExt.width  * _cosLat / (view.width  * _MPP),
                             _targetExt.height * _cosLat / (view.height * _MPP)
                         );
-                        console.log(`[buildReportInBackground] computed scale: ${Math.round(_fixedScale)}, cosLat=${_cosLat.toFixed(4)}, extW=${Math.round(_targetExt.width)}, extH=${Math.round(_targetExt.height)}`);
+                        console.log(`[buildReportInBackground] zoomGeom=${_origGeom ? 'original (pre-buffer)' : 'selectionGeom'}, pad=${_zoomPad}, computed scale: ${Math.round(_fixedScale)}, cosLat=${_cosLat.toFixed(4)}, extW=${Math.round(_targetExt.width)}, extH=${Math.round(_targetExt.height)}`);
                     }
 
+                    // Disable LOD snapping so the view uses exactly the
+                    // computed scale instead of rounding to the nearest
+                    // tiled-basemap level (which can add ~5-50% zoom-out).
+                    try { view.constraints.snapToZoom = false; } catch (_) {}
                     await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
                     await waitForViewStationary(1000);
                     console.log(`[buildReportInBackground] initial zoom: viewScale=${Math.round(view.scale)}, target=${Math.round(_fixedScale)}`);
@@ -5878,6 +5890,8 @@ ${getA11yWidgetBlock()}
                     }
                     // Unlock view container sizing
                     unlockViewContainer();
+                    // Restore LOD snapping for regular map interaction
+                    try { view.constraints.snapToZoom = true; } catch (_) {}
                     // Restore original state
                     try {
                         view.map.basemap = originalBasemap;
