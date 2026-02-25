@@ -207,7 +207,8 @@
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Visual_Resource_Inventory_Classes_Polygon/FeatureServer/0",
       "category": "special",
       "permitTypes": [
-        "core"
+        "core",
+        "mining"
       ],
       "serviceType": "feature",
       "highlightFields": [
