@@ -318,6 +318,9 @@ function setBusy(isBusy) {
         progressFill: null,
         currentStep: null,
         progressDetail: null,
+        success: null,
+        _startTime: null,
+        _onViewReport: null,
         stats: {
             mapsGenerated: null
         },
@@ -328,6 +331,7 @@ function setBusy(isBusy) {
             this.currentStep = document.getElementById("reportCurrentStep");
             this.progressDetail = document.getElementById("reportProgressDetail");
             this.stats.mapsGenerated = document.getElementById("reportMapsGenerated");
+            this.success = document.getElementById("reportSuccess");
             
             // Wire cancel button
             const cancelBtn = document.getElementById("reportModalCancelBtn");
@@ -337,6 +341,15 @@ function setBusy(isBusy) {
                     this.hide();
                     lockMapInteraction(false);
                     setStatus("Report canceled");
+                });
+            }
+
+            // Wire success "View Report" button
+            const successCloseBtn = document.getElementById("reportSuccessCloseBtn");
+            if (successCloseBtn) {
+                successCloseBtn.addEventListener("click", () => {
+                    this.hide();
+                    if (this._onViewReport) this._onViewReport();
                 });
             }
         },
@@ -350,6 +363,7 @@ function setBusy(isBusy) {
                 return;
             }
             reportBuildCanceled = false;
+            this._startTime = Date.now();
             this.el.classList.remove("hidden");
             this.reset();
             lockMapInteraction(true);
@@ -366,6 +380,7 @@ function setBusy(isBusy) {
             this.setStep("Initializing...");
             this.setProgressDetail("Preparing report...");
             this.updateStats(0);
+            if (this.success) this.success.classList.add("hidden");
         },
         
         setProgress(percent) {
@@ -390,6 +405,30 @@ function setBusy(isBusy) {
             if (this.stats.mapsGenerated) this.stats.mapsGenerated.textContent = mapsGenerated;
         },
         
+        showSuccess({ mapsGenerated, layersQueried, featuresFound } = {}) {
+            if (!this.success) return;
+
+            const elMaps = document.getElementById("reportSuccessMaps");
+            const elLayers = document.getElementById("reportSuccessLayers");
+            const elFeatures = document.getElementById("reportSuccessFeatures");
+            const elDuration = document.getElementById("reportSuccessDuration");
+
+            if (elMaps) elMaps.textContent = mapsGenerated ?? 0;
+            if (elLayers) elLayers.textContent = layersQueried ?? 0;
+            if (elFeatures) elFeatures.textContent = featuresFound ?? 0;
+
+            if (elDuration && this._startTime) {
+                const totalSec = Math.round((Date.now() - this._startTime) / 1000);
+                const min = Math.floor(totalSec / 60);
+                const sec = totalSec % 60;
+                elDuration.textContent = min > 0
+                    ? `Completed in ${min}m ${sec}s`
+                    : `Completed in ${sec}s`;
+            }
+
+            this.success.classList.remove("hidden");
+        },
+
         isCanceled() {
             return reportBuildCanceled;
         }
@@ -1216,13 +1255,15 @@ function setActiveTab(tabName) {
         reportModal.setStep(`Building ${ptLabel} Report`);
         console.log(`[report] Starting ${ptLabel} report generation…`);
         
+        let reportFinalStats = {};
         try {
             const htmlContent = await buildReportInBackground({
                 bucketKey: null,
                 permitTypeKey: selectedPermitType || null,
-                onProgress: (pct, maps, sections) => {
+                onProgress: (pct, maps, sections, stats) => {
                     reportModal.setProgress(pct);
                     reportModal.updateStats(maps);
+                    if (stats) reportFinalStats = stats;
                 },
                 onStep: (stepText) => {
                     reportModal.setProgressDetail(stepText);
@@ -1235,7 +1276,19 @@ function setActiveTab(tabName) {
                 return;
             }
             
-            reportModal.hide();
+            // Show success overlay with stats
+            reportModal._onViewReport = () => {
+                const opened = openCompletedReport(htmlContent);
+                if (!opened) {
+                    alert("Could not open report. Please allow popups for this site.");
+                }
+            };
+            reportModal.showSuccess({
+                mapsGenerated: reportFinalStats.mapsGenerated ?? 0,
+                layersQueried: reportFinalStats.layersQueried ?? 0,
+                featuresFound: reportFinalStats.totalFeatures ?? 0
+            });
+            
             console.log(`[report] ${ptLabel} report generated successfully`);
             
             // Cache the report and update button to "View" state

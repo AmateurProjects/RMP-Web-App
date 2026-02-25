@@ -161,6 +161,33 @@
         <div class="report-modal-footer">
             <button id="reportModalCancelBtn" class="btn btn-secondary">Cancel</button>
         </div>
+
+        <!-- Success State (hidden initially) -->
+        <div id="reportSuccess" class="report-success hidden">
+            <div class="report-success-icon">
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                    <circle class="checkmark-circle" cx="40" cy="40" r="38" />
+                    <path class="checkmark-check" d="M20 40 L35 55 L60 25" />
+                </svg>
+            </div>
+            <h2>Report Ready!</h2>
+            <div class="report-success-stats">
+                <div class="report-success-stat">
+                    <div class="report-success-stat-value" id="reportSuccessMaps">0</div>
+                    <div class="report-success-stat-label">Maps Generated</div>
+                </div>
+                <div class="report-success-stat">
+                    <div class="report-success-stat-value" id="reportSuccessLayers">0</div>
+                    <div class="report-success-stat-label">Layers Queried</div>
+                </div>
+                <div class="report-success-stat">
+                    <div class="report-success-stat-value" id="reportSuccessFeatures">0</div>
+                    <div class="report-success-stat-label">Features Found</div>
+                </div>
+            </div>
+            <div id="reportSuccessDuration" class="report-success-duration"></div>
+            <button id="reportSuccessCloseBtn" class="btn btn-primary">View Report</button>
+        </div>
     </div>
 </div>
 

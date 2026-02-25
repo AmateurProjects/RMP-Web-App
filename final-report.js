@@ -6178,7 +6178,13 @@ ${getA11yWidgetBlock()}
 </body>
 </html>`;
 
-            onProgress(100, mapsGenerated, sectionsComplete);
+            onProgress(100, mapsGenerated, sectionsComplete, {
+                mapsGenerated,
+                layersQueried: totalLayers,
+                layersWithHits,
+                totalFeatures
+            });
+
             return fullHtml;
 
         } finally {
