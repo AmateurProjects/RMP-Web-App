@@ -1403,6 +1403,15 @@ function clearAll() {
     // Clear upload status
     const uploadStatusEl = document.getElementById("uploadStatus");
     if (uploadStatusEl) uploadStatusEl.classList.add("hidden");
+
+    // Hide buffer panels (draw + upload + confirm)
+    const drawBufPanelEl = document.getElementById("drawBufferPanel");
+    if (drawBufPanelEl) drawBufPanelEl.classList.add("hidden");
+    const uploadBufPanelEl = document.getElementById("uploadBufferPanel");
+    if (uploadBufPanelEl) uploadBufPanelEl.classList.add("hidden");
+
+    // Hide AOI mask
+    if (typeof hideAoiMask === "function") hideAoiMask();
 }
 
     /**
@@ -2229,19 +2238,8 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         ...reportLayerPool
     ];
 
-    if (plssStateLayerUrl) {
-        combinedCfgs.push({
-            title: "PLSS: State Boundaries",
-            url: plssStateLayerUrl
-        });
-    }
-
-    if (aoiSource === "draw" && plssParcelLayerUrl) {
-        combinedCfgs.push({
-            title: "PLSS: Parcel",
-            url: String(plssParcelLayerUrl).replace(/\/+$/, "")
-        });
-    }
+    // PLSS State Boundaries and Parcels are NOT included in screening —
+    // the report generates its own PLSS/state/county context layers independently.
 
     const byUrl = new Map();
 
@@ -2281,10 +2279,6 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
     for (const cfg of reportCfgs) {
         const url = String(cfg.url || "");
-
-        if (isMapServerRoot(url) && isPlssLayerTitleOrUrl(cfg.title, url)) {
-            continue;
-        }
 
         if (cfg.imageService === true) {
             directTargets.push({ 
@@ -3127,16 +3121,22 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         sketch.on("create", (evt) => {
             if (evt.state === "complete") {
                 currentInteractionMode = "select"; // restore click-to-select after drawing
-                const geom = evt.graphic?.geometry || null;
+                let geom = evt.graphic?.geometry || null;
                 if (!geom) return;
 
                 const gType = geom.type; // "polygon", "polyline", "point"
-                const needsBuffer = gType !== "polygon";
 
-                // Show the raw drawn geometry as a preview
+                // Auto-buffer points/lines with a small buffer (0.1 mi ≈ 528 ft)
+                // to convert zero-area geometry into a polygon AOI
+                if (gType !== "polygon") {
+                    const autoBuf = uploadAoiModule.applyBuffer([geom], 0.1);
+                    if (autoBuf) geom = autoBuf;
+                }
+
+                // Show the geometry as a preview
                 setAoiGeometry(geom);
 
-                // Show the draw buffer panel
+                // Show the draw buffer panel (optional for all geometry types)
                 const drawBufPanel = document.getElementById("drawBufferPanel");
                 const drawBufMsg   = document.getElementById("drawBufferMsg");
                 const drawBufInput = document.getElementById("drawBufferInput");
@@ -3144,16 +3144,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
                 if (drawBufPanel) {
                     const typeLabel = gType === "polyline" ? "line" : gType;
-                    if (needsBuffer) {
-                        if (drawBufMsg) drawBufMsg.innerHTML = "Optionally add a buffer around your drawn <strong>" + typeLabel + "</strong>.";
-                        if (drawBufInput) drawBufInput.value = "";
-                    } else {
-                        if (drawBufMsg) drawBufMsg.innerHTML = "Optionally add a buffer around your drawn <strong>polygon</strong>.";
-                        if (drawBufInput) drawBufInput.value = "";
-                    }
+                    if (drawBufMsg) drawBufMsg.innerHTML = "Optionally add a buffer around your drawn <strong>" + typeLabel + "</strong>.";
+                    if (drawBufInput) drawBufInput.value = "";
                     if (drawBufSkip) drawBufSkip.classList.remove("hidden");
 
-                    // Store drawn geometry for buffer apply
+                    // Store the (possibly auto-buffered) geometry for further buffer apply
                     drawBufPanel._drawnGeom = geom;
                     drawBufPanel.classList.remove("hidden");
 
@@ -3528,10 +3523,20 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     const viewSR = state.view ? state.view.spatialReference : null;
                     const result = await uploadAoiModule.processFile(file, viewSR);
 
-                    const needsBuffer = !result.hasPolygons; // points/lines MUST be buffered
                     const geomLabel = result.geometryType === "point" ? "point"
                                     : result.geometryType === "polyline" ? "line" : "polygon";
                     const geomLabelPlural = result.featureCount === 1 ? geomLabel : geomLabel + "s";
+
+                    // Auto-buffer points/lines with a small buffer (0.1 mi ≈ 528 ft)
+                    // to convert zero-area geometry into a polygon AOI
+                    if (!result.hasPolygons && result.allGeometries && result.allGeometries.length) {
+                        const autoBuf = uploadAoiModule.applyBuffer(result.allGeometries, 0.1);
+                        if (autoBuf) {
+                            result.geometry = autoBuf;
+                            result.allGeometries = [autoBuf];
+                            result.hasPolygons = true; // now a polygon
+                        }
+                    }
 
                     // Show the file info
                     const countLabel = result.featureCount + " " + geomLabelPlural;
@@ -3539,29 +3544,19 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
                     // Zoom to uploaded geometry preview
                     if (view && result.geometry && result.geometry.extent) {
-                        // Show the raw geometry on the map as a preview
                         setAoiGeometry(result.geometry);
                         await view.goTo(result.geometry.extent.expand(1.5), { animate: true, duration: 600 });
                     }
 
-                    // Show buffer panel
+                    // Show buffer panel (optional for all geometry types)
                     if (bufferPanel) {
                         const bufferMsg = document.getElementById("uploadBufferMsg");
                         const bufferInput = document.getElementById("uploadBufferInput");
-                        const bufferApplyBtn = document.getElementById("uploadBufferApply");
                         const bufferSkipBtn = document.getElementById("uploadBufferSkip");
 
-                        if (needsBuffer) {
-                            // Points/lines require a buffer
-                            if (bufferMsg) bufferMsg.innerHTML = "Your file contains <strong>" + geomLabelPlural + "</strong>. A buffer is required to create a polygon AOI.";
-                            if (bufferInput) bufferInput.value = geomLabel === "point" ? "1" : "0.5";
-                            if (bufferSkipBtn) bufferSkipBtn.classList.add("hidden");
-                        } else {
-                            // Polygons — buffer is optional
-                            if (bufferMsg) bufferMsg.innerHTML = "Optionally add a buffer around your <strong>" + geomLabelPlural + "</strong>.";
-                            if (bufferInput) bufferInput.value = "";
-                            if (bufferSkipBtn) bufferSkipBtn.classList.remove("hidden");
-                        }
+                        if (bufferMsg) bufferMsg.innerHTML = "Optionally add a buffer around your <strong>" + geomLabelPlural + "</strong>.";
+                        if (bufferInput) bufferInput.value = "";
+                        if (bufferSkipBtn) bufferSkipBtn.classList.remove("hidden");
 
                         bufferPanel.classList.remove("hidden");
                         scrollPanelToBottom(bufferPanel);
@@ -3586,16 +3581,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                         showUploadStatus("❌ Buffer operation failed. Try a different value.", "error");
                         return;
                     }
-                } else if (result.hasPolygons) {
-                    // Use polygon geometries without buffer
+                } else {
+                    // Use geometry as-is (already auto-buffered if originally point/line)
                     geometry = uploadAoiModule.applyBuffer(result.allGeometries, 0);
                     if (!geometry) {
                         showUploadStatus("❌ No polygon geometry available.", "error");
                         return;
                     }
-                } else {
-                    showUploadStatus("❌ A buffer is required for point/line features.", "error");
-                    return;
                 }
 
                 geometry = generalizeAoiIfNeeded(geometry) || geometry;
@@ -4070,19 +4062,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             });
         }
 
-        // Back to permit type (Step 2 → Step 1, preserving AOI state but changing permit type)
+        // Back to permit type — full reset (same as starting a new screening)
         const wizBackToPermitType = document.getElementById("wizBackToPermitType");
         if (wizBackToPermitType) {
             wizBackToPermitType.addEventListener("click", () => {
-                // Go back to step 1 to re-pick permit type
-                // Reset permit type selection but keep map state
-                selectedPermitType = null;
-                document.querySelectorAll('.permit-type-card').forEach(c => c.classList.remove('selected'));
-                const badge = document.getElementById("wizStep2PermitBadge");
-                if (badge) badge.textContent = "";
+                clearAll();
                 goToWizardStep(1);
-                // Reset to method selection cards when they come back
-                swipeToAoiSlide(0);
+                hideAoiMethodPanels();
             });
         }
 

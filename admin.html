@@ -176,10 +176,27 @@
     background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center;
   }
   .modal-overlay.open { display: flex; }
+  body.modal-open { overflow: hidden; }
   .modal {
     background: var(--card); border-radius: 10px; width: 820px; max-width: 95vw;
     max-height: 90vh; overflow-y: auto; padding: 24px;
   }
+
+  /* Inline table controls */
+  .inline-select {
+    padding: 3px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--card); color: var(--fg); cursor: pointer; max-width: 130px;
+  }
+  .inline-select:focus { border-color: var(--accent); outline: none; }
+  .inline-pt-checks { display: flex; flex-wrap: wrap; gap: 2px 4px; }
+  .inline-pt-checks label { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .inline-pt-checks input { margin: 0; width: 13px; height: 13px; }
+  .inline-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; white-space: nowrap; cursor: pointer; }
+  .inline-toggle input { margin: 0; width: 14px; height: 14px; cursor: pointer; }
+  .inline-toggle.excluded-toggle input { accent-color: var(--danger); }
+  .row-toggles { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .row-toggles .inline-toggle { opacity: 0.7; }
+  .row-toggles .inline-toggle:hover { opacity: 1; }
   .modal h3 { margin-bottom: 16px; }
   .form-row { margin-bottom: 12px; }
   .form-row label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -536,7 +553,7 @@
             <label class="pt-check"><input type="checkbox" value="oil-gas"/> <span class="pt-badge pt-oil-gas">🛢️ Oil &amp; Gas</span></label>
             <label class="pt-check"><input type="checkbox" value="grazing"/> <span class="pt-badge pt-grazing">🐄 Grazing</span></label>
             <label class="pt-check"><input type="checkbox" value="mining"/> <span class="pt-badge pt-mining">⛏️ Mining</span></label>
-            <label class="pt-check"><input type="checkbox" value="row"/> <span class="pt-badge pt-row">🛤️ ROW</span></label>
+            <label class="pt-check"><input type="checkbox" value="row"/> <span class="pt-badge pt-row">�️ ROW</span></label>
             <label class="pt-check"><input type="checkbox" value="realty"/> <span class="pt-badge pt-realty">🏠 Realty</span></label>
           </div>
           <div class="hint">Check which permit types this layer applies to. "Core" includes the layer in every permit screening.</div>
@@ -943,7 +960,7 @@ function catBadge(cat) {
 
 function permitTypeBadges(pts) {
   if (!pts || !pts.length) return '<span class="badge-cat" style="opacity:0.4">—</span>';
-  var labels = { core: '🔷', 'oil-gas': '🛢️', grazing: '🐄', mining: '⛏️', row: '🛤️', realty: '🏠' };
+  var labels = { core: '🔷', 'oil-gas': '🛢️', grazing: '🐄', mining: '⛏️', row: '�️', realty: '🏠' };
   return pts.map(function(p) {
     return '<span class="pt-badge pt-' + esc(p) + '" title="' + esc(p) + '">' + (labels[p] || esc(p)) + '</span>';
   }).join(' ');
@@ -981,6 +998,7 @@ function renderReportTable() {
 
   filtered.forEach(function (item) {
     var l = item.layer;
+    var idx = item.index;
     var health = healthCache.get(l.url);
     var healthDot = healthDotHtml(health);
     var subs = sublayerCache.get(l.url);
@@ -990,18 +1008,44 @@ function renderReportTable() {
       ? '<button class="expand-btn" onclick="toggleSublayers(\'' + esc(l.url) + '\', \'report\')" title="' + (isExpanded ? 'Collapse' : 'Expand') + ' sublayers">' + (isExpanded ? '▼' : '▶') + '</button>'
       : '<span style="display:inline-block;width:22px"></span>';
     var subBadge = hasSubs ? '<span class="sublayer-badge">' + subs.length + ' sublayers</span>' : '';
-    var excludedBadge = l.excluded ? '<span class="excluded-badge">excluded</span>' : '';
     var alsoSelBadge = selectionUrlSet.has(l.url.replace(/\/?$/, '')) ? '<span class="cross-type-badge also-selection" title="Also used as Selection Layer">selection</span>' : '';
     
-    html += '<tr' + (l.excluded ? ' class="excluded-row"' : '') + '>';
+    // Inline category dropdown
+    var catOptions = ['special','environmental','authorizations','land-use','land-status'];
+    var catSelectHtml = '<select class="inline-select" onchange="inlineUpdateCategory(' + idx + ', this.value)">';
+    catOptions.forEach(function(c) {
+      catSelectHtml += '<option value="' + c + '"' + (l.category === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+    });
+    catSelectHtml += '</select>';
+
+    // Inline permit type checkboxes
+    var ptKeys = ['core','oil-gas','grazing','mining','row','realty'];
+    var ptIcons = { core:'🔷', 'oil-gas':'🛢️', grazing:'🐄', mining:'⛏️', row:'�️', realty:'🏠' };
+    var curPts = l.permitTypes || [];
+    var ptHtml = '<div class="inline-pt-checks">';
+    ptKeys.forEach(function(pt) {
+      var checked = curPts.includes(pt) ? ' checked' : '';
+      ptHtml += '<label title="' + esc(pt) + '"><input type="checkbox" value="' + pt + '"' + checked + ' onchange="inlineUpdatePermitTypes(' + idx + ', this.closest(\'.inline-pt-checks\'))">' + (ptIcons[pt] || esc(pt)) + '</label>';
+    });
+    ptHtml += '</div>';
+
+    // Row toggles: Exclude + Selection
+    var isExcluded = !!l.excluded;
+    var isSel = selectionUrlSet.has(l.url.replace(/\/?$/, ''));
+    var togglesHtml = '<div class="row-toggles">';
+    togglesHtml += '<label class="inline-toggle excluded-toggle" title="Exclude this layer from the app"><input type="checkbox"' + (isExcluded ? ' checked' : '') + ' onchange="inlineToggleExcluded(' + idx + ', this.checked)">Excl</label>';
+    togglesHtml += '<label class="inline-toggle" title="Also use as Selection Layer"><input type="checkbox"' + (isSel ? ' checked' : '') + ' onchange="inlineToggleSelection(' + idx + ', this.checked)">Sel</label>';
+    togglesHtml += '</div>';
+
+    html += '<tr' + (isExcluded ? ' class="excluded-row"' : '') + '>';
     html += '<td style="text-align:center">' + healthDot + '</td>';
-    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + excludedBadge + alsoSelBadge + '</td>';
+    html += '<td>' + expandBtn + '<strong>' + esc(l.title) + '</strong>' + subBadge + alsoSelBadge + togglesHtml + '</td>';
     html += '<td>' + sourceBadge(l.url) + '</td>';
-    html += '<td>' + catBadge(l.category) + '</td>';
-    html += '<td>' + permitTypeBadges(l.permitTypes) + '</td>';
+    html += '<td>' + catSelectHtml + '</td>';
+    html += '<td>' + ptHtml + '</td>';
     html += '<td>' + esc(l.serviceType || '—') + '</td>';
     html += '<td class="url-cell" title="' + esc(l.url) + '">' + esc(l.url) + '</td>';
-    html += '<td><button class="btn btn-outline btn-sm" onclick="editReportLayer(' + item.index + ')">Edit</button></td>';
+    html += '<td><button class="btn btn-outline btn-sm" onclick="editReportLayer(' + idx + ')">Edit</button></td>';
     html += '</tr>';
     
     // Render sublayer rows if expanded
@@ -1035,6 +1079,78 @@ function renderReportTable() {
   });
   if (!filtered.length) html = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No layers match filters</td></tr>';
   document.getElementById('reportTbody').innerHTML = html;
+}
+
+// ── Inline table-row handlers ──
+async function inlineUpdateCategory(idx, value) {
+  var layer = config.reportLayers[idx];
+  if (!layer) return;
+  layer.category = value;
+  try {
+    await pushConfig('Update category → ' + value + ' for ' + layer.title);
+    renderAll();
+    toast('Category updated');
+  } catch (e) { toast('Save failed: ' + e.message, true); }
+}
+
+async function inlineUpdatePermitTypes(idx, container) {
+  var layer = config.reportLayers[idx];
+  if (!layer) return;
+  var checks = container.querySelectorAll('input[type="checkbox"]');
+  var pts = [];
+  checks.forEach(function(cb) { if (cb.checked) pts.push(cb.value); });
+  layer.permitTypes = pts;
+  try {
+    await pushConfig('Update permitTypes for ' + layer.title);
+    renderAll();
+    toast('Permit types updated');
+  } catch (e) { toast('Save failed: ' + e.message, true); }
+}
+
+async function inlineToggleExcluded(idx, checked) {
+  var layer = config.reportLayers[idx];
+  if (!layer) return;
+  if (checked) {
+    layer.excluded = true;
+  } else {
+    delete layer.excluded;
+  }
+  try {
+    await pushConfig((checked ? 'Exclude' : 'Include') + ' layer: ' + layer.title);
+    renderAll();
+    toast(checked ? 'Layer excluded' : 'Layer included');
+  } catch (e) { toast('Save failed: ' + e.message, true); }
+}
+
+async function inlineToggleSelection(idx, checked) {
+  var layer = config.reportLayers[idx];
+  if (!layer) return;
+  var normalizedUrl = layer.url.replace(/\/?$/, '');
+  if (checked) {
+    // Add to selectionLayers if not already present
+    var alreadySel = (config.selectionLayers || []).some(function(sl) {
+      return sl.url.replace(/\/?$/, '') === normalizedUrl;
+    });
+    if (!alreadySel) {
+      if (!config.selectionLayers) config.selectionLayers = [];
+      config.selectionLayers.push({
+        title: layer.title,
+        url: layer.url,
+        visible: false,
+        group: 'default'
+      });
+    }
+  } else {
+    // Remove from selectionLayers
+    config.selectionLayers = (config.selectionLayers || []).filter(function(sl) {
+      return sl.url.replace(/\/?$/, '') !== normalizedUrl;
+    });
+  }
+  try {
+    await pushConfig((checked ? 'Add' : 'Remove') + ' selection layer: ' + layer.title);
+    renderAll();
+    toast(checked ? 'Added as selection layer' : 'Removed from selection layers');
+  } catch (e) { toast('Save failed: ' + e.message, true); }
 }
 
 function toggleSublayers(url, tableType) {
@@ -1206,6 +1322,7 @@ function openLayerModal(defaultType) {
   document.getElementById('samplePreviewContent').innerHTML = '';
   document.getElementById('urlDupeWarning').classList.remove('visible');
   document.getElementById('modalOverlay').classList.add('open');
+  document.body.classList.add('modal-open');
 }
 
 function editReportLayer(idx) {
@@ -1245,6 +1362,7 @@ function editReportLayer(idx) {
   onLayerTypeToggle();
   checkUrlDuplicate(url);
   document.getElementById('modalOverlay').classList.add('open');
+  document.body.classList.add('modal-open');
   loadSamplePreview(url);
 }
 
@@ -1291,11 +1409,13 @@ function editSelectionLayer(idx) {
   onLayerTypeToggle();
   checkUrlDuplicate(url);
   document.getElementById('modalOverlay').classList.add('open');
+  document.body.classList.add('modal-open');
   loadSamplePreview(url);
 }
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
+  document.body.classList.remove('modal-open');
   // Cancel any in-flight sample data request
   if (_sampleAbort) { try { _sampleAbort.abort(); } catch (e) {} }
   editMode = null;

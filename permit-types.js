@@ -129,7 +129,7 @@ define([], function () {
         },
         "row": {
             label: "Right-of-Way (ROW)",
-            icon: "🛤️",
+            icon: "�️",
             description: "Screening for right-of-way grants, including pipelines, transmission lines, roads, and other linear facilities.",
             groups: [
                 {

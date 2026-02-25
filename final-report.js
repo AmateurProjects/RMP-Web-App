@@ -506,18 +506,27 @@ define([
 '            filename: "report.pdf",',
 '            image: { type: "jpeg", quality: 0.85 },',
 '            html2canvas: {',
-'                scale: 1,',
+'                scale: 2,',
 '                useCORS: true,',
 '                allowTaint: true,',
 '                logging: false,',
 '                backgroundColor: "#fdfcfa",',
-'                windowWidth: 900,',
+'                windowWidth: 980,',
 '                scrollY: 0,',
 '                scrollX: 0,',
 '                x: 0,',
 '                y: 0,',
 '                removeContainer: true,',
 '                onclone: function(clonedDoc) {',
+'                    // Force tables to fit within page width (mirrors @media print rules)',
+'                    var scrollEls = clonedDoc.querySelectorAll(".table-scroll");',
+'                    scrollEls.forEach(function(el) { el.style.maxHeight = "none"; el.style.overflow = "visible"; });',
+'                    var tables = clonedDoc.querySelectorAll(".interactive-table");',
+'                    tables.forEach(function(t) { t.style.width = "100%"; t.style.fontSize = "9px"; t.style.tableLayout = "auto"; });',
+'                    // Hide UI chrome that does not belong in the PDF',
+'                    var hide = clonedDoc.querySelectorAll(".table-toolbar, .hidden-cols-bar, .col-hide-btn, .back-to-top, .a11y-widget");',
+'                    hide.forEach(function(el) { el.style.display = "none"; });',
+'                    // Wait for all images to finish loading',
 '                    var imgs = clonedDoc.querySelectorAll("img");',
 '                    var promises = [];',
 '                    imgs.forEach(function(img) {',
@@ -662,13 +671,12 @@ define([
         categorizeIntoBuckets: _categorizeIntoBucketsShared
     } = permitTypesModule;
 
-    // Legacy alias kept for backward compatibility within this module
-    const REPORT_BUCKETS = CATEGORY_DEFS;
-    const BUCKET_ORDER = [...CATEGORY_ORDER, "uncategorized"];
-
-    function categorizeLayersIntoBuckets(items) {
-        return _categorizeIntoBucketsShared(items, S.layerCfgByUrl);
-    }
+    // ── DEAD CODE (commented out for testing — only used by legacy buildFinalReportHtml) ──
+    // const REPORT_BUCKETS = CATEGORY_DEFS;
+    // const BUCKET_ORDER = [...CATEGORY_ORDER, "uncategorized"];
+    // function categorizeLayersIntoBuckets(items) {
+    //     return _categorizeIntoBucketsShared(items, S.layerCfgByUrl);
+    // }
 
     function _openReportDb() {
         return new Promise((resolve, reject) => {
@@ -3702,10 +3710,9 @@ define([
         `;
     }
 
-    /**
-     * Open a progressive report window and return an interface for streaming content
-     * Returns a Promise that resolves when the window is ready
-     */
+    // ── DEAD CODE START: openProgressiveReport ──────────────────────
+    // Only called by buildProgressiveReport (also dead). Commented out for testing.
+    if (false) { // eslint-disable-line
     async function openProgressiveReport(options = {}) {
         const title = options.title || "Report";
         const permitLabel = options.permitLabel || null;
@@ -4038,14 +4045,11 @@ ${getA11yWidgetBlock()}
             }
         };
     }
+    } // ── DEAD CODE END: openProgressiveReport ──
 
-    /**
-     * Build a progressive report for a specific bucket or all buckets
-     * @param {Object} options
-     * @param {string} options.bucketKey - e.g., "land-status", "environmental", or null for full report
-     * @param {string} options.permitTypeKey - e.g., "oil-gas", "grazing", etc. (for group label lookup)
-     * @param {Function} options.onProgress - callback for progress updates
-     */
+    // ── DEAD CODE START: buildProgressiveReport ─────────────────────
+    // Superseded by buildReportInBackground. Commented out for testing.
+    if (false) { // eslint-disable-line
     async function buildProgressiveReport(options = {}) {
         const bucketKey = options.bucketKey || null;
         const permitTypeKey = options.permitTypeKey || null;
@@ -4659,10 +4663,12 @@ ${getA11yWidgetBlock()}
 
         return report;
     }
+    } // ── DEAD CODE END: buildProgressiveReport ──
 
-    // ────────────────────────────────────────────
-    // buildFinalReportHtml – main orchestrator
-    // ────────────────────────────────────────────
+    // ── DEAD CODE START: buildFinalReportHtml ───────────────────────
+    // Original report orchestrator, superseded by buildReportInBackground.
+    // Commented out for testing.
+    if (false) { // eslint-disable-line
     async function buildFinalReportHtml() {
         const view = S.view;
         const selectionGeom = S.selectionGeom;
@@ -5287,14 +5293,15 @@ ${getA11yWidgetBlock()}
             await releaseWakeLock();
         }
     }
+    } // ── DEAD CODE END: buildFinalReportHtml ──
 
-    function viewFinalReport() {
-        if (!cachedFinalReportHtml) {
-            alert("Run analysis first to generate the report.");
-            return;
-        }
-        openHtmlInNewTab(cachedFinalReportHtml);
-    }
+    // function viewFinalReport() {  // DEAD CODE — only wrapper for cachedFinalReportHtml from buildFinalReportHtml
+    //     if (!cachedFinalReportHtml) {
+    //         alert("Run analysis first to generate the report.");
+    //         return;
+    //     }
+    //     openHtmlInNewTab(cachedFinalReportHtml);
+    // }
 
     // ────────────────────────────────────────────
     // buildReportInBackground – builds report without opening window
@@ -6212,13 +6219,13 @@ ${getA11yWidgetBlock()}
             getAoiSummaryForReport,
             buildDataSourcesSection,
             generateAoiMapsWithCircles,
-            buildFinalReportHtml,
-            viewFinalReport,
-            // Progressive report builder (new)
-            openProgressiveReport,
-            buildProgressiveReport,
-            categorizeLayersIntoBuckets,
-            REPORT_BUCKETS,
+            // DEAD CODE exports (commented out for testing):
+            // buildFinalReportHtml,
+            // viewFinalReport,
+            // openProgressiveReport,
+            // buildProgressiveReport,
+            // categorizeLayersIntoBuckets,
+            // REPORT_BUCKETS,
             // Background report builder (builds complete HTML without opening window)
             buildReportInBackground,
             openCompletedReport,
