@@ -722,6 +722,51 @@ function setActiveTab(tabName) {
         return (selectionLayers || []).findIndex(e => normalize(e?.cfg?.title).includes(n));
     }
 
+    // ── Permit-type relevance for "Find Existing Permit or Lease" buttons ──
+    // Maps each permitType key to the data-permit values that are relevant.
+    // If a user selected "grazing", they only see allotment/pasture (not oil-gas, mining, etc.).
+    const PERMIT_ITEM_RELEVANCE = {
+        "oil-gas":  ["oilgas", "geothermal", "row", "lua"],
+        "grazing":  ["allotment", "pasture", "lua"],
+        "mining":   ["mining", "lua"],
+        "row":      ["row", "oilgas", "lua", "allotment", "mining", "geothermal", "coal"],
+        "realty":   ["oilgas", "row", "lua", "allotment", "mining", "geothermal", "coal"]
+    };
+
+    /**
+     * Filter the permit-item buttons in the "Find Existing Permit" slide
+     * to show only those relevant to the selected permit type.
+     * Also hides group labels that have no visible items.
+     */
+    function filterPermitItemsBySelectedType() {
+        const list = document.getElementById("wizPermitList");
+        if (!list) return;
+        const relevant = selectedPermitType ? PERMIT_ITEM_RELEVANCE[selectedPermitType] : null;
+
+        // Show/hide individual permit-item buttons
+        list.querySelectorAll(".permit-item").forEach(btn => {
+            if (!relevant) {
+                btn.style.display = "";
+            } else {
+                btn.style.display = relevant.includes(btn.dataset.permit) ? "" : "none";
+            }
+        });
+
+        // Show/hide group labels — hide if all their following siblings are hidden
+        list.querySelectorAll(".permit-group-label").forEach(label => {
+            let hasVisible = false;
+            let sibling = label.nextElementSibling;
+            while (sibling && !sibling.classList.contains("permit-group-label")) {
+                if (sibling.classList.contains("permit-item") && sibling.style.display !== "none") {
+                    hasVisible = true;
+                    break;
+                }
+                sibling = sibling.nextElementSibling;
+            }
+            label.style.display = hasVisible ? "" : "none";
+        });
+    }
+
     // ──────────────────────────────────────────────────────────────
     // PERMITTING MODE — Mode switching, wizard, AOI methods, permit-type-driven buckets
     // ──────────────────────────────────────────────────────────────
@@ -800,6 +845,9 @@ function setActiveTab(tabName) {
         const dbp = document.getElementById("drawBufferPanel");
         if (dbp) dbp.classList.add("hidden");
         setStatus("");
+
+        // Filter permit items when navigating to the permit slide
+        if (method === "permit") filterPermitItemsBySelectedType();
 
         // Hide all selection layers (permit & PLSS) so they don't linger when switching methods
         for (let i = 0; i < selectionLayers.length; i++) disableSelectionLayer(i);
@@ -3929,6 +3977,22 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 clearAll();
                 goToWizardStep(1);
                 hideAoiMethodPanels();
+            });
+        }
+
+        // Back to permit type (Step 2 → Step 1, preserving AOI state but changing permit type)
+        const wizBackToPermitType = document.getElementById("wizBackToPermitType");
+        if (wizBackToPermitType) {
+            wizBackToPermitType.addEventListener("click", () => {
+                // Go back to step 1 to re-pick permit type
+                // Reset permit type selection but keep map state
+                selectedPermitType = null;
+                document.querySelectorAll('.permit-type-card').forEach(c => c.classList.remove('selected'));
+                const badge = document.getElementById("wizStep2PermitBadge");
+                if (badge) badge.textContent = "";
+                goToWizardStep(1);
+                // Reset to method selection cards when they come back
+                swipeToAoiSlide(0);
             });
         }
 

@@ -483,18 +483,19 @@ define([
 '    if (typeof html2pdf !== "undefined") {',
 '        var pdfEl = document.querySelector(".cv-filter-wrap") || document.body;',
 '',
-'        // Temporarily remove color-vision filter classes from <body> so the',
+'        // Temporarily remove color-vision filter classes from .cv-filter-wrap so the',
 '        // PDF renders with normal colors (filters confuse html2canvas).',
 '        var cvClasses = ["cv-protanopia","cv-deuteranopia","cv-tritanopia","cv-achromatopsia","cv-highcontrast"];',
 '        var savedCvClass = "";',
+'        var cvWrap = document.querySelector(".cv-filter-wrap") || document.body;',
 '        cvClasses.forEach(function(c) {',
-'            if (document.body.classList.contains(c)) { savedCvClass = c; document.body.classList.remove(c); }',
+'            if (cvWrap.classList.contains(c)) { savedCvClass = c; cvWrap.classList.remove(c); }',
 '        });',
 '        // Also clear any leftover inline filter styles',
 '        var _savedFilter = pdfEl.style.filter || "";',
 '        var _savedWkFilter = pdfEl.style.webkitFilter || "";',
 '        pdfEl.style.filter = ""; pdfEl.style.webkitFilter = "";',
-'        document.body.style.filter = ""; document.body.style.webkitFilter = "";',
+'        cvWrap.style.filter = ""; cvWrap.style.webkitFilter = "";',
 '',
 '        // Scroll to top so html2canvas captures from the correct origin',
 '        var savedScrollY = window.scrollY;',
@@ -534,14 +535,14 @@ define([
 '            pagebreak: { mode: ["css", "legacy"], avoid: [".section", "tr", "img", ".bucket-header"] }',
 '        }).from(pdfEl).outputPdf("arraybuffer").then(function(buf) {',
 '            pdfEl.style.filter = _savedFilter; pdfEl.style.webkitFilter = _savedWkFilter;',
-'            document.body.style.filter = ""; document.body.style.webkitFilter = "";',
-'            if (savedCvClass) document.body.classList.add(savedCvClass);',
+'            cvWrap.style.filter = ""; cvWrap.style.webkitFilter = "";',
+'            if (savedCvClass) cvWrap.classList.add(savedCvClass);',
 '            window.scrollTo(0, savedScrollY);',
 '            return buf;',
 '        }).catch(function(pdfErr) {',
 '            pdfEl.style.filter = _savedFilter; pdfEl.style.webkitFilter = _savedWkFilter;',
-'            document.body.style.filter = ""; document.body.style.webkitFilter = "";',
-'            if (savedCvClass) document.body.classList.add(savedCvClass);',
+'            cvWrap.style.filter = ""; cvWrap.style.webkitFilter = "";',
+'            if (savedCvClass) cvWrap.classList.add(savedCvClass);',
 '            window.scrollTo(0, savedScrollY);',
 '            throw pdfErr;',
 '        });',
@@ -1928,24 +1929,26 @@ define([
                     content: '\u2713 ';
                 }
                 .a11y-option small { color: #888; font-weight: 400; }
-                /* Color-vision filters – CSS-native for iOS Safari compatibility */
-                body.cv-protanopia {
+                /* Color-vision filters – applied to .cv-filter-wrap (NOT body)
+                   so the CSS filter doesn't create a new containing block
+                   that breaks position:fixed on the a11y widget. */
+                .cv-filter-wrap.cv-protanopia {
                     -webkit-filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
                     filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
                 }
-                body.cv-deuteranopia {
+                .cv-filter-wrap.cv-deuteranopia {
                     -webkit-filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
                     filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
                 }
-                body.cv-tritanopia {
+                .cv-filter-wrap.cv-tritanopia {
                     -webkit-filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
                     filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
                 }
-                body.cv-achromatopsia {
+                .cv-filter-wrap.cv-achromatopsia {
                     -webkit-filter: grayscale(100%) !important;
                     filter: grayscale(100%) !important;
                 }
-                body.cv-highcontrast {
+                .cv-filter-wrap.cv-highcontrast {
                     -webkit-filter: contrast(1.8) brightness(0.85) !important;
                     filter: contrast(1.8) brightness(0.85) !important;
                 }
@@ -3008,10 +3011,11 @@ define([
         if (!toggleBtn || !menu) return;
         var options = menu.querySelectorAll('.a11y-option');
         var CV_CLASSES = ['cv-protanopia', 'cv-deuteranopia', 'cv-tritanopia', 'cv-achromatopsia', 'cv-highcontrast'];
+        var cvTarget = document.querySelector('.cv-filter-wrap') || document.body;
         function applyMode(mode) {
-            CV_CLASSES.forEach(function(c) { document.body.classList.remove(c); });
+            CV_CLASSES.forEach(function(c) { cvTarget.classList.remove(c); });
             if (mode && mode !== 'none') {
-                document.body.classList.add('cv-' + mode);
+                cvTarget.classList.add('cv-' + mode);
             }
             options.forEach(function(b) { b.setAttribute('aria-checked', b.getAttribute('data-cv') === mode ? 'true' : 'false'); });
             try { localStorage.setItem(STORAGE_KEY, mode || 'none'); } catch(_) {}
@@ -3655,24 +3659,26 @@ define([
                 content: '\\2713 ';
             }
             .a11y-option small { color: #888; font-weight: 400; }
-            /* Color-vision filters – CSS-native for iOS Safari compatibility */
-            body.cv-protanopia {
+            /* Color-vision filters – applied to .cv-filter-wrap (NOT body)
+               so the CSS filter doesn't create a new containing block
+               that breaks position:fixed on the a11y widget. */
+            .cv-filter-wrap.cv-protanopia {
                 -webkit-filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
                 filter: sepia(40%) saturate(70%) hue-rotate(345deg) !important;
             }
-            body.cv-deuteranopia {
+            .cv-filter-wrap.cv-deuteranopia {
                 -webkit-filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
                 filter: sepia(50%) saturate(55%) hue-rotate(350deg) !important;
             }
-            body.cv-tritanopia {
+            .cv-filter-wrap.cv-tritanopia {
                 -webkit-filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
                 filter: sepia(30%) saturate(60%) hue-rotate(190deg) !important;
             }
-            body.cv-achromatopsia {
+            .cv-filter-wrap.cv-achromatopsia {
                 -webkit-filter: grayscale(100%) !important;
                 filter: grayscale(100%) !important;
             }
-            body.cv-highcontrast {
+            .cv-filter-wrap.cv-highcontrast {
                 -webkit-filter: contrast(1.8) brightness(0.85) !important;
                 filter: contrast(1.8) brightness(0.85) !important;
             }
