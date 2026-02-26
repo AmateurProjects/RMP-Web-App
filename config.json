@@ -10,7 +10,7 @@
     "imageryOpacity": 0.75
   },
   "visualReport": {
-    "paddingFactor": 1.1,
+    "paddingFactor": 1.0,
     "screenshotWidth": 1400
   },
   "symbology": {
