@@ -3953,21 +3953,45 @@ define([
                     }
 
                     // Compute the AOI's pixel bounding box for cropping each
-                    // layer screenshot tightly around the Area of Interest.
-                    // Uses the AOI extent's N/S/E/W extremes projected to
-                    // screen coordinates, plus a small pixel margin so the
-                    // AOI boundary line isn't flush with the image edge.
+                    // layer screenshot tightly to the Area of Interest.
+                    // Projects the AOI extent corners to screen pixel coords
+                    // using the view's settled extent, handling WGS84→Web
+                    // Mercator conversion when the SRs differ.
                     let fixedCropArea = null;
-                    if (ext && view.toScreen) {
-                        const CROP_MARGIN_PX = 30;
-                        const sr = ext.spatialReference;
-                        const nw = view.toScreen({ x: ext.xmin, y: ext.ymax, spatialReference: sr });
-                        const se = view.toScreen({ x: ext.xmax, y: ext.ymin, spatialReference: sr });
-                        if (nw && se) {
-                            const cropX = Math.max(0, Math.floor(Math.min(nw.x, se.x)) - CROP_MARGIN_PX);
-                            const cropY = Math.max(0, Math.floor(Math.min(nw.y, se.y)) - CROP_MARGIN_PX);
-                            const cropR = Math.min(view.width,  Math.ceil(Math.max(nw.x, se.x)) + CROP_MARGIN_PX);
-                            const cropB = Math.min(view.height, Math.ceil(Math.max(nw.y, se.y)) + CROP_MARGIN_PX);
+                    if (ext && view.extent) {
+                        const CROP_MARGIN_PX = 24;
+                        const viewExt = view.extent;
+                        const viewGeoW = viewExt.xmax - viewExt.xmin;
+                        const viewGeoH = viewExt.ymax - viewExt.ymin;
+
+                        // Ensure AOI extent is in the same SR as the view
+                        let aoiXmin = ext.xmin, aoiXmax = ext.xmax;
+                        let aoiYmin = ext.ymin, aoiYmax = ext.ymax;
+                        const geomSR = ext.spatialReference;
+                        const viewSR = view.spatialReference;
+                        if (geomSR && viewSR && geomSR.wkid !== viewSR.wkid) {
+                            const isGeomWgs84    = (geomSR.wkid === 4326);
+                            const isViewWebMerc  = (viewSR.isWebMercator || viewSR.wkid === 102100 || viewSR.wkid === 3857);
+                            if (isGeomWgs84 && isViewWebMerc) {
+                                const DEG2RAD = Math.PI / 180;
+                                const R = 6378137;
+                                aoiXmin = ext.xmin * R * DEG2RAD;
+                                aoiXmax = ext.xmax * R * DEG2RAD;
+                                aoiYmin = Math.log(Math.tan((90 + ext.ymin) * DEG2RAD / 2)) * R;
+                                aoiYmax = Math.log(Math.tan((90 + ext.ymax) * DEG2RAD / 2)) * R;
+                            }
+                        }
+
+                        if (viewGeoW > 0 && viewGeoH > 0) {
+                            const pxL = ((aoiXmin - viewExt.xmin) / viewGeoW) * view.width;
+                            const pxR = ((aoiXmax - viewExt.xmin) / viewGeoW) * view.width;
+                            const pxT = ((viewExt.ymax - aoiYmax) / viewGeoH) * view.height;
+                            const pxB = ((viewExt.ymax - aoiYmin) / viewGeoH) * view.height;
+
+                            const cropX = Math.max(0, Math.floor(pxL) - CROP_MARGIN_PX);
+                            const cropY = Math.max(0, Math.floor(pxT) - CROP_MARGIN_PX);
+                            const cropR = Math.min(view.width,  Math.ceil(pxR) + CROP_MARGIN_PX);
+                            const cropB = Math.min(view.height, Math.ceil(pxB) + CROP_MARGIN_PX);
                             const cropW = cropR - cropX;
                             const cropH = cropB - cropY;
                             if (cropW > 50 && cropH > 50) {
