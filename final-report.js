@@ -3874,11 +3874,16 @@ define([
                 const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
                 const width = config?.visualReport?.screenshotWidth ?? 1400;
 
-                // Always zoom to the full selectionGeom (which includes any
-                // buffer) so the entire AOI boundary is visible in screenshots.
-                let fixedExtent = null;
+                // Compute a padded bounding box from the final AOI geometry
+                // (selectionGeom, which includes any applied buffer).  We do
+                // one initial goTo with this extent so the ArcGIS API resolves
+                // the exact center + scale for the container's aspect ratio,
+                // then we lock that center+scale pair and reuse it for every
+                // layer screenshot.  This prevents any progressive drift and
+                // guarantees the full AOI boundary stays visible in every map.
+                let fixedCenter = null;
+                let fixedScale  = null;
                 const ext = selectionGeom?.extent;
-                if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
 
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
@@ -3889,21 +3894,14 @@ define([
                 function setVisibilityForScreenshot(tempLayer) {
                     for (const l of allLayers) {
                         if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                        // Hide the mask layer here — it will be shown after goTo
-                        // to prevent stale mask extents from causing progressive zoom-out.
+                        // Keep the mask hidden during goTo; it is rebuilt after
+                        // the view settles so it doesn't influence the extent.
                         if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
                         if (l?.type === "tile") { l.visible = true; continue; }
                         if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
                         l.visible = false;
                     }
                     if (tempLayer) tempLayer.visible = true;
-                    ensureAoiOnTop();
-                }
-
-                // Helper: reset view to fixedExtent and rebuild the AOI mask
-                // at the correct scale. Call this AFTER goTo + stationary wait.
-                function applyExtentAndMask() {
-                    updateAoiMask(true);
                     ensureAoiOnTop();
                 }
 
@@ -3940,13 +3938,19 @@ define([
                     await waitForViewStationary(1500);
 
                     // Disable LOD snapping so the API uses the exact scale
-                    // needed to fit fixedExtent (no rounding to tile LODs).
+                    // needed to fit the AOI bounding box (no rounding to tile LODs).
                     try { view.constraints.snapToZoom = false; } catch (_) {}
 
-                    // Let the ArcGIS API compute the correct scale from
-                    // fixedExtent and the current container dimensions.
-                    await view.goTo(fixedExtent, { animate: false });
-                    await waitForViewStationary(1000);
+                    // One-time goTo with the padded AOI extent so the API
+                    // resolves center + scale for the current container.
+                    // We then lock those values for every layer screenshot.
+                    if (ext) {
+                        const paddedExtent = ext.clone().expand(paddingFactor);
+                        await view.goTo(paddedExtent, { animate: false });
+                        await waitForViewStationary(1000);
+                        fixedCenter = view.center.clone();
+                        fixedScale  = view.scale;
+                    }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
                     console.log("[buildReportInBackground] starting pre-load phase…");
@@ -4036,10 +4040,11 @@ define([
                                     await tempImg.when();
                                     setVisibilityForScreenshot(tempImg);
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    await view.goTo(fixedExtent, { animate: false });
+                                    await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
-                                    applyExtentAndMask();
+                                    updateAoiMask(true);
+                                    ensureAoiOnTop();
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
@@ -4138,10 +4143,11 @@ define([
                                 try {
                                     setVisibilityForScreenshot(tempLayer);
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                                    await view.goTo(fixedExtent, { animate: false });
+                                    await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
-                                    applyExtentAndMask();
+                                    updateAoiMask(true);
+                                    ensureAoiOnTop();
                                     await _waitForOverlays(view, overlays);
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } finally {
@@ -4244,10 +4250,11 @@ define([
                                         await temp.when();
                                         setVisibilityForScreenshot(temp);
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        await view.goTo(fixedExtent, { animate: false });
+                                        await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
-                                        applyExtentAndMask();
+                                        updateAoiMask(true);
+                                        ensureAoiOnTop();
                                         retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
@@ -4268,10 +4275,11 @@ define([
                                     try {
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
-                                        await view.goTo(fixedExtent, { animate: false });
+                                        await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await waitForViewStationary(800);
-                                        applyExtentAndMask();
+                                        updateAoiMask(true);
+                                        ensureAoiOnTop();
                                         await _waitForOverlays(view, overlays);
                                         retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
