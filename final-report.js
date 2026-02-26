@@ -5471,34 +5471,37 @@ ${getA11yWidgetBlock()}
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
-                    // Compute the target scale based on SCREENSHOT dimensions
-                    // (not view container dimensions) so that takeScreenshot()
-                    // at 1400×788 shows exactly the fixedExtent, regardless of
-                    // how large or small the actual #viewDiv container is.
-                    const _ssW = width;                          // 1400
-                    const _ssH = Math.round(width * 0.5625);    // 788
-                    const _MPP = 0.000264583862;                 // ArcGIS m-per-px at 96 DPI, 1:1 scale
-                    const _center = fixedExtent.center;
-                    // Web Mercator → ground distance correction: cos(latitude)
-                    const _latRad = Math.atan(Math.sinh(_center.y / 6378137));
-                    const _cosLat = Math.cos(_latRad);
-                    const _targetScale = Math.max(
-                        fixedExtent.width  * _cosLat / (_ssW * _MPP),
-                        fixedExtent.height * _cosLat / (_ssH * _MPP)
-                    );
-
-                    // Lock the view container to the exact screenshot pixel
-                    // dimensions so the visible extent matches the computed
-                    // scale.  This prevents browser resizing from altering
-                    // the captured area during report generation.
+                    // Lock the view container to fixed pixel dimensions so
+                    // browser resizing cannot alter the captured area during
+                    // report generation.
                     lockViewContainer();
                     // Wait for MapView to adopt the locked dimensions
+                    const _ssW = width;                          // 1400
+                    const _ssH = Math.round(width * 0.5625);    // 788
                     const _resizeT0 = Date.now();
                     while (Date.now() - _resizeT0 < 4000) {
                         if (Math.abs(view.width - _ssW) < 10 &&
                             Math.abs(view.height - _ssH) < 10) break;
                         await new Promise(r => setTimeout(r, 80));
                     }
+
+                    // Compute the target scale using the ACTUAL settled view
+                    // container dimensions.  view.goTo({scale}) maps the
+                    // geographic extent to the container pixel size, while
+                    // takeScreenshot({width}) just re-renders that same
+                    // geographic area at the output resolution.  Using
+                    // view.width/height here guarantees the view shows
+                    // exactly fixedExtent regardless of whether the container
+                    // lock fully settled.
+                    const _MPP = 0.000264583862;                 // ArcGIS m-per-px at 96 DPI, 1:1 scale
+                    const _center = fixedExtent.center;
+                    // Web Mercator → ground distance correction: cos(latitude)
+                    const _latRad = Math.atan(Math.sinh(_center.y / 6378137));
+                    const _cosLat = Math.cos(_latRad);
+                    const _targetScale = Math.max(
+                        fixedExtent.width  * _cosLat / (view.width  * _MPP),
+                        fixedExtent.height * _cosLat / (view.height * _MPP)
+                    );
 
                     // Disable LOD snapping so view uses exactly our computed scale
                     try { view.constraints.snapToZoom = false; } catch (_) {}
