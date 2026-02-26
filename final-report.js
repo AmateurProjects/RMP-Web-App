@@ -5338,7 +5338,8 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer,
+            lockViewContainer, unlockViewContainer
         } = mapUtils;
 
         const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, computeSlopeAspect, SQM_PER_ACRE } = queryEngine;
@@ -5485,6 +5486,19 @@ ${getA11yWidgetBlock()}
                         fixedExtent.width  * _cosLat / (_ssW * _MPP),
                         fixedExtent.height * _cosLat / (_ssH * _MPP)
                     );
+
+                    // Lock the view container to the exact screenshot pixel
+                    // dimensions so the visible extent matches the computed
+                    // scale.  This prevents browser resizing from altering
+                    // the captured area during report generation.
+                    lockViewContainer();
+                    // Wait for MapView to adopt the locked dimensions
+                    const _resizeT0 = Date.now();
+                    while (Date.now() - _resizeT0 < 4000) {
+                        if (Math.abs(view.width - _ssW) < 10 &&
+                            Math.abs(view.height - _ssH) < 10) break;
+                        await new Promise(r => setTimeout(r, 80));
+                    }
 
                     // Disable LOD snapping so view uses exactly our computed scale
                     try { view.constraints.snapToZoom = false; } catch (_) {}
@@ -5859,6 +5873,8 @@ ${getA11yWidgetBlock()}
                     }
                     // Restore LOD snapping for regular map interaction
                     try { view.constraints.snapToZoom = true; } catch (_) {}
+                    // Unlock view container sizing
+                    unlockViewContainer();
                     // Restore original state
                     try {
                         view.map.basemap = originalBasemap;
