@@ -10,7 +10,7 @@
     "imageryOpacity": 0.75
   },
   "visualReport": {
-    "paddingFactor": 1.0,
+    "paddingFactor": 1,
     "screenshotWidth": 1400
   },
   "symbology": {
@@ -215,7 +215,8 @@
         "VRI_CLASS_CODE",
         "SL_OVRL_RT",
         "VRI_SPCL_IND"
-      ]
+      ],
+      "excluded": true
     },
     {
       "title": "BLM Natl Grazing Allotment Polygons",
@@ -429,7 +430,8 @@
         "mining",
         "row",
         "grazing"
-      ]
+      ],
+      "excluded": true
     },
     {
       "title": "BLM DANL Disturbance Assessment",
@@ -465,7 +467,8 @@
       "permitTypes": [
         "core"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "Final Critical Habitat Features",
@@ -546,7 +549,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "2-digit HU (Region)",
@@ -558,7 +562,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "4-digit HU (Subregion)",
@@ -570,7 +575,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "6-digit HU (Basin)",
@@ -582,7 +588,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "8-digit HU  (Subbasin)",
@@ -594,7 +601,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "10-digit HU (Watershed)",
@@ -606,7 +614,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "12-digit HU (Subwatershed)",
@@ -618,7 +627,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "14-digit HU",
@@ -630,7 +640,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "16-digit HU",
@@ -642,7 +653,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "Roadless Areas: 2001 Roadless Rule",
@@ -753,7 +765,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDPlusSink",
@@ -765,7 +778,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDPoint",
@@ -777,7 +791,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NetworkNHDFlowline",
@@ -789,7 +804,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NonNetworkNHDFlowline",
@@ -801,7 +817,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "FlowDirection",
@@ -813,7 +830,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDPlusWall",
@@ -825,7 +843,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDLine",
@@ -837,7 +856,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDArea",
@@ -849,7 +869,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDWaterbody",
@@ -861,7 +882,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDPlusCatchment",
@@ -873,7 +895,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "NHDPlusBoundaryUnit",
@@ -885,7 +908,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "WBDHU12",
@@ -897,7 +921,8 @@
         "row",
         "grazing"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "Riparian",
