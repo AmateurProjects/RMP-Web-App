@@ -3918,21 +3918,53 @@ define([
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
-                    // Lock the view container to fixed pixel dimensions so
-                    // browser resizing cannot alter the captured area.
-                    lockViewContainer();
+                    // Compute container dimensions from the AOI bounding box
+                    // so that goTo(extent) fills the viewport with minimal
+                    // wasted space.  The AOI extent must be projected to the
+                    // view's SR (Web Mercator) to get correct metric widths.
+                    let aoiGeoW = 0, aoiGeoH = 0;
+                    if (ext) {
+                        let xmin = ext.xmin, xmax = ext.xmax;
+                        let ymin = ext.ymin, ymax = ext.ymax;
+                        const geomSR = ext.spatialReference;
+                        const viewSR = view.spatialReference;
+                        if (geomSR && viewSR && geomSR.wkid !== viewSR.wkid) {
+                            const isWgs84   = (geomSR.wkid === 4326);
+                            const isWebMerc = (viewSR.isWebMercator || viewSR.wkid === 102100 || viewSR.wkid === 3857);
+                            if (isWgs84 && isWebMerc) {
+                                const D = Math.PI / 180, R = 6378137;
+                                xmin = ext.xmin * R * D;
+                                xmax = ext.xmax * R * D;
+                                ymin = Math.log(Math.tan((90 + ext.ymin) * D / 2)) * R;
+                                ymax = Math.log(Math.tan((90 + ext.ymax) * D / 2)) * R;
+                            }
+                        }
+                        aoiGeoW = Math.abs(xmax - xmin);
+                        aoiGeoH = Math.abs(ymax - ymin);
+                    }
+
+                    // Size the container to match the AOI's aspect ratio with
+                    // a small margin.  Clamp the ratio so extremely elongated
+                    // AOIs still produce a reasonably shaped image.
+                    const MIN_RATIO = 0.4;   // minimum height/width
+                    const MAX_RATIO = 1.2;   // maximum height/width
+                    let containerW = width;
+                    let containerH;
+                    if (aoiGeoW > 0 && aoiGeoH > 0) {
+                        let aoiRatio = aoiGeoH / aoiGeoW;
+                        aoiRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, aoiRatio));
+                        containerH = Math.round(containerW * aoiRatio);
+                    } else {
+                        containerH = Math.round(containerW * 0.5625); // fallback 16:9
+                    }
+
+                    lockViewContainer(containerW, containerH);
 
                     // Wait for MapView to fully adopt the locked dimensions.
-                    // Both view.width/height AND view.stationary must settle —
-                    // goTo(extent) uses the internal viewport metrics, so if
-                    // the MapView is still processing the resize it computes
-                    // the wrong scale.
-                    const _ssW = width;                          // 1400
-                    const _ssH = Math.round(width * 0.5625);    // 788
                     const _resizeT0 = Date.now();
                     while (Date.now() - _resizeT0 < 4000) {
-                        if (Math.abs(view.width - _ssW) < 10 &&
-                            Math.abs(view.height - _ssH) < 10) break;
+                        if (Math.abs(view.width - containerW) < 10 &&
+                            Math.abs(view.height - containerH) < 10) break;
                         await new Promise(r => setTimeout(r, 80));
                     }
                     await waitForViewStationary(1500);
@@ -3950,55 +3982,6 @@ define([
                         await waitForViewStationary(1000);
                         fixedCenter = view.center.clone();
                         fixedScale  = view.scale;
-                    }
-
-                    // Compute the AOI's pixel bounding box for cropping each
-                    // layer screenshot tightly to the Area of Interest.
-                    // Projects the AOI extent corners to screen pixel coords
-                    // using the view's settled extent, handling WGS84→Web
-                    // Mercator conversion when the SRs differ.
-                    let fixedCropArea = null;
-                    if (ext && view.extent) {
-                        const CROP_MARGIN_PX = 24;
-                        const viewExt = view.extent;
-                        const viewGeoW = viewExt.xmax - viewExt.xmin;
-                        const viewGeoH = viewExt.ymax - viewExt.ymin;
-
-                        // Ensure AOI extent is in the same SR as the view
-                        let aoiXmin = ext.xmin, aoiXmax = ext.xmax;
-                        let aoiYmin = ext.ymin, aoiYmax = ext.ymax;
-                        const geomSR = ext.spatialReference;
-                        const viewSR = view.spatialReference;
-                        if (geomSR && viewSR && geomSR.wkid !== viewSR.wkid) {
-                            const isGeomWgs84    = (geomSR.wkid === 4326);
-                            const isViewWebMerc  = (viewSR.isWebMercator || viewSR.wkid === 102100 || viewSR.wkid === 3857);
-                            if (isGeomWgs84 && isViewWebMerc) {
-                                const DEG2RAD = Math.PI / 180;
-                                const R = 6378137;
-                                aoiXmin = ext.xmin * R * DEG2RAD;
-                                aoiXmax = ext.xmax * R * DEG2RAD;
-                                aoiYmin = Math.log(Math.tan((90 + ext.ymin) * DEG2RAD / 2)) * R;
-                                aoiYmax = Math.log(Math.tan((90 + ext.ymax) * DEG2RAD / 2)) * R;
-                            }
-                        }
-
-                        if (viewGeoW > 0 && viewGeoH > 0) {
-                            const pxL = ((aoiXmin - viewExt.xmin) / viewGeoW) * view.width;
-                            const pxR = ((aoiXmax - viewExt.xmin) / viewGeoW) * view.width;
-                            const pxT = ((viewExt.ymax - aoiYmax) / viewGeoH) * view.height;
-                            const pxB = ((viewExt.ymax - aoiYmin) / viewGeoH) * view.height;
-
-                            const cropX = Math.max(0, Math.floor(pxL) - CROP_MARGIN_PX);
-                            const cropY = Math.max(0, Math.floor(pxT) - CROP_MARGIN_PX);
-                            const cropR = Math.min(view.width,  Math.ceil(pxR) + CROP_MARGIN_PX);
-                            const cropB = Math.min(view.height, Math.ceil(pxB) + CROP_MARGIN_PX);
-                            const cropW = cropR - cropX;
-                            const cropH = cropB - cropY;
-                            if (cropW > 50 && cropH > 50) {
-                                fixedCropArea = { x: cropX, y: cropY, width: cropW, height: cropH };
-                                console.log(`[bg-report] AOI crop area: ${cropW}×${cropH} at (${cropX},${cropY})`);
-                            }
-                        }
                     }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
@@ -4094,7 +4077,7 @@ define([
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
                                     ensureAoiOnTop();
-                                    dataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 5000 });
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
                                 } finally {
@@ -4198,7 +4181,7 @@ define([
                                     updateAoiMask(true);
                                     ensureAoiOnTop();
                                     await _waitForOverlays(view, overlays);
-                                    dataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 5000 });
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } finally {
                                     try { view.map.remove(tempLayer); } catch (e) { }
                                     _removeOverlays(view, overlays);
@@ -4304,7 +4287,7 @@ define([
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
                                         ensureAoiOnTop();
-                                        retryDataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 10000 });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
                                         restoreVisibility();
@@ -4330,7 +4313,7 @@ define([
                                         updateAoiMask(true);
                                         ensureAoiOnTop();
                                         await _waitForOverlays(view, overlays);
-                                        retryDataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 10000 });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(tempLayer); } catch (e) { }
                                         _removeOverlays(view, overlays);

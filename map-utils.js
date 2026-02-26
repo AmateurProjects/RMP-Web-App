@@ -596,17 +596,16 @@ define([
         // Force a render frame so the canvas is up-to-date
         await new Promise(r => requestAnimationFrame(r));
 
-        // Optional pixel-region crop (area: { x, y, width, height } in CSS px
-        // relative to the view container).  When supplied, the output height is
-        // computed from the crop region's aspect ratio so the image isn't stretched.
-        const area = screenConfig.area || null;
         const ssOpts = {
             format: "jpg",
             quality: 92,
             width: width,
-            height: area ? Math.round(width * (area.height / area.width)) : Math.round(width * 0.5625)
+            // Use the view's actual aspect ratio (set by lockViewContainer)
+            // instead of hardcoding 16:9 so the screenshot matches the container.
+            height: (view.width > 0 && view.height > 0)
+                ? Math.round(width * (view.height / view.width))
+                : Math.round(width * 0.5625)
         };
-        if (area) ssOpts.area = area;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -912,9 +911,11 @@ define([
     /**
      * Lock the #viewDiv to fixed pixel dimensions so browser resize
      * cannot affect the MapView during screenshot capture.
+     * @param {number} [w] - Width in px (default: config screenshotWidth or 1400)
+     * @param {number} [h] - Height in px (default: 16:9 from width)
      * Call once before the screenshot loop; call unlockViewContainer() after.
      */
-    function lockViewContainer() {
+    function lockViewContainer(w, h) {
         const view = S.view;
         if (!view || !view.container) return;
         const el = view.container;
@@ -926,8 +927,8 @@ define([
                 top:      el.style.top,
                 left:     el.style.left
             };
-            const ssWidth  = S.config?.visualReport?.screenshotWidth ?? 1400;
-            const ssHeight = Math.round(ssWidth * 0.5625); // 16:9
+            const ssWidth  = w || (S.config?.visualReport?.screenshotWidth ?? 1400);
+            const ssHeight = h || Math.round(ssWidth * 0.5625); // default 16:9
             el.style.width    = ssWidth + "px";
             el.style.height   = ssHeight + "px";
             el.style.position = "absolute";
