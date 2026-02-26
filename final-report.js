@@ -5338,8 +5338,7 @@ ${getA11yWidgetBlock()}
             captureScreenshotWithWait, waitForTabVisible,
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
-            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer,
-            lockViewContainer, unlockViewContainer
+            thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer
         } = mapUtils;
 
         const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, computeSlopeAspect, SQM_PER_ACRE } = queryEngine;
@@ -5439,15 +5438,6 @@ ${getA11yWidgetBlock()}
                 const ext = _zoomGeom?.extent;
                 if (ext && ext.clone) fixedExtent = ext.clone().expand(_zoomPad);
 
-                // Explicit center + scale computed with Mercator latitude
-                // correction.  view.goTo(extent) is unreliable after
-                // lockViewContainer (produces ~100× wrong scale), so we
-                // compute the values ourselves and always pass
-                // { center, scale } to goTo.
-                const _targetExt  = fixedExtent || _zoomGeom.extent.clone().expand(1.5);
-                let   _fixedCenter = _targetExt.center;
-                let   _fixedScale  = null; // set after container lock
-
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
                 const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
@@ -5480,47 +5470,9 @@ ${getA11yWidgetBlock()}
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
-                    // Lock view container to fixed pixel dimensions to prevent resize interference
-                    lockViewContainer();
-                    console.log("[buildReportInBackground] view container locked");
-
-                    // Poll until the MapView's internal width/height reflect
-                    // the locked container dimensions – without this, goTo
-                    // computes the wrong scale from stale viewport metrics.
-                    const _targetW = width;
-                    const _targetH = Math.round(width * 0.5625);
-                    const _resizeT0 = Date.now();
-                    while (Date.now() - _resizeT0 < 4000) {
-                        if (Math.abs(view.width - _targetW) < 10 &&
-                            Math.abs(view.height - _targetH) < 10) break;
-                        await new Promise(r => setTimeout(r, 80));
-                    }
-                    console.log(`[buildReportInBackground] view dims after lock: ${view.width}×${view.height} (target ${_targetW}×${_targetH})`);
-
-                    // Compute the correct scale ourselves.
-                    // view.goTo(extent) is unreliable after lockViewContainer
-                    // (produces ~100× wrong scale).  Instead we convert the
-                    // extent into { center, scale } using the standard
-                    // Web Mercator → ground-distance correction.
-                    {
-                        const _MPP = 0.000264583862; // ArcGIS m-per-px at 96 DPI, scale 1:1
-                        // Mercator scale factor: cos(latitude)
-                        const _latRad = Math.atan(Math.sinh(_fixedCenter.y / 6378137));
-                        const _cosLat = Math.cos(_latRad);
-                        _fixedScale = Math.max(
-                            _targetExt.width  * _cosLat / (view.width  * _MPP),
-                            _targetExt.height * _cosLat / (view.height * _MPP)
-                        );
-                        console.log(`[buildReportInBackground] zoomGeom=${_origGeom ? 'original (pre-buffer)' : 'selectionGeom'}, pad=${_zoomPad}, computed scale: ${Math.round(_fixedScale)}, cosLat=${_cosLat.toFixed(4)}, extW=${Math.round(_targetExt.width)}, extH=${Math.round(_targetExt.height)}`);
-                    }
-
-                    // Disable LOD snapping so the view uses exactly the
-                    // computed scale instead of rounding to the nearest
-                    // tiled-basemap level (which can add ~5-50% zoom-out).
-                    try { view.constraints.snapToZoom = false; } catch (_) {}
-                    await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
+                    // Zoom to the padded AOI extent for layer screenshots
+                    await view.goTo(fixedExtent, { animate: false });
                     await waitForViewStationary(1000);
-                    console.log(`[buildReportInBackground] initial zoom: viewScale=${Math.round(view.scale)}, target=${Math.round(_fixedScale)}`);
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
                     console.log("[buildReportInBackground] starting pre-load phase…");
@@ -5610,7 +5562,7 @@ ${getA11yWidgetBlock()}
                                     await tempImg.when();
                                     setVisibilityForScreenshot(tempImg);
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
+                                    await view.goTo(fixedExtent, { animate: false });
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5712,7 +5664,7 @@ ${getA11yWidgetBlock()}
                                 try {
                                     setVisibilityForScreenshot(tempLayer);
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                                    await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
+                                    await view.goTo(fixedExtent, { animate: false });
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5818,7 +5770,7 @@ ${getA11yWidgetBlock()}
                                         await temp.when();
                                         setVisibilityForScreenshot(temp);
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
+                                        await view.goTo(fixedExtent, { animate: false });
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -5842,7 +5794,7 @@ ${getA11yWidgetBlock()}
                                     try {
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
-                                        await view.goTo({ center: _fixedCenter, scale: _fixedScale }, { animate: false });
+                                        await view.goTo(fixedExtent, { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -5888,10 +5840,6 @@ ${getA11yWidgetBlock()}
                     if (_persistentPlss) {
                         try { view.map.remove(_persistentPlss); } catch (_) {}
                     }
-                    // Unlock view container sizing
-                    unlockViewContainer();
-                    // Restore LOD snapping for regular map interaction
-                    try { view.constraints.snapToZoom = true; } catch (_) {}
                     // Restore original state
                     try {
                         view.map.basemap = originalBasemap;
