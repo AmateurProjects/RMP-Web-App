@@ -3871,20 +3871,14 @@ define([
             } else {
                 contentParts.push(`<h2>Layer Details</h2>`);
 
-                const paddingFactor = config?.visualReport?.paddingFactor ?? 1.12;
+                const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
                 const width = config?.visualReport?.screenshotWidth ?? 1400;
 
-                // When a buffer was applied, selectionGeom is the large
-                // buffered polygon.  Zoom to the ORIGINAL (pre-buffer)
-                // geometry so the drawn AOI is prominent, with enough
-                // padding to show nearby buffer-area features.
-                const _origGeom = S.aoiOriginalGeom;
-                const _zoomGeom = _origGeom || selectionGeom;
-                const _zoomPad  = _origGeom ? 1.5 : paddingFactor; // wider pad when using original geom
-
+                // Always zoom to the full selectionGeom (which includes any
+                // buffer) so the entire AOI boundary is visible in screenshots.
                 let fixedExtent = null;
-                const ext = _zoomGeom?.extent;
-                if (ext && ext.clone) fixedExtent = ext.clone().expand(_zoomPad);
+                const ext = selectionGeom?.extent;
+                if (ext && ext.clone) fixedExtent = ext.clone().expand(paddingFactor);
 
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
