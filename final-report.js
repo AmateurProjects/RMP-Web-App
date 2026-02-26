@@ -3918,45 +3918,11 @@ define([
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
-                    // Compute container dimensions from the AOI bounding box
-                    // so that goTo(extent) fills the viewport with minimal
-                    // wasted space.  The AOI extent must be projected to the
-                    // view's SR (Web Mercator) to get correct metric widths.
-                    let aoiGeoW = 0, aoiGeoH = 0;
-                    if (ext) {
-                        let xmin = ext.xmin, xmax = ext.xmax;
-                        let ymin = ext.ymin, ymax = ext.ymax;
-                        const geomSR = ext.spatialReference;
-                        const viewSR = view.spatialReference;
-                        if (geomSR && viewSR && geomSR.wkid !== viewSR.wkid) {
-                            const isWgs84   = (geomSR.wkid === 4326);
-                            const isWebMerc = (viewSR.isWebMercator || viewSR.wkid === 102100 || viewSR.wkid === 3857);
-                            if (isWgs84 && isWebMerc) {
-                                const D = Math.PI / 180, R = 6378137;
-                                xmin = ext.xmin * R * D;
-                                xmax = ext.xmax * R * D;
-                                ymin = Math.log(Math.tan((90 + ext.ymin) * D / 2)) * R;
-                                ymax = Math.log(Math.tan((90 + ext.ymax) * D / 2)) * R;
-                            }
-                        }
-                        aoiGeoW = Math.abs(xmax - xmin);
-                        aoiGeoH = Math.abs(ymax - ymin);
-                    }
-
-                    // Size the container to match the AOI's aspect ratio with
-                    // a small margin.  Clamp the ratio so extremely elongated
-                    // AOIs still produce a reasonably shaped image.
-                    const MIN_RATIO = 0.4;   // minimum height/width
-                    const MAX_RATIO = 1.2;   // maximum height/width
-                    let containerW = width;
-                    let containerH;
-                    if (aoiGeoW > 0 && aoiGeoH > 0) {
-                        let aoiRatio = aoiGeoH / aoiGeoW;
-                        aoiRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, aoiRatio));
-                        containerH = Math.round(containerW * aoiRatio);
-                    } else {
-                        containerH = Math.round(containerW * 0.5625); // fallback 16:9
-                    }
+                    // Lock the view container to a fixed square resolution
+                    // so all report screenshots are a consistent size
+                    // regardless of the browser window dimensions.
+                    const containerW = width;
+                    const containerH = width; // 1:1 square
 
                     lockViewContainer(containerW, containerH);
 
@@ -3974,7 +3940,7 @@ define([
                     try { view.constraints.snapToZoom = false; } catch (_) {}
 
                     // One-time goTo with the padded AOI extent so the API
-                    // resolves center + scale for the current container.
+                    // resolves center + scale for the fixed container.
                     // We then lock those values for every layer screenshot.
                     if (ext) {
                         const paddedExtent = ext.clone().expand(paddingFactor);
@@ -4025,6 +3991,18 @@ define([
                         });
                     }
 
+                    // Hide all non-essential layers ONCE before the
+                    // screenshot loop.  Individual iterations only toggle
+                    // the target layer on/off, avoiding a full layer
+                    // traversal for every single screenshot.
+                    setVisibilityForScreenshot(null);
+
+                    // Build the AOI mask ONCE — the view is already at
+                    // fixedCenter / fixedScale from the initial goTo above,
+                    // and nothing moves it between there and here.
+                    updateAoiMask(true);
+                    ensureAoiOnTop();
+
                     // Process each layer
                     const deferredScreenshots = [];
                     let lastGroupKey = null; // Track current group for section headers
@@ -4070,19 +4048,14 @@ define([
                                 try {
                                     view.map.add(tempImg);
                                     await tempImg.when();
-                                    setVisibilityForScreenshot(tempImg);
-                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
-                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
-                                    await waitForViewStationary(800);
-                                    updateAoiMask(true);
+                                    tempImg.visible = true;
                                     ensureAoiOnTop();
+                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
                                 } finally {
                                     try { view.map.remove(tempImg); } catch (_) {}
-                                    restoreVisibility();
                                 }
                             } else {
                                 screenshotDeferred = true;
@@ -4173,19 +4146,14 @@ define([
                                 const overlays = await _addReportOverlays(view, tempLayer, tempGeomType, item.url, tempLayer.definitionExpression, _persistentPlss);
 
                                 try {
-                                    setVisibilityForScreenshot(tempLayer);
-                                    await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                                    await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
-                                    await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                                    await waitForViewStationary(800);
-                                    updateAoiMask(true);
+                                    tempLayer.visible = true;
                                     ensureAoiOnTop();
+                                    await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await _waitForOverlays(view, overlays);
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } finally {
                                     try { view.map.remove(tempLayer); } catch (e) { }
                                     _removeOverlays(view, overlays);
-                                    restoreVisibility();
                                 }
                                 mapsGenerated++;
                             } else {
@@ -4280,17 +4248,12 @@ define([
                                     try {
                                         view.map.add(temp);
                                         await temp.when();
-                                        setVisibilityForScreenshot(temp);
-                                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
-                                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
-                                        await waitForViewStationary(800);
-                                        updateAoiMask(true);
+                                        temp.visible = true;
                                         ensureAoiOnTop();
+                                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
                                         retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
-                                        restoreVisibility();
                                     }
                                 } else {
                                     const tempLayer = queryEngine.getPreWarmedLayer(def.item.url) || new FeatureLayer({
@@ -4305,19 +4268,14 @@ define([
                                     tempLayer.maxScale = 0;
                                     const overlays = await _addReportOverlays(view, tempLayer, def.tempGeomType, def.item.url, tempLayer.definitionExpression, _persistentPlss);
                                     try {
-                                        setVisibilityForScreenshot(tempLayer);
-                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
-                                        await view.goTo({ center: fixedCenter, scale: fixedScale }, { animate: false });
-                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
-                                        await waitForViewStationary(800);
-                                        updateAoiMask(true);
+                                        tempLayer.visible = true;
                                         ensureAoiOnTop();
+                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await _waitForOverlays(view, overlays);
                                         retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(tempLayer); } catch (e) { }
                                         _removeOverlays(view, overlays);
-                                        restoreVisibility();
                                     }
                                 }
 
