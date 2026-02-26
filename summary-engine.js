@@ -95,6 +95,12 @@ define([], function () {
     var URL_RX = /^https?:\/\//i;
     var SKIP_FIELDS = /^(OBJECTID|FID|GLOBALID|ST_AREA|ST_LENGTH|ST_PERIMETER|SHAPE([-_. ].*)?|TOTAL[-_ ]?(AREA|LENGTH|ACRES|ACREAGE))$/i;
 
+    /** Return escaped href if URL has a safe protocol, otherwise return "" */
+    function safeHref(raw) {
+        var s = String(raw || "").trim();
+        return URL_RX.test(s) ? escapeHtml(s) : "";
+    }
+
     /** Maximum number of content rows (excluding the header) in Layer Highlights */
     var MAX_HIGHLIGHT_ROWS = 3;
 
@@ -455,8 +461,9 @@ define([], function () {
         if (statusCounts.size > 0) html += tr("Status", freqSummary(statusCounts, 10));
         if (epLinks.size > 0) {
             var links = Array.from(epLinks).slice(0, 5).map(function (link) {
-                var escaped = escapeHtml(link);
-                return '<a href="' + escaped + '" target="_blank">' + (escaped.length > 50 ? escaped.substring(0, 50) + "…" : escaped) + "</a>";
+                var href = safeHref(link);
+                if (!href) return escapeHtml(link);
+                return '<a href="' + href + '" target="_blank">' + (href.length > 50 ? href.substring(0, 50) + "\u2026" : href) + "</a>";
             }).join("<br>");
             if (epLinks.size > 5) links += "<br>…";
             html += tr("ePlanning Link", links);
@@ -645,7 +652,9 @@ define([], function () {
         if (cityLabels.size > 0) html += tr("Office Location", uniqueSummary(cityLabels, 10));
         if (stateUrls.size > 0) {
             var urls = Array.from(stateUrls).slice(0, 5).map(function (u) {
-                return '<a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">' + escapeHtml(u) + "</a>";
+                var href = safeHref(u);
+                if (!href) return escapeHtml(u);
+                return '<a href="' + href + '" target="_blank" rel="noopener">' + href + "</a>";
             }).join("<br/>");
             html += tr("State Office URL", urls);
         }
@@ -734,8 +743,9 @@ define([], function () {
             var firstUrl = Array.from(urlSet)[0];
             if (summaryHtml.includes(escapeHtml(firstUrl))) continue;
             var links = Array.from(urlSet).slice(0, 5).map(function (u) {
-                var escaped = escapeHtml(u);
-                return '<a href="' + escaped + '" target="_blank" rel="noopener">' + escaped + "</a>";
+                var href = safeHref(u);
+                if (!href) return escapeHtml(u);
+                return '<a href="' + href + '" target="_blank" rel="noopener">' + href + "</a>";
             }).join("<br/>");
             if (urlSet.size > 5) links += "<br/>…";
             urlHtml += tr(label2, links);
@@ -794,8 +804,9 @@ define([], function () {
             var firstVal = Array.from(freq.keys())[0];
             if (URL_RX.test(firstVal)) {
                 var links = Array.from(freq.keys()).slice(0, 5).map(function (u) {
-                    var esc = escapeHtml(u);
-                    return '<a href="' + esc + '" target="_blank" rel="noopener">' + (esc.length > 60 ? esc.substring(0, 60) + "…" : esc) + "</a>";
+                    var href = safeHref(u);
+                    if (!href) return escapeHtml(u);
+                    return '<a href="' + href + '" target="_blank" rel="noopener">' + (href.length > 60 ? href.substring(0, 60) + "\u2026" : href) + "</a>";
                 }).join("<br/>");
                 if (freq.size > 5) links += "<br/>…";
                 html += tr(label, links);

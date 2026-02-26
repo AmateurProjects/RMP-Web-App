@@ -549,6 +549,7 @@ function setBusy(isBusy) {
 
     let sketch = null;
     let currentDrawToolType = "polygon";
+    let _clickSelectGen = 0; // generation counter to discard stale click-to-select results
 
     let lastReportRowsByLayer = []; // for export-all
     let reportLayerViews = new Map();
@@ -1125,7 +1126,7 @@ function setActiveTab(tabName) {
             html += '<div class="bucket-accordion-section" data-bucket="' + g.key + '">';
 
             // Header row (reuses overview-cat-row styling)
-            html += '<button class="overview-cat-row ' + statusClass + '" type="button">';
+            html += '<button class="overview-cat-row ' + statusClass + '" type="button" aria-expanded="false">';
             html += '<span class="overview-cat-indicator"></span>';
             html += '<span class="overview-cat-icon">' + g.icon + '</span>';
             html += '<span class="overview-cat-label">' + escapeHtml(g.label) + '</span>';
@@ -1156,7 +1157,7 @@ function setActiveTab(tabName) {
             const tl = lastReportRowsByLayer.length;
             const lwh = lastReportRowsByLayer.filter(x => x.hasCoverage).length;
             html += '<div class="bucket-accordion-section" data-bucket="all-data">';
-            html += '<button class="overview-cat-row all-data" type="button">';
+            html += '<button class="overview-cat-row all-data" type="button" aria-expanded="false">';
             html += '<span class="overview-cat-indicator"></span>';
             html += '<span class="overview-cat-icon">📊</span>';
             html += '<span class="overview-cat-label">All Layers</span>';
@@ -1183,6 +1184,7 @@ function setActiveTab(tabName) {
             btn.addEventListener('click', () => {
                 const section = btn.closest('.bucket-accordion-section');
                 section.classList.toggle('open');
+                btn.setAttribute('aria-expanded', section.classList.contains('open'));
             });
         });
 
@@ -2496,6 +2498,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             if (isReportCanceled(myOp)) return null;
             const metaUrl = `${t.url}?f=json`;
             const resp = await fetch(metaUrl, { signal: abortSignal });
+            if (!resp.ok) throw new Error(`ImageServer metadata fetch failed: HTTP ${resp.status}`);
             const meta = await resp.json();
 
             const serviceDesc = meta.description || meta.serviceDescription || "No description available.";
@@ -2590,11 +2593,12 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             // Race the query against a per-layer timeout so a slow service
             // (e.g. USFWS Critical Habitat with complex geometries) can't
             // stall the entire analysis batch indefinitely.
+            let coverageTimer;
             const result = await Promise.race([
-                layerRef.queryFeatures(checkQuery, { signal: abortSignal }),
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
-                )
+                layerRef.queryFeatures(checkQuery, { signal: abortSignal }).finally(() => clearTimeout(coverageTimer)),
+                new Promise((_, reject) => {
+                    coverageTimer = setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS);
+                })
             ]);
             hasCoverage = result.features && result.features.length > 0;
         } catch (e) {
@@ -2902,8 +2906,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
             if (!activeSelectionLayerView) return;
 
+            const myGen = ++_clickSelectGen;
+
             try {
                 const hit = await view.hitTest(event);
+                if (myGen !== _clickSelectGen) return; // superseded by newer click
                 const results = (hit && hit.results) ? hit.results : [];
 
                 // Get ALL matching features from the active selection layer
@@ -2918,6 +2925,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     // ✅ Fetch the “true” // Handler for when a feature is selected (single or from picker)
                 async function handleFeatureSelection(graphic) {
                     const full = await getFullFeatureGeometryFromLayer(activeSelectionLayer, graphic);
+                    if (myGen !== _clickSelectGen) return; // superseded by newer click
                     aoiSourceFeature = full?.feature || graphic || null;
                     const fullGeom = full?.geometry || null;
                     if (!fullGeom) return;
@@ -3523,6 +3531,11 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 return;
             }
 
+            // For point/polyline search results, auto-cast to a proper
+            // Geometry instance so generalizeAoiIfNeeded and buffer work
+            var castGraphic = new Graphic({ geometry: geom });
+            geom = castGraphic.geometry;
+
             // Set the geometry as the AOI (generalize before storing)
             geom = generalizeAoiIfNeeded(geom) || geom;
             selectionGeom = geom;
@@ -3987,6 +4000,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 }
                 if (runBtn) runBtn.disabled = false;
 
+                // Invalidate any cached report — geometry has changed
+                Object.keys(cachedPermitReports).forEach(k => delete cachedPermitReports[k]);
+                if (wizFullReport) {
+                    delete wizFullReport.dataset.reportReady;
+                    wizFullReport.classList.remove('ready-to-view');
+                }
+
                 // Refresh the confirmation card with new area
                 populateAoiConfirmation();
                 // Re-set the input value and reset button since populateAoiConfirmation clears them
@@ -4009,6 +4029,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     view.goTo(selectionGeom.extent.expand(1.3), { animate: true, duration: 600 });
                 }
                 if (runBtn) runBtn.disabled = false;
+
+                // Invalidate any cached report — geometry has changed
+                Object.keys(cachedPermitReports).forEach(k => delete cachedPermitReports[k]);
+                if (wizFullReport) {
+                    delete wizFullReport.dataset.reportReady;
+                    wizFullReport.classList.remove('ready-to-view');
+                }
 
                 populateAoiConfirmation();
                 setStatus("Buffer removed — original geometry restored");

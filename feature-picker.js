@@ -47,9 +47,9 @@ define(["app/config-helpers"], function (configHelpers) {
         featurePickerContent = document.querySelector(".feature-picker-content");
         featurePickerHeader  = document.querySelector(".feature-picker-header");
 
-        // Wire drag
+        // Wire drag (pointer events for mouse + touch + pen)
         if (featurePickerHeader && featurePickerContent) {
-            featurePickerHeader.addEventListener("mousedown", function (e) {
+            featurePickerHeader.addEventListener("pointerdown", function (e) {
                 if (e.target.tagName === "BUTTON") return;
                 pickerDragState.isDragging = true;
                 pickerDragState.startX = e.clientX;
@@ -58,9 +58,10 @@ define(["app/config-helpers"], function (configHelpers) {
                 pickerDragState.offsetX = rect.left;
                 pickerDragState.offsetY = rect.top;
                 featurePickerContent.style.transition = "none";
+                featurePickerHeader.setPointerCapture(e.pointerId);
             });
 
-            document.addEventListener("mousemove", function (e) {
+            featurePickerHeader.addEventListener("pointermove", function (e) {
                 if (!pickerDragState.isDragging) return;
                 var dx = e.clientX - pickerDragState.startX;
                 var dy = e.clientY - pickerDragState.startY;
@@ -73,10 +74,12 @@ define(["app/config-helpers"], function (configHelpers) {
                 featurePickerContent.style.margin = "0";
             });
 
-            document.addEventListener("mouseup", function () {
+            featurePickerHeader.addEventListener("pointerup", function () {
                 pickerDragState.isDragging = false;
                 featurePickerContent.style.transition = "";
             });
+
+            featurePickerHeader.style.touchAction = "none";
         }
 
         // Cancel button
@@ -96,6 +99,20 @@ define(["app/config-helpers"], function (configHelpers) {
                     hideFeaturePicker();
                 }
             });
+        }
+
+        // Escape key to close
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && featurePickerModal && !featurePickerModal.classList.contains("hidden")) {
+                hideFeaturePicker();
+            }
+        });
+
+        // Set dialog ARIA attributes
+        if (featurePickerContent) {
+            featurePickerContent.setAttribute("role", "dialog");
+            featurePickerContent.setAttribute("aria-modal", "true");
+            featurePickerContent.setAttribute("aria-label", "Feature Picker");
         }
     }
 
@@ -188,6 +205,9 @@ define(["app/config-helpers"], function (configHelpers) {
     function showFeaturePicker(features, onSelect) {
         if (!featurePickerModal || !featurePickerList) return;
 
+        // Save element that had focus before opening so we can restore it
+        var _previouslyFocused = document.activeElement;
+
         // Reset position for new selection
         if (featurePickerContent) {
             featurePickerContent.style.position = "";
@@ -233,6 +253,32 @@ define(["app/config-helpers"], function (configHelpers) {
         });
 
         featurePickerModal.classList.remove("hidden");
+
+        // Focus trap: cycle Tab within dialog
+        if (featurePickerContent) {
+            featurePickerContent._focusTrap = function (e) {
+                if (e.key !== "Tab") return;
+                var focusable = featurePickerContent.querySelectorAll(
+                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+                if (focusable.length === 0) return;
+                var first = focusable[0], last = focusable[focusable.length - 1];
+                if (e.shiftKey) {
+                    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+                } else {
+                    if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+                }
+            };
+            featurePickerContent.addEventListener("keydown", featurePickerContent._focusTrap);
+            // Move focus into dialog
+            var firstFocusable = featurePickerContent.querySelector(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            if (firstFocusable) firstFocusable.focus();
+        }
+
+        // Store ref to restore focus on close
+        featurePickerModal._previouslyFocused = _previouslyFocused;
     }
 
     function selectPickerRow(idx) {
@@ -273,6 +319,16 @@ define(["app/config-helpers"], function (configHelpers) {
     function hideFeaturePicker() {
         if (featurePickerModal) {
             featurePickerModal.classList.add("hidden");
+            // Restore focus to the element that was focused before opening
+            if (featurePickerModal._previouslyFocused) {
+                try { featurePickerModal._previouslyFocused.focus(); } catch (e) {}
+                featurePickerModal._previouslyFocused = null;
+            }
+        }
+        // Remove focus trap
+        if (featurePickerContent && featurePickerContent._focusTrap) {
+            featurePickerContent.removeEventListener("keydown", featurePickerContent._focusTrap);
+            featurePickerContent._focusTrap = null;
         }
         clearPickerHighlight();
         pickerFeatures = [];

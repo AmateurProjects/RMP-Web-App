@@ -117,7 +117,10 @@ define([
             Promise.allSettled(featureServerRoots.map(async cfg => {
                 const cacheKey = "fs:" + cfg.url;
                 if (!_reportSublayerCache.has(cacheKey)) {
-                    _reportSublayerCache.set(cacheKey, expandServiceToSublayers(cfg.url));
+                    _reportSublayerCache.set(cacheKey, expandServiceToSublayers(cfg.url).catch(err => {
+                        _reportSublayerCache.delete(cacheKey);
+                        throw err;
+                    }));
                 }
                 const sublayers = await _reportSublayerCache.get(cacheKey);
                 return sublayers.map(sl => ({ title: `${cfg.title}: ${sl.title}`, url: sl.url }));
@@ -125,7 +128,10 @@ define([
             Promise.allSettled(mapServerRoots.map(async cfg => {
                 const cacheKey = "ms:" + cfg.url;
                 if (!_reportSublayerCache.has(cacheKey)) {
-                    _reportSublayerCache.set(cacheKey, expandMapServerToSublayers(cfg.url, { polygonOnly: false }));
+                    _reportSublayerCache.set(cacheKey, expandMapServerToSublayers(cfg.url, { polygonOnly: false }).catch(err => {
+                        _reportSublayerCache.delete(cacheKey);
+                        throw err;
+                    }));
                 }
                 const subs = await _reportSublayerCache.get(cacheKey);
                 return subs.map(sl => ({ title: `${cfg.title}: ${sl.title}`, url: sl.url }));
@@ -547,9 +553,10 @@ define([
 '        overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;";',
 '        var card = document.createElement("div");',
 '        card.style.cssText = "background:#fff;border-radius:12px;padding:32px 36px;max-width:520px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.25);font-family:Source Sans Pro,sans-serif;";',
+'        var safeUrl = String(data.url || "").replace(/[&<>"\']/g, function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",\'\\"\':"&quot;","\'":"&#039;"}[c];});',
 '        card.innerHTML = \'<h3 style="margin:0 0 8px;color:#1a472a;font-size:20px;">Share Report Link</h3>\'',
 '            + \'<p style="margin:0 0 16px;font-size:13px;color:#666;">Anyone with this link can view this report (expires in \' + (data.expiresIn || "30 days") + \'):</p>\'',
-'            + \'<div style="display:flex;gap:8px;"><input id="shareUrlInput" type="text" value="\' + data.url + \'" readonly style="flex:1;padding:10px 12px;border:1px solid #ccc;border-radius:6px;font-size:13px;font-family:Consolas,Monaco,monospace;" />\'',
+'            + \'<div style="display:flex;gap:8px;"><input id="shareUrlInput" type="text" value="\' + safeUrl + \'" readonly style="flex:1;padding:10px 12px;border:1px solid #ccc;border-radius:6px;font-size:13px;font-family:Consolas,Monaco,monospace;" />\'',
 '            + \'<button id="copyShareBtn" style="padding:10px 16px;background:#1a472a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;">Copy</button></div>\'',
 '            + \'<button id="closeShareBtn" style="margin-top:16px;padding:8px 20px;background:#eee;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Close</button>\';',
 '        overlay.appendChild(card);',
@@ -1934,7 +1941,7 @@ define([
             <script>
             var _exportData = ${exportDataJson || 'null'};
             var _aoiGeoJson = ${aoiGeoJsonStr || 'null'};
-            var _workerUrl = "${escapeHtml(workerUrl || '')}";
+            var _workerUrl = ${JSON.stringify(workerUrl || '')};
             ${getReportPackageScript()}
             </script>
             <div class="cv-filter-wrap">
@@ -2287,6 +2294,44 @@ define([
                         if (scale === 1) { panX = 0; panY = 0; }
                         applyTransform();
                     }, { passive: false });
+                    // Touch: pinch-to-zoom and pan
+                    var lastTouchDist = 0, lastTouchX = 0, lastTouchY = 0;
+                    img.addEventListener('touchstart', function(e) {
+                        if (e.touches.length === 2) {
+                            var dx = e.touches[0].clientX - e.touches[1].clientX;
+                            var dy = e.touches[0].clientY - e.touches[1].clientY;
+                            lastTouchDist = Math.sqrt(dx*dx + dy*dy);
+                        } else if (e.touches.length === 1 && scale > 1) {
+                            dragging = true;
+                            lastTouchX = e.touches[0].clientX - panX;
+                            lastTouchY = e.touches[0].clientY - panY;
+                            img.classList.add('panning');
+                            e.preventDefault();
+                        }
+                    }, { passive: false });
+                    img.addEventListener('touchmove', function(e) {
+                        if (e.touches.length === 2) {
+                            e.preventDefault();
+                            var dx = e.touches[0].clientX - e.touches[1].clientX;
+                            var dy = e.touches[0].clientY - e.touches[1].clientY;
+                            var dist = Math.sqrt(dx*dx + dy*dy);
+                            if (lastTouchDist > 0) {
+                                scale = Math.max(1, Math.min(scale * (dist / lastTouchDist), 8));
+                                if (scale === 1) { panX = 0; panY = 0; }
+                                applyTransform();
+                            }
+                            lastTouchDist = dist;
+                        } else if (dragging && e.touches.length === 1) {
+                            e.preventDefault();
+                            panX = e.touches[0].clientX - lastTouchX;
+                            panY = e.touches[0].clientY - lastTouchY;
+                            applyTransform();
+                        }
+                    }, { passive: false });
+                    img.addEventListener('touchend', function() {
+                        lastTouchDist = 0;
+                        if (dragging) { dragging = false; img.classList.remove('panning'); }
+                    });
                     // Pan via drag
                     img.addEventListener('mousedown', function(e) {
                         if (scale <= 1) return;
@@ -5944,7 +5989,7 @@ ${getA11yWidgetBlock()}
     <script>
         var _exportData = ${exportDataJson};
         var _aoiGeoJson = ${bgAoiGeoJsonStr};
-        var _workerUrl = "${escapeHtml(bgWorkerUrl)}";
+        var _workerUrl = ${JSON.stringify(bgWorkerUrl || '')};
         ${getReportPackageScript()}
 
         // Toggle individual layer section visibility
@@ -5969,8 +6014,10 @@ ${getA11yWidgetBlock()}
             for (var i = 0; i < allTh.length; i++) allTh[i].setAttribute('data-sort-dir', 'none');
             th.setAttribute('data-sort-dir', newSort);
             rows.sort(function(a, b) {
-                var aVal = (a.children[colIdx] || {}).textContent || '';
-                var bVal = (b.children[colIdx] || {}).textContent || '';
+                var aCell = a.querySelector('[data-col="' + colIdx + '"]');
+                var bCell = b.querySelector('[data-col="' + colIdx + '"]');
+                var aVal = aCell ? (aCell.getAttribute('data-sort-val') || aCell.textContent || '') : '';
+                var bVal = bCell ? (bCell.getAttribute('data-sort-val') || bCell.textContent || '') : '';
                 var aNum = parseFloat(aVal.replace(/[^\\d.-]/g, ''));
                 var bNum = parseFloat(bVal.replace(/[^\\d.-]/g, ''));
                 if (!isNaN(aNum) && !isNaN(bNum)) {
@@ -6080,6 +6127,44 @@ ${getA11yWidgetBlock()}
                     if (scale === 1) { panX = 0; panY = 0; }
                     applyTransform();
                 }, { passive: false });
+                // Touch: pinch-to-zoom and pan
+                var lastTouchDist = 0, lastTouchX = 0, lastTouchY = 0;
+                img.addEventListener('touchstart', function(e) {
+                    if (e.touches.length === 2) {
+                        var dx = e.touches[0].clientX - e.touches[1].clientX;
+                        var dy = e.touches[0].clientY - e.touches[1].clientY;
+                        lastTouchDist = Math.sqrt(dx*dx + dy*dy);
+                    } else if (e.touches.length === 1 && scale > 1) {
+                        dragging = true;
+                        lastTouchX = e.touches[0].clientX - panX;
+                        lastTouchY = e.touches[0].clientY - panY;
+                        img.classList.add('panning');
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+                img.addEventListener('touchmove', function(e) {
+                    if (e.touches.length === 2) {
+                        e.preventDefault();
+                        var dx = e.touches[0].clientX - e.touches[1].clientX;
+                        var dy = e.touches[0].clientY - e.touches[1].clientY;
+                        var dist = Math.sqrt(dx*dx + dy*dy);
+                        if (lastTouchDist > 0) {
+                            scale = Math.max(1, Math.min(scale * (dist / lastTouchDist), 8));
+                            if (scale === 1) { panX = 0; panY = 0; }
+                            applyTransform();
+                        }
+                        lastTouchDist = dist;
+                    } else if (dragging && e.touches.length === 1) {
+                        e.preventDefault();
+                        panX = e.touches[0].clientX - lastTouchX;
+                        panY = e.touches[0].clientY - lastTouchY;
+                        applyTransform();
+                    }
+                }, { passive: false });
+                img.addEventListener('touchend', function() {
+                    lastTouchDist = 0;
+                    if (dragging) { dragging = false; img.classList.remove('panning'); }
+                });
                 img.addEventListener('mousedown', function(e) {
                     if (scale <= 1) return;
                     dragging = true; startX = e.clientX - panX; startY = e.clientY - panY;

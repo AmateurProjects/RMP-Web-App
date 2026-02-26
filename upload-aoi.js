@@ -37,12 +37,18 @@ define([
             var s = document.createElement("script");
             s.src = url;
             s.onload = function () {
-                window.define = origDefine;   // restore AMD loader
-                resolve(window[globalName]);
+                try {
+                    resolve(window[globalName]);
+                } finally {
+                    window.define = origDefine;   // restore AMD loader
+                }
             };
             s.onerror = function () {
-                window.define = origDefine;   // restore AMD loader
-                reject(new Error("Failed to load library: " + globalName));
+                try {
+                    reject(new Error("Failed to load library: " + globalName));
+                } finally {
+                    window.define = origDefine;   // restore AMD loader
+                }
             };
             document.head.appendChild(s);
         });
@@ -268,23 +274,25 @@ define([
         // Union each family
         var unified = null;
         var allGeoms = [];
-        if (polygons.length > 0) {
-            var uPoly = polygons.length === 1 ? polygons[0] : geometryEngine.union(polygons);
-            allGeoms.push(uPoly);
-            unified = uPoly;
-        }
-        if (lines.length > 0) {
-            var uLine = lines.length === 1 ? lines[0] : geometryEngine.union(lines);
-            allGeoms.push(uLine);
-            if (!unified) unified = uLine;
-        }
-        if (points.length > 0) {
-            // Union points into a multipoint-like set — but geometryEngine.union
-            // on points returns a single point or multipoint. We'll just keep the first
-            // or union them. For buffer purposes any single point works if only 1.
-            var uPoint = points.length === 1 ? points[0] : geometryEngine.union(points);
-            allGeoms.push(uPoint);
-            if (!unified) unified = uPoint;
+        try {
+            if (polygons.length > 0) {
+                var uPoly = polygons.length === 1 ? polygons[0] : geometryEngine.union(polygons);
+                allGeoms.push(uPoly);
+                unified = uPoly;
+            }
+            if (lines.length > 0) {
+                var uLine = lines.length === 1 ? lines[0] : geometryEngine.union(lines);
+                allGeoms.push(uLine);
+                if (!unified) unified = uLine;
+            }
+            if (points.length > 0) {
+                var uPoint = points.length === 1 ? points[0] : geometryEngine.union(points);
+                allGeoms.push(uPoint);
+                if (!unified) unified = uPoint;
+            }
+        } catch (unionErr) {
+            console.error("geometryEngine.union failed — geometry may be invalid or self-intersecting:", unionErr);
+            throw new Error("The uploaded geometry could not be processed. It may contain invalid or self-intersecting shapes.");
         }
 
         // Project to view SR

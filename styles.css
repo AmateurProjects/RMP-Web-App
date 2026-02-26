@@ -84,6 +84,7 @@ html, body {
     width: 100%;
     text-align: left;
     padding: 8px 14px;
+    min-height: 44px;
     border: none;
     background: none;
     font-size: 13px;
@@ -257,8 +258,8 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: var(--radius-sm);
   color: white;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -778,7 +779,8 @@ html, body {
 }
 
 .upload-buffer-preset {
-    padding: 4px 10px;
+    padding: 8px 12px;
+    min-height: 44px;
     font-size: 12px;
     border: 1px solid var(--border-light);
     border-radius: 12px;
@@ -1520,6 +1522,7 @@ th{
   border: 0;
   background: transparent;
   padding: 0;
+  min-height: 44px;
   text-decoration: underline;
   opacity: 0.85;
 }
@@ -2589,8 +2592,8 @@ body.cv-highcontrast {
     right: 40px;
     top: 50%;
     transform: translateY(-50%);
-    width: 20px;
-    height: 20px;
+    width: 44px;
+    height: 44px;
     background: #ddd;
     border: none;
     border-radius: 50%;
@@ -2645,7 +2648,8 @@ body.cv-highcontrast {
 }
 
 .search-result-item {
-    padding: 10px 14px;
+    padding: 12px 14px;
+    min-height: 44px;
     cursor: pointer;
     border-bottom: 1px solid #f0f0f0;
     transition: background 0.15s ease;
@@ -2850,7 +2854,8 @@ body.cv-highcontrast {
 }
 
 .mode-btn {
-    padding: 5px 12px;
+    padding: 8px 14px;
+    min-height: 44px;
     border: none;
     border-radius: 4px;
     background: transparent;
@@ -3342,7 +3347,8 @@ body.cv-highcontrast {
 }
 
 .wiz-location-item {
-    padding: 10px 12px;
+    padding: 12px 14px;
+    min-height: 44px;
     cursor: pointer;
     font-size: 13px;
     border-bottom: 1px solid var(--border-light);
@@ -3384,7 +3390,8 @@ body.cv-highcontrast {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 9px 12px;
+    padding: 10px 12px;
+    min-height: 44px;
     border: 1.5px solid var(--border-light);
     border-radius: var(--radius-md);
     background: var(--bg-white);
@@ -3690,7 +3697,7 @@ body.cv-highcontrast {
     color: var(--text-muted);
 }
 
-/* (bucket-panel / bucket-back-btn removed — accordion pattern replaces slide navigation)
+/* (bucket-panel / bucket-back-btn removed — accordion pattern replaces slide navigation) */
 
 /* ============================================
    BUCKET ACCORDION CONTAINER (Expand/collapse navigation)
@@ -3866,7 +3873,6 @@ body.cv-highcontrast {
 @keyframes glow-ready {
     0%, 100% { box-shadow: 0 0 12px rgba(68, 157, 68, 0.5), 0 2px 8px rgba(0,0,0,0.15); }
     50% { box-shadow: 0 0 20px rgba(68, 157, 68, 0.8), 0 2px 8px rgba(0,0,0,0.15); }
-}
 }
 
 /* ============================================
@@ -4111,8 +4117,8 @@ body.cv-highcontrast {
   border: 1px solid rgba(255,255,255,0.25);
   border-radius: var(--radius-sm);
   color: #fff;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -4259,4 +4265,23 @@ body.cv-highcontrast {
   background: linear-gradient(to top, #f5f5f5 0%, transparent 100%);
 }
 
-
+/* ── Focus-visible outlines for keyboard accessibility (#24) ── */
+.btn:focus-visible,
+.toolbtn:focus-visible,
+.tab-btn:focus-visible,
+.permit-item:focus-visible,
+.draw-tool-btn:focus-visible,
+.overview-cat-row:focus-visible,
+.tier-option:focus-visible,
+.mode-btn:focus-visible,
+.panel-toggle-btn:focus-visible,
+.upload-buffer-preset:focus-visible,
+.service-desc-toggle:focus-visible,
+.feature-search-clear:focus-visible,
+.search-result-item:focus-visible,
+.wiz-location-item:focus-visible,
+.layer-mgr-close:focus-visible,
+.a11y-option:focus-visible {
+  outline: 2px solid var(--accent, #2563eb);
+  outline-offset: 2px;
+}

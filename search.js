@@ -47,7 +47,7 @@ define(["app/config-helpers"], function (configHelpers) {
     var EXCLUDED_FIELD_PATTERNS = [
         /objectid/i, /globalid/i, /^oid$/i, /^fid$/i, /^id$/i,
         /shape/i, /geometry/i, /^guid$/i, /uuid/i,
-        /_id$/i, /^.*id$/i, /code$/i, /_code$/i, /^code/i,
+        /(?:^|_)id$/i, /code$/i, /_code$/i, /^code/i,
         /serial/i, /row_?num/i, /unique/i, /key$/i,
         /created/i, /modified/i, /edit.*date/i, /update/i,
         /^gis_/i, /^sys_/i, /^db_/i, /^meta/i
@@ -189,7 +189,7 @@ define(["app/config-helpers"], function (configHelpers) {
             var otherFields = cats.otherFields;
             if (!nameFields.length && !otherFields.length) return [];
 
-            var escapedTerm = searchTerm.replace(/'/g, "''");
+            var escapedTerm = searchTerm.replace(/'/g, "''").replace(/%/g, "[%]").replace(/_/g, "[_]");
             var allSearchFields = nameFields.concat(otherFields);
             var whereClauses = allSearchFields.map(function (f) {
                 return "UPPER(" + f + ") LIKE '%" + escapedTerm.toUpperCase() + "%'";
@@ -426,7 +426,7 @@ define(["app/config-helpers"], function (configHelpers) {
                     features.forEach(function (feature) {
                         var name = getFeatureDisplayName(feature.attributes);
                         var details = getFeatureDetails(feature.attributes);
-                        html += '<div class="search-result-item" data-result-idx="' + globalIdx + '">';
+                        html += '<div class="search-result-item" role="option" tabindex="-1" data-result-idx="' + globalIdx + '">';
                         html += '<div class="search-result-name">' + escapeHtml(name) + '</div>';
                         if (details) {
                             html += '<div class="search-result-details">' + escapeHtml(details) + '</div>';
@@ -438,6 +438,7 @@ define(["app/config-helpers"], function (configHelpers) {
                 }
 
                 searchResults.innerHTML = html;
+                searchResults.setAttribute('role', 'listbox');
 
                 var resultItems = searchResults.querySelectorAll(".search-result-item");
                 resultItems.forEach(function (item) {
@@ -538,11 +539,32 @@ define(["app/config-helpers"], function (configHelpers) {
             });
         }
 
-        // Escape key
+        // Escape key + keyboard nav for results
         searchInput.addEventListener("keydown", function (e) {
             if (e.key === "Escape") {
                 searchResults.classList.remove("visible");
                 searchInput.blur();
+                return;
+            }
+            var items = searchResults.querySelectorAll(".search-result-item");
+            if (!items.length) return;
+            var focused = searchResults.querySelector(".search-result-item.kb-focus");
+            var idx = focused ? Array.prototype.indexOf.call(items, focused) : -1;
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (idx < items.length - 1) idx++; else idx = 0;
+                items.forEach(function(it){ it.classList.remove('kb-focus'); });
+                items[idx].classList.add('kb-focus');
+                items[idx].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                if (idx > 0) idx--; else idx = items.length - 1;
+                items.forEach(function(it){ it.classList.remove('kb-focus'); });
+                items[idx].classList.add('kb-focus');
+                items[idx].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === "Enter" && focused) {
+                e.preventDefault();
+                focused.click();
             }
         });
     }
