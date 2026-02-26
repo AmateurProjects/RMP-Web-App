@@ -5472,10 +5472,14 @@ ${getA11yWidgetBlock()}
                     await waitForViewStationary(800);
 
                     // Lock the view container to fixed pixel dimensions so
-                    // browser resizing cannot alter the captured area during
-                    // report generation.
+                    // browser resizing cannot alter the captured area.
                     lockViewContainer();
-                    // Wait for MapView to adopt the locked dimensions
+
+                    // Wait for MapView to fully adopt the locked dimensions.
+                    // Both view.width/height AND view.stationary must settle —
+                    // goTo(extent) uses the internal viewport metrics, so if
+                    // the MapView is still processing the resize it computes
+                    // the wrong scale.
                     const _ssW = width;                          // 1400
                     const _ssH = Math.round(width * 0.5625);    // 788
                     const _resizeT0 = Date.now();
@@ -5484,28 +5488,15 @@ ${getA11yWidgetBlock()}
                             Math.abs(view.height - _ssH) < 10) break;
                         await new Promise(r => setTimeout(r, 80));
                     }
+                    await waitForViewStationary(1500);
 
-                    // Compute the target scale using the ACTUAL settled view
-                    // container dimensions.  view.goTo({scale}) maps the
-                    // geographic extent to the container pixel size, while
-                    // takeScreenshot({width}) just re-renders that same
-                    // geographic area at the output resolution.  Using
-                    // view.width/height here guarantees the view shows
-                    // exactly fixedExtent regardless of whether the container
-                    // lock fully settled.
-                    const _MPP = 0.000264583862;                 // ArcGIS m-per-px at 96 DPI, 1:1 scale
-                    const _center = fixedExtent.center;
-                    // Web Mercator → ground distance correction: cos(latitude)
-                    const _latRad = Math.atan(Math.sinh(_center.y / 6378137));
-                    const _cosLat = Math.cos(_latRad);
-                    const _targetScale = Math.max(
-                        fixedExtent.width  * _cosLat / (view.width  * _MPP),
-                        fixedExtent.height * _cosLat / (view.height * _MPP)
-                    );
-
-                    // Disable LOD snapping so view uses exactly our computed scale
+                    // Disable LOD snapping so the API uses the exact scale
+                    // needed to fit fixedExtent (no rounding to tile LODs).
                     try { view.constraints.snapToZoom = false; } catch (_) {}
-                    await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
+
+                    // Let the ArcGIS API compute the correct scale from
+                    // fixedExtent and the current container dimensions.
+                    await view.goTo(fixedExtent, { animate: false });
                     await waitForViewStationary(1000);
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
@@ -5596,7 +5587,7 @@ ${getA11yWidgetBlock()}
                                     await tempImg.when();
                                     setVisibilityForScreenshot(tempImg);
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
+                                    await view.goTo(fixedExtent, { animate: false });
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5698,7 +5689,7 @@ ${getA11yWidgetBlock()}
                                 try {
                                     setVisibilityForScreenshot(tempLayer);
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                                    await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
+                                    await view.goTo(fixedExtent, { animate: false });
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5804,7 +5795,7 @@ ${getA11yWidgetBlock()}
                                         await temp.when();
                                         setVisibilityForScreenshot(temp);
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
+                                        await view.goTo(fixedExtent, { animate: false });
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -5828,7 +5819,7 @@ ${getA11yWidgetBlock()}
                                     try {
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
-                                        await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
+                                        await view.goTo(fixedExtent, { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
