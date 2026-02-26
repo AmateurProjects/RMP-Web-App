@@ -3889,12 +3889,20 @@ define([
                 function setVisibilityForScreenshot(tempLayer) {
                     for (const l of allLayers) {
                         if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                        if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
+                        // Hide the mask layer here — it will be shown after goTo
+                        // to prevent stale mask extents from causing progressive zoom-out.
+                        if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
                         if (l?.type === "tile") { l.visible = true; continue; }
                         if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
                         l.visible = false;
                     }
                     if (tempLayer) tempLayer.visible = true;
+                    ensureAoiOnTop();
+                }
+
+                // Helper: reset view to fixedExtent and rebuild the AOI mask
+                // at the correct scale. Call this AFTER goTo + stationary wait.
+                function applyExtentAndMask() {
                     updateAoiMask(true);
                     ensureAoiOnTop();
                 }
@@ -4031,7 +4039,7 @@ define([
                                     await view.goTo(fixedExtent, { animate: false });
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
-                                    updateAoiMask(true);
+                                    applyExtentAndMask();
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
@@ -4133,7 +4141,7 @@ define([
                                     await view.goTo(fixedExtent, { animate: false });
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
-                                    updateAoiMask(true);
+                                    applyExtentAndMask();
                                     await _waitForOverlays(view, overlays);
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } finally {
@@ -4239,7 +4247,7 @@ define([
                                         await view.goTo(fixedExtent, { animate: false });
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
-                                        updateAoiMask(true);
+                                        applyExtentAndMask();
                                         retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
@@ -4263,7 +4271,7 @@ define([
                                         await view.goTo(fixedExtent, { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await waitForViewStationary(800);
-                                        updateAoiMask(true);
+                                        applyExtentAndMask();
                                         await _waitForOverlays(view, overlays);
                                         retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
                                     } finally {
