@@ -663,63 +663,74 @@ define([
     async function computeSlopeAspect(imageServerUrl, geometry) {
         if (!imageServerUrl || !geometry) return null;
 
-        try {
-            const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+        // Try multiple aspect raster function names — different ImageServer
+        // instances use different names for the same operation.
+        const aspectFunctionNames = ["Aspect", "Aspect_Map", "Aspect Map"];
 
-            const url    = `${imageServerUrl}/computeHistograms`;
-            const params = new URLSearchParams({
-                f:            "json",
-                geometry:     geomJson,
-                geometryType: "esriGeometryPolygon",
-                renderingRule: JSON.stringify({ rasterFunction: "Aspect" })
-            });
+        for (const fnName of aspectFunctionNames) {
+            try {
+                const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
 
-            const response = await fetch(url, {
-                method:  "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body:    params.toString()
-            });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const url    = `${imageServerUrl}/computeHistograms`;
+                const params = new URLSearchParams({
+                    f:            "json",
+                    geometry:     geomJson,
+                    geometryType: "esriGeometryPolygon",
+                    renderingRule: JSON.stringify({ rasterFunction: fnName })
+                });
 
-            const data = await response.json();
-            if (!data.histograms || !data.histograms.length) return null;
+                const response = await fetch(url, {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body:    params.toString()
+                });
+                if (!response.ok) continue; // try next function name
 
-            const hist     = data.histograms[0];
-            const binCount = hist.counts ? hist.counts.length : 0;
-            if (binCount === 0) return null;
+                const data = await response.json();
+                if (data.error) continue; // service rejected the raster function name
 
-            const binWidth = (hist.max - hist.min) / binCount;
-            let sumSin = 0, sumCos = 0, totalCount = 0;
+                if (!data.histograms || !data.histograms.length) continue;
 
-            for (let i = 0; i < binCount; i++) {
-                const count = hist.counts[i];
-                if (count === 0) continue;
-                const angleDeg = hist.min + (i + 0.5) * binWidth;
-                if (angleDeg < 0) continue;           // skip flat pixels (aspect = -1)
-                const angleRad = angleDeg * Math.PI / 180;
-                sumSin     += count * Math.sin(angleRad);
-                sumCos     += count * Math.cos(angleRad);
-                totalCount += count;
+                const hist     = data.histograms[0];
+                const binCount = hist.counts ? hist.counts.length : 0;
+                if (binCount === 0) continue;
+
+                const binWidth = (hist.max - hist.min) / binCount;
+                let sumSin = 0, sumCos = 0, totalCount = 0;
+
+                for (let i = 0; i < binCount; i++) {
+                    const count = hist.counts[i];
+                    if (count === 0) continue;
+                    const angleDeg = hist.min + (i + 0.5) * binWidth;
+                    if (angleDeg < 0) continue;           // skip flat pixels (aspect = -1)
+                    const angleRad = angleDeg * Math.PI / 180;
+                    sumSin     += count * Math.sin(angleRad);
+                    sumCos     += count * Math.cos(angleRad);
+                    totalCount += count;
+                }
+
+                if (totalCount === 0) continue;
+
+                // Circular mean direction (degrees, 0 = North, clockwise)
+                let meanAspect = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+                if (meanAspect < 0) meanAspect += 360;
+
+                // Resultant length R ∈ [0,1]: 0 = uniform / flat, 1 = perfectly aligned
+                const R = Math.sqrt(sumSin * sumSin + sumCos * sumCos) / totalCount;
+
+                return {
+                    meanAspectDeg:     Math.round(meanAspect * 10) / 10,
+                    concentration:     Math.round(R * 1000) / 1000,
+                    cardinalDirection: degToCardinal(meanAspect)
+                };
+            } catch (e) {
+                // Try next function name
+                continue;
             }
-
-            if (totalCount === 0) return null;
-
-            // Circular mean direction (degrees, 0 = North, clockwise)
-            let meanAspect = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
-            if (meanAspect < 0) meanAspect += 360;
-
-            // Resultant length R ∈ [0,1]: 0 = uniform / flat, 1 = perfectly aligned
-            const R = Math.sqrt(sumSin * sumSin + sumCos * sumCos) / totalCount;
-
-            return {
-                meanAspectDeg:     Math.round(meanAspect * 10) / 10,
-                concentration:     Math.round(R * 1000) / 1000,
-                cardinalDirection: degToCardinal(meanAspect)
-            };
-        } catch (e) {
-            console.warn("Failed to compute slope aspect:", e);
-            return null;
         }
+
+        console.warn("[computeSlopeAspect] All aspect raster function names failed for:", imageServerUrl);
+        return null;
     }
 
     // ── Coverage stats ──────────────────────────────────────────
