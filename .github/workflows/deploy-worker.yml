@@ -53,13 +53,17 @@ jobs:
           while true; do
             echo "── Batch $BATCH (offset=$OFFSET, limit=$BATCH_SIZE) ──"
 
-            RESPONSE=$(curl -sf -w "\n%{http_code}" \
+            HTTP_CODE=0
+            BODY=""
+            RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 120 \
               -X POST "${WORKER_URL}/refresh?offset=${OFFSET}&limit=${BATCH_SIZE}" \
               -H "X-Refresh-Secret: ${REFRESH_SECRET}" \
-              -H "Content-Type: application/json")
+              -H "Content-Type: application/json") || true
 
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            BODY=$(echo "$RESPONSE" | sed '$d')
+            if [ -n "$RESPONSE" ]; then
+              HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+              BODY=$(echo "$RESPONSE" | sed '$d')
+            fi
 
             echo "  HTTP $HTTP_CODE — $BODY"
 

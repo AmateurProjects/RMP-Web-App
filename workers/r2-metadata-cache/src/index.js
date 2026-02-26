@@ -19,10 +19,10 @@
  */
 
 const R2_KEY = "metadata.json";
-const FETCH_TIMEOUT_MS = 30000;
-const FETCH_RETRY_ATTEMPTS = 2;
-const MAX_CONCURRENCY = 4;
-const DATA_PROBE_LAYER_LIMIT = 5;
+const FETCH_TIMEOUT_MS = 15000;
+const FETCH_RETRY_ATTEMPTS = 1;
+const MAX_CONCURRENCY = 5;
+const DATA_PROBE_LAYER_LIMIT = 3;
 const DATA_PROBE_FEATURE_LIMIT = 1;
 
 // ── Report sharing constants ─────────────────────────────────────────────────
@@ -492,30 +492,25 @@ async function probeService(url, previousEntry = null) {
     try {
       body = await fetchJsonRobust(pjsonUrl, FETCH_TIMEOUT_MS);
     } catch (metaErr) {
-      try {
-        // Last-chance metadata verification with a longer timeout window
-        body = await fetchJsonRobust(pjsonUrl, FETCH_TIMEOUT_MS * 2);
-      } catch (metaErr2) {
-        const elapsed = Date.now() - started;
-        const msg = metaErr2?.message || metaErr?.message || String(metaErr2 || metaErr);
-        const { normallyHasFeatures, featuresAbsentCount } =
-          computeNormallyHasFeatures(previousEntry, null);
-        return {
-          url,
-          status: "DOWN",
-          error: msg,
-          responseMs: elapsed,
-          dataProbe: {
-            ok: false,
-            mode: "metadata",
-            detail: `Metadata request failed: ${msg}`,
-          },
-          hasFeaturesNow: null,
-          normallyHasFeatures,
-          featuresAbsentCount,
-          probedAt: new Date().toISOString(),
-        };
-      }
+      const elapsed = Date.now() - started;
+      const msg = metaErr?.message || String(metaErr);
+      const { normallyHasFeatures, featuresAbsentCount } =
+        computeNormallyHasFeatures(previousEntry, null);
+      return {
+        url,
+        status: "DOWN",
+        error: msg,
+        responseMs: elapsed,
+        dataProbe: {
+          ok: false,
+          mode: "metadata",
+          detail: `Metadata request failed: ${msg}`,
+        },
+        hasFeaturesNow: null,
+        normallyHasFeatures,
+        featuresAbsentCount,
+        probedAt: new Date().toISOString(),
+      };
     }
 
     // Data-level probe (query geometry / export imagery / geocode suggest)
