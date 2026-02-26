@@ -596,12 +596,17 @@ define([
         // Force a render frame so the canvas is up-to-date
         await new Promise(r => requestAnimationFrame(r));
 
+        // Optional pixel-region crop (area: { x, y, width, height } in CSS px
+        // relative to the view container).  When supplied, the output height is
+        // computed from the crop region's aspect ratio so the image isn't stretched.
+        const area = screenConfig.area || null;
         const ssOpts = {
             format: "jpg",
             quality: 92,
             width: width,
-            height: Math.round(width * 0.5625)
+            height: area ? Math.round(width * (area.height / area.width)) : Math.round(width * 0.5625)
         };
+        if (area) ssOpts.area = area;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {

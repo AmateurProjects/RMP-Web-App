@@ -3952,6 +3952,31 @@ define([
                         fixedScale  = view.scale;
                     }
 
+                    // Compute the AOI's pixel bounding box for cropping each
+                    // layer screenshot tightly around the Area of Interest.
+                    // Uses the AOI extent's N/S/E/W extremes projected to
+                    // screen coordinates, plus a small pixel margin so the
+                    // AOI boundary line isn't flush with the image edge.
+                    let fixedCropArea = null;
+                    if (ext && view.toScreen) {
+                        const CROP_MARGIN_PX = 30;
+                        const sr = ext.spatialReference;
+                        const nw = view.toScreen({ x: ext.xmin, y: ext.ymax, spatialReference: sr });
+                        const se = view.toScreen({ x: ext.xmax, y: ext.ymin, spatialReference: sr });
+                        if (nw && se) {
+                            const cropX = Math.max(0, Math.floor(Math.min(nw.x, se.x)) - CROP_MARGIN_PX);
+                            const cropY = Math.max(0, Math.floor(Math.min(nw.y, se.y)) - CROP_MARGIN_PX);
+                            const cropR = Math.min(view.width,  Math.ceil(Math.max(nw.x, se.x)) + CROP_MARGIN_PX);
+                            const cropB = Math.min(view.height, Math.ceil(Math.max(nw.y, se.y)) + CROP_MARGIN_PX);
+                            const cropW = cropR - cropX;
+                            const cropH = cropB - cropY;
+                            if (cropW > 50 && cropH > 50) {
+                                fixedCropArea = { x: cropX, y: cropY, width: cropW, height: cropH };
+                                console.log(`[bg-report] AOI crop area: ${cropW}×${cropH} at (${cropX},${cropY})`);
+                            }
+                        }
+                    }
+
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
                     console.log("[buildReportInBackground] starting pre-load phase…");
                     const _preGeomTypes = {};
@@ -4045,7 +4070,7 @@ define([
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
                                     ensureAoiOnTop();
-                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                    dataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 5000 });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
                                 } finally {
@@ -4149,7 +4174,7 @@ define([
                                     updateAoiMask(true);
                                     ensureAoiOnTop();
                                     await _waitForOverlays(view, overlays);
-                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+                                    dataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 5000 });
                                 } finally {
                                     try { view.map.remove(tempLayer); } catch (e) { }
                                     _removeOverlays(view, overlays);
@@ -4255,7 +4280,7 @@ define([
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
                                         ensureAoiOnTop();
-                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
                                         restoreVisibility();
@@ -4281,7 +4306,7 @@ define([
                                         updateAoiMask(true);
                                         ensureAoiOnTop();
                                         await _waitForOverlays(view, overlays);
-                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000 });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, area: fixedCropArea, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(tempLayer); } catch (e) { }
                                         _removeOverlays(view, overlays);
