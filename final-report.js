@@ -5470,8 +5470,25 @@ ${getA11yWidgetBlock()}
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
-                    // Zoom to the padded AOI extent for layer screenshots
-                    await view.goTo(fixedExtent, { animate: false });
+                    // Compute the target scale based on SCREENSHOT dimensions
+                    // (not view container dimensions) so that takeScreenshot()
+                    // at 1400×788 shows exactly the fixedExtent, regardless of
+                    // how large or small the actual #viewDiv container is.
+                    const _ssW = width;                          // 1400
+                    const _ssH = Math.round(width * 0.5625);    // 788
+                    const _MPP = 0.000264583862;                 // ArcGIS m-per-px at 96 DPI, 1:1 scale
+                    const _center = fixedExtent.center;
+                    // Web Mercator → ground distance correction: cos(latitude)
+                    const _latRad = Math.atan(Math.sinh(_center.y / 6378137));
+                    const _cosLat = Math.cos(_latRad);
+                    const _targetScale = Math.max(
+                        fixedExtent.width  * _cosLat / (_ssW * _MPP),
+                        fixedExtent.height * _cosLat / (_ssH * _MPP)
+                    );
+
+                    // Disable LOD snapping so view uses exactly our computed scale
+                    try { view.constraints.snapToZoom = false; } catch (_) {}
+                    await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
                     await waitForViewStationary(1000);
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
@@ -5562,7 +5579,7 @@ ${getA11yWidgetBlock()}
                                     await tempImg.when();
                                     setVisibilityForScreenshot(tempImg);
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    await view.goTo(fixedExtent, { animate: false });
+                                    await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5664,7 +5681,7 @@ ${getA11yWidgetBlock()}
                                 try {
                                     setVisibilityForScreenshot(tempLayer);
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
-                                    await view.goTo(fixedExtent, { animate: false });
+                                    await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await waitForViewStationary(800);
                                     updateAoiMask(true);
@@ -5770,7 +5787,7 @@ ${getA11yWidgetBlock()}
                                         await temp.when();
                                         setVisibilityForScreenshot(temp);
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        await view.goTo(fixedExtent, { animate: false });
+                                        await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 10000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -5794,7 +5811,7 @@ ${getA11yWidgetBlock()}
                                     try {
                                         setVisibilityForScreenshot(tempLayer);
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
-                                        await view.goTo(fixedExtent, { animate: false });
+                                        await view.goTo({ target: _center, scale: _targetScale }, { animate: false });
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await waitForViewStationary(800);
                                         updateAoiMask(true);
@@ -5840,6 +5857,8 @@ ${getA11yWidgetBlock()}
                     if (_persistentPlss) {
                         try { view.map.remove(_persistentPlss); } catch (_) {}
                     }
+                    // Restore LOD snapping for regular map interaction
+                    try { view.constraints.snapToZoom = true; } catch (_) {}
                     // Restore original state
                     try {
                         view.map.basemap = originalBasemap;
