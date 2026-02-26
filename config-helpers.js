@@ -77,7 +77,13 @@ define([], function () {
     async function fetchJson(url) {
         const res = await fetch(url, { credentials: "omit" });
         if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText} for ${url}`);
-        return res.json();
+        const json = await res.json();
+        if (json && json.error) {
+            const code = json.error.code != null ? json.error.code : "";
+            const msg = json.error.message || "ArcGIS error";
+            throw new Error(`ArcGIS error ${code}: ${msg}`);
+        }
+        return json;
     }
 
     async function fetchJsonWithTimeout(url, timeoutMs = 8000, opts = {}) {
@@ -225,29 +231,35 @@ define([], function () {
                 });
         }
 
-        // Parallel geometry type checks for polygon filtering
-        const checks = await Promise.allSettled(
-            layers.map(async l => {
-                // Skip unsupported layer types early
-                if (_isUnsupportedLayerType(l.type || l.subLayerType)) return null;
+        // Parallel geometry type checks for polygon filtering (batched to avoid connection saturation)
+        const CONCURRENCY = 6;
+        const results = [];
+        for (let i = 0; i < layers.length; i += CONCURRENCY) {
+            const batch = layers.slice(i, i + CONCURRENCY);
+            const batchResults = await Promise.allSettled(
+                batch.map(async l => {
+                    // Skip unsupported layer types early
+                    if (_isUnsupportedLayerType(l.type || l.subLayerType)) return null;
 
-                const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
-                try {
-                    const lpjson = await fetchJson(layerUrl + "?f=pjson");
-                    // Also check sublayer type from its own metadata
-                    if (_isUnsupportedLayerType(lpjson?.type)) return null;
-                    const g = String(lpjson?.geometryType || "");
-                    if (!g.toLowerCase().includes("polygon")) return null;
-                    let title = String(l.name || "");
-                    title = title.replace(/intersected/ig, "Parcel");
-                    return { title, url: layerUrl };
-                } catch (e) {
-                    return null;
-                }
-            })
-        );
+                    const layerUrl = serviceUrl.replace(/\/$/, "") + "/" + l.id;
+                    try {
+                        const lpjson = await fetchJson(layerUrl + "?f=pjson");
+                        // Also check sublayer type from its own metadata
+                        if (_isUnsupportedLayerType(lpjson?.type)) return null;
+                        const g = String(lpjson?.geometryType || "");
+                        if (!g.toLowerCase().includes("polygon")) return null;
+                        let title = String(l.name || "");
+                        title = title.replace(/intersected/ig, "Parcel");
+                        return { title, url: layerUrl };
+                    } catch (e) {
+                        return null;
+                    }
+                })
+            );
+            results.push(...batchResults);
+        }
 
-        return checks
+        return results
             .filter(r => r.status === "fulfilled" && r.value != null)
             .map(r => r.value);
     }
@@ -379,7 +391,35 @@ define([], function () {
         document.body.appendChild(a);
         a.click();
         a.remove();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
+    /**
+     * Generic display name extractor for feature attributes.
+     * @param {Object} attrs - Feature attributes object
+     * @param {string[]} nameFields - Prioritized field names to check
+     * @param {number} [maxLen=80] - Max length for fallback string values
+     * @returns {string} Display name or "Unnamed Feature"
+     */
+    function getFeatureDisplayName(attrs, nameFields, maxLen) {
+        if (!attrs) return "Unnamed Feature";
+        maxLen = maxLen || 80;
+        for (var i = 0; i < nameFields.length; i++) {
+            if (attrs[nameFields[i]] && String(attrs[nameFields[i]]).trim()) {
+                return String(attrs[nameFields[i]]).trim();
+            }
+        }
+        var entries = Object.entries(attrs);
+        for (var j = 0; j < entries.length; j++) {
+            var key = entries[j][0], val = entries[j][1];
+            if (typeof val === "string" && val.trim() &&
+                !key.toLowerCase().includes("objectid") &&
+                !key.toLowerCase().includes("globalid") &&
+                !key.toLowerCase().includes("shape")) {
+                return val.trim().substring(0, maxLen);
+            }
+        }
+        return "Unnamed Feature";
     }
 
     // ── Public interface ─────────────────────────────────────────────
@@ -424,6 +464,7 @@ define([], function () {
         // Data transforms
         flattenAttributes,
         toCsv,
-        downloadText
+        downloadText,
+        getFeatureDisplayName
     };
 });

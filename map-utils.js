@@ -497,6 +497,7 @@ define([
     async function acquireWakeLock() {
         try {
             if (navigator.wakeLock) {
+                if (_wakeLock) { try { await _wakeLock.release(); } catch (_) {} _wakeLock = null; }
                 _wakeLock = await navigator.wakeLock.request("screen");
                 // Re-acquire if released (e.g. tab switch on some browsers)
                 _wakeLock.addEventListener("release", () => { _wakeLock = null; });

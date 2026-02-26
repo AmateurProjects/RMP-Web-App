@@ -269,7 +269,8 @@ define([], function () {
     }
 
     function resolveCategory(item, layerCfgByUrl) {
-        var title = (item && item.title) || "";
+        if (!item) return "uncategorized";
+        var title = item.title || "";
         // 1. Explicit category from config
         if (layerCfgByUrl) {
             var cfgEntry = lookupLayerCfg(layerCfgByUrl, item.url);

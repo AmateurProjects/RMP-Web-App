@@ -17,6 +17,7 @@ define(["app/config-helpers"], function (configHelpers) {
     var escapeHtml  = configHelpers.escapeHtml;
     var fetchJson   = configHelpers.fetchJson;
     var normalizeUrlKey = configHelpers.normalizeUrlKey;
+    var _getFeatureDisplayName = configHelpers.getFeatureDisplayName;
 
     // ── Module-private refs (set by init) ──
     var state = null;
@@ -116,34 +117,20 @@ define(["app/config-helpers"], function (configHelpers) {
         return false;
     }
 
+    var _searchDisplayFields = [
+        "NAME", "Name", "name",
+        "PLAN_NAME", "LUPName", "LUPNAME",
+        "ALLOT_NAME", "ALLOTMENT_NAME",
+        "COMNAME", "SCINAME", "comname", "sciname",
+        "UNIT_NAME", "AREA_NAME", "SITE_NAME",
+        "PROJ_NAME", "PROJECT_NAME",
+        "CASEFILE_N", "CASE_FILE",
+        "LABEL", "Label", "TITLE", "Title",
+        "DESCRIPTION", "DESC"
+    ];
+
     function getFeatureDisplayName(attributes) {
-        var nameFields = [
-            "NAME", "Name", "name",
-            "PLAN_NAME", "LUPName", "LUPNAME",
-            "ALLOT_NAME", "ALLOTMENT_NAME",
-            "COMNAME", "SCINAME", "comname", "sciname",
-            "UNIT_NAME", "AREA_NAME", "SITE_NAME",
-            "PROJ_NAME", "PROJECT_NAME",
-            "CASEFILE_N", "CASE_FILE",
-            "LABEL", "Label", "TITLE", "Title",
-            "DESCRIPTION", "DESC"
-        ];
-        for (var i = 0; i < nameFields.length; i++) {
-            if (attributes[nameFields[i]] && String(attributes[nameFields[i]]).trim()) {
-                return String(attributes[nameFields[i]]).trim();
-            }
-        }
-        var entries = Object.entries(attributes);
-        for (var j = 0; j < entries.length; j++) {
-            var key = entries[j][0], val = entries[j][1];
-            if (typeof val === "string" && val.trim() &&
-                !key.toLowerCase().includes("objectid") &&
-                !key.toLowerCase().includes("globalid") &&
-                !key.toLowerCase().includes("shape")) {
-                return val.trim().substring(0, 80);
-            }
-        }
-        return "Unnamed Feature";
+        return _getFeatureDisplayName(attributes, _searchDisplayFields, 80);
     }
 
     function calculateRelevance(attributes, searchTerm, nameFields) {
@@ -209,7 +196,10 @@ define(["app/config-helpers"], function (configHelpers) {
 
             return fetch(queryUrl + "?" + params.toString(), { signal: signal, credentials: "omit" })
                 .then(function (response) {
-                    if (!response.ok) return [];
+                    if (!response.ok) {
+                        console.warn("Search HTTP error for", layerInfo.title, ":", response.status, response.statusText);
+                        return [];
+                    }
                     return response.json();
                 })
                 .then(function (data) {

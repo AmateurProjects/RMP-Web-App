@@ -91,7 +91,7 @@ define([
         if (Array.isArray(result)) {
             var features = [];
             for (var i = 0; i < result.length; i++) {
-                if (result[i] && result[i].features) features.push.apply(features, result[i].features);
+                if (result[i] && result[i].features) features.push(...result[i].features);
             }
             return { type: "FeatureCollection", features: features };
         }
@@ -216,7 +216,7 @@ define([
         if (geojsonGeom.type === "MultiPolygon") {
             var all = [];
             for (var i = 0; i < geojsonGeom.coordinates.length; i++) {
-                all.push.apply(all, geojsonGeom.coordinates[i]);
+                all.push(...geojsonGeom.coordinates[i]);
             }
             return all;
         }

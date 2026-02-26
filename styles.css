@@ -106,7 +106,7 @@ html, body {
     content: '✓ ';
 }
 .a11y-option small {
-    color: #888;
+    color: #636363;
     font-weight: 400;
 }
 /* Color-vision filters applied via inline style by app.js (data-URI SVGs for iOS Safari compat) */
@@ -988,6 +988,7 @@ select{
   color: var(--text-primary);
   cursor: pointer;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  -webkit-appearance: none;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -1119,32 +1120,6 @@ select:focus {
 .box-lg{ width: 18px; height: 18px; }
 .box-md{ width: 14px; height: 14px; }
 .box-sm{ width: 10px; height: 10px; }
-
-/* Selection group switching */
-.selection-group {
-  margin-top: 8px;
-}
-
-.selection-group.hidden {
-  display: none;
-}
-
-/* Vertical toolgroup for permit layers */
-.toolgroup-vertical {
-  flex-direction: column;
-  gap: 6px;
-}
-
-.toolbtn-wide {
-  width: 100%;
-  justify-content: flex-start;
-}
-
-.toolicon {
-  font-size: 16px;
-  min-width: 20px;
-  text-align: center;
-}
 
 .status{
   margin: 12px 16px;
@@ -2555,7 +2530,7 @@ body.cv-highcontrast {
 }
 
 .feature-search-input::placeholder {
-    color: #999;
+    color: #707070;
 }
 
 .feature-search-icon {
@@ -2565,7 +2540,7 @@ body.cv-highcontrast {
     transform: translateY(-50%);
     width: 18px;
     height: 18px;
-    color: #888;
+    color: #636363;
     pointer-events: none;
 }
 
@@ -2639,7 +2614,7 @@ body.cv-highcontrast {
     padding: 8px 14px 6px;
     font-size: 11px;
     font-weight: 600;
-    color: #888;
+    color: #636363;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     background: #f8f9fa;
@@ -2672,20 +2647,20 @@ body.cv-highcontrast {
 
 .search-result-details {
     font-size: 11px;
-    color: #777;
+    color: #636363;
 }
 
 .search-no-results {
     padding: 20px 14px;
     text-align: center;
-    color: #888;
+    color: #636363;
     font-size: 13px;
 }
 
 .search-hint {
     padding: 12px 14px;
     text-align: center;
-    color: #999;
+    color: #707070;
     font-size: 12px;
     font-style: italic;
 }
@@ -2701,7 +2676,7 @@ body.cv-highcontrast {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10000;
+    z-index: 10001;
     pointer-events: none;
 }
 
@@ -2825,7 +2800,7 @@ body.cv-highcontrast {
 }
 
 .feature-picker-detail-label {
-    color: #999;
+    color: #707070;
 }
 
 .feature-picker-footer {
@@ -3098,37 +3073,7 @@ body.cv-highcontrast {
 
 /* AOI Confirm Section (within Step 2) */
 /* .aoi-confirm-section is now a swipe slide — no extra styling needed */
-
-.aoi-confirm-card {
-    background: var(--bg-light);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    padding: 10px 12px;
-    margin-top: 6px;
-}
-
-.aoi-confirm-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 4px 0;
-}
-
-.aoi-confirm-row + .aoi-confirm-row {
-    border-top: 1px solid var(--border-light);
-}
-
-.aoi-confirm-label {
-    font-size: 12px;
-    color: var(--text-muted);
-    font-weight: 500;
-}
-
-.aoi-confirm-value {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
+/* Note: primary aoi-confirm-* styles defined in the Step 2 section below */
 
 /* ============================================
    AOI METHOD CARDS
@@ -3292,30 +3237,6 @@ body.cv-highcontrast {
     overflow: visible;
 }
 
-/* ============================================
-   AOI METHOD SUB-PANELS (Legacy - now using swipe slides)
-   ============================================ */
-.aoi-method-panel {
-    margin-top: 12px;
-    animation: wizFadeIn 0.2s ease;
-}
-
-@keyframes wizFadeIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-.aoi-method-panel-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-light);
-    font-weight: 600;
-    font-size: 13px;
-    color: var(--text-primary);
-}
 
 .input-field {
     width: 100%;
@@ -4284,4 +4205,47 @@ body.cv-highcontrast {
 .a11y-option:focus-visible {
   outline: 2px solid var(--accent, #2563eb);
   outline-offset: 2px;
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+  /* Hide interactive-only elements */
+  .panel-toggle-btn,
+  .panel,
+  .layer-manager-window,
+  .a11y-widget,
+  .feature-picker-modal,
+  .analysis-modal,
+  .service-down-modal-backdrop,
+  .toolbtn,
+  .draw-tool-btn,
+  .feature-search-wrapper,
+  .mode-btn-group,
+  .toast,
+  .loading-overlay {
+    display: none !important;
+  }
+
+  /* Make map full-width */
+  #viewDiv {
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+  }
+
+  /* Remove background colors that waste ink */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Prevent page breaks inside cards */
+  .bucket-card,
+  .aoi-confirm-card,
+  .permit-item,
+  .overview-cat-row {
+    break-inside: avoid;
+  }
 }

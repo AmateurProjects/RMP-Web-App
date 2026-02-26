@@ -14,6 +14,7 @@ define(["app/config-helpers"], function (configHelpers) {
     "use strict";
 
     var escapeHtml = configHelpers.escapeHtml;
+    var _getFeatureDisplayName = configHelpers.getFeatureDisplayName;
 
     // ── Module-private state (set by init) ──
     var state = null;   // shared app state  { map }
@@ -118,36 +119,17 @@ define(["app/config-helpers"], function (configHelpers) {
 
     // ── Display helpers ──
 
+    var _pickerDisplayFields = [
+        "NAME", "Name", "name",
+        "ALLOT_NAME", "ALLOTMENT_NAME", "Allotment",
+        "PASTURE_NAME", "PASTURE",
+        "LEASE_NAME", "LEASE_NUM", "CASE_FILE_N",
+        "PLAN_NAME", "UNIT_NAME", "AREA_NAME",
+        "LABEL", "TITLE", "DESCRIPTION"
+    ];
+
     function getFeaturePickerDisplayName(attrs) {
-        var nameFields = [
-            "NAME", "Name", "name",
-            "ALLOT_NAME", "ALLOTMENT_NAME", "Allotment",
-            "PASTURE_NAME", "PASTURE",
-            "LEASE_NAME", "LEASE_NUM", "CASE_FILE_N",
-            "PLAN_NAME", "UNIT_NAME", "AREA_NAME",
-            "LABEL", "TITLE", "DESCRIPTION"
-        ];
-
-        for (var i = 0; i < nameFields.length; i++) {
-            var field = nameFields[i];
-            if (attrs[field] && String(attrs[field]).trim()) {
-                return String(attrs[field]).trim();
-            }
-        }
-
-        // Fallback
-        var entries = Object.entries(attrs);
-        for (var j = 0; j < entries.length; j++) {
-            var key = entries[j][0], val = entries[j][1];
-            if (typeof val === "string" && val.trim() &&
-                !key.toLowerCase().includes("objectid") &&
-                !key.toLowerCase().includes("globalid") &&
-                !key.toLowerCase().includes("shape")) {
-                return val.trim().substring(0, 60);
-            }
-        }
-
-        return "Unnamed Feature";
+        return _getFeatureDisplayName(attrs, _pickerDisplayFields, 60);
     }
 
     function getFeaturePickerDetails(attrs) {

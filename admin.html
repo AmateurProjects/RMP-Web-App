@@ -750,7 +750,10 @@ async function ghFetch(path, opts) {
 async function loadConfig() {
   const data = await ghFetch('/repos/' + ghOwner + '/' + ghRepo + '/contents/config.json?ref=' + ghBranch);
   configSha = data.sha;
-  const json = atob(data.content.replace(/\n/g, ''));
+  const binary = atob(data.content.replace(/\n/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const json = new TextDecoder().decode(bytes);
   config = JSON.parse(json);
 }
 

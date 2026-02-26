@@ -163,7 +163,11 @@ define([
         try {
             const ex   = geom?.extent;
             const area = geometryEngine.geodesicArea(geom, "square-meters");
-            return [ex?.xmin, ex?.ymin, ex?.xmax, ex?.ymax, Math.round(area)].join("|");
+            // Include vertex count to avoid collisions between different AOIs with same bbox + area
+            let vCount = 0;
+            if (geom?.rings) for (const r of geom.rings) vCount += r.length;
+            else if (geom?.paths) for (const p of geom.paths) vCount += p.length;
+            return [ex?.xmin?.toFixed(6), ex?.ymin?.toFixed(6), ex?.xmax?.toFixed(6), ex?.ymax?.toFixed(6), area.toFixed(2), vCount].join("|");
         } catch (e) {
             return String(Date.now());
         }
@@ -600,11 +604,16 @@ define([
                 geometryType: "esriGeometryPolygon"
             });
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
             const response = await fetch(url, {
                 method:  "POST",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body:    params.toString()
+                body:    params.toString(),
+                signal:  controller.signal
             });
+            clearTimeout(timeoutId);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
             const data = await response.json();
@@ -769,10 +778,16 @@ define([
         _geomFeatureCache.set(cacheKey, feats);
 
         // Intersect each feature with AOI and cache per-feature results
+        // Yield to the main thread every YIELD_BATCH features to prevent UI freeze
+        const YIELD_BATCH = 50;
         const interGeoms = [];
         const perFeatureResults = new Map(); // OID → { acresCovered, pctAoi, lengthFeet, lengthMiles }
         const oidField = item._layer?.objectIdField || "OBJECTID";
-        for (const f of feats) {
+        for (let fi = 0; fi < feats.length; fi++) {
+            if (fi > 0 && fi % YIELD_BATCH === 0) {
+                await new Promise(r => setTimeout(r, 0));
+            }
+            const f = feats[fi];
             const g = f?.geometry;
             if (!g) continue;
             try {

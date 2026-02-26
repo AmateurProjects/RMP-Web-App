@@ -474,6 +474,7 @@ function setBusy(isBusy) {
         hide() {
             if (!serviceDownModalEl) return;
             serviceDownModalEl.classList.add("hidden");
+            serviceDownNoticeShown = false;
         },
         wire() {
             if (serviceDownCloseBtn) {
@@ -817,14 +818,11 @@ function setActiveTab(tabName) {
     // The legacy categorizeIntoBuckets is still available as _categorizeIntoBucketsShared
     // for backward-compatible full-report (no permit type selected).
 
-    // PERF-TEST: setAppMode simplified — always "permit", Advanced mode commented out
-    function setAppMode(mode) {
-        currentAppMode = "permit"; // force permit mode
+    // setAppMode — only "permit" mode is supported (advanced mode removed).
+    function setAppMode() {
+        currentAppMode = "permit";
         if (permitModePanel) permitModePanel.classList.remove("hidden");
-        // Advanced panel is commented out in HTML, no-op:
-        // if (advancedModePanel) advancedModePanel.classList.toggle("hidden", mode !== "advanced");
         if (permitModeBtn) permitModeBtn.classList.add("active");
-        // if (advancedModeBtn) advancedModeBtn.classList.toggle("active", mode === "advanced");
         if (view) requestAnimationFrame(() => { try { view.resize(); } catch (e) {} });
     }
 
@@ -1036,17 +1034,23 @@ function setActiveTab(tabName) {
     }
 
     let wizLocationDebounce = null;
+    let _searchAbort = null;
     function performLocationSearch(query) {
         if (!query || query.length < 3) {
             if (wizLocationResults) { wizLocationResults.innerHTML = ""; wizLocationResults.classList.add("hidden"); }
+            if (_searchAbort) { _searchAbort.abort(); _searchAbort = null; }
             return;
         }
         clearTimeout(wizLocationDebounce);
         wizLocationDebounce = setTimeout(async () => {
+            if (_searchAbort) _searchAbort.abort();
+            _searchAbort = new AbortController();
+            const signal = _searchAbort.signal;
             try {
                 const geocodeBase = config.referenceLayers?.geocodeService || "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer";
                 const url = geocodeBase + "/suggest?text=" + encodeURIComponent(query) + "&maxSuggestions=5&f=json";
-                const data = await fetchJson(url);
+                const resp = await fetch(url, { signal });
+                const data = await resp.json();
                 const suggestions = (data && data.suggestions) ? data.suggestions : [];
                 if (!suggestions.length) {
                     if (wizLocationResults) {
@@ -1086,8 +1090,7 @@ function setActiveTab(tabName) {
         }, 350);
     }
 
-    // Dynamic bucket slide index mapping (rebuilt per permit type)
-    let activeBucketSlideMap = {};
+
 
     /**
      * Populate screening results — dynamically builds accordion sections
@@ -1482,7 +1485,7 @@ function clearAll() {
     if (bucketAccordion) {
         bucketAccordion.innerHTML = "";
     }
-    activeBucketSlideMap = {};
+
     const summaryEl = document.getElementById("permitResultsSummary");
     if (summaryEl) summaryEl.innerHTML = "";
 
@@ -1893,8 +1896,13 @@ cb.addEventListener("change", async () => {
             if (!isDragging) return;
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
-            layerManagerWindow.style.left = (origLeft + dx) + "px";
-            layerManagerWindow.style.top = (origTop + dy) + "px";
+            const rect = layerManagerWindow.getBoundingClientRect();
+            let newLeft = origLeft + dx;
+            let newTop  = origTop + dy;
+            newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - rect.width));
+            newTop  = Math.max(0, Math.min(newTop,  window.innerHeight - rect.height));
+            layerManagerWindow.style.left = newLeft + "px";
+            layerManagerWindow.style.top  = newTop + "px";
             layerManagerWindow.style.right = "auto";
         });
 
@@ -1922,8 +1930,13 @@ cb.addEventListener("change", async () => {
             const touch = e.touches[0];
             const dx = touch.clientX - startX;
             const dy = touch.clientY - startY;
-            layerManagerWindow.style.left = (origLeft + dx) + "px";
-            layerManagerWindow.style.top = (origTop + dy) + "px";
+            const rect = layerManagerWindow.getBoundingClientRect();
+            let newLeft = origLeft + dx;
+            let newTop  = origTop + dy;
+            newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - rect.width));
+            newTop  = Math.max(0, Math.min(newTop,  window.innerHeight - rect.height));
+            layerManagerWindow.style.left = newLeft + "px";
+            layerManagerWindow.style.top  = newTop + "px";
             layerManagerWindow.style.right = "auto";
         }, { passive: false });
 
@@ -2203,7 +2216,6 @@ async function runAnalysis() {
 
     let layersQueried = 0;
     let featuresFound = 0;
-    let mapsGenerated = 0;
 
     try {
         // Step 1: Data Check (10% progress)
@@ -3117,6 +3129,14 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             }
         });
 
+        // Adjust overview zoom when window resizes
+        window.addEventListener("resize", () => {
+            const targetZoom = window.innerWidth <= 600 ? 1 : 2;
+            if (overviewView.zoom !== targetZoom) {
+                overviewView.zoom = targetZoom;
+            }
+        });
+
         // Place the overview div into the main view's UI
         const overviewDiv = document.getElementById("overviewDiv");
         if (overviewDiv) {
@@ -3888,10 +3908,13 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             _permitExtentTimer = setTimeout(updatePermitIndicators, 600);
         }
 
-        // Watch for extent changes (debounced)
+        // Watch for extent changes (debounced) — only schedule when permit panel is visible
         if (view) {
             view.watch("stationary", (stationary) => {
-                if (stationary) schedulePermitIndicatorUpdate();
+                if (!stationary) return;
+                const pPanel = document.getElementById("aoiMethodPermit");
+                if (pPanel && pPanel.classList.contains("hidden")) return;
+                schedulePermitIndicatorUpdate();
             });
         }
 
@@ -4022,7 +4045,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 if (!aoiOriginalGeom) return;
 
                 selectionGeom = aoiOriginalGeom;
-                aoiOriginalGeom = null;
+                // Keep aoiOriginalGeom so re-buffer is possible later
                 setAoiGeometry(selectionGeom);
                 resetCoverageCacheForAoi(selectionGeom);
                 if (view && selectionGeom.extent) {

@@ -10,6 +10,7 @@
  *                           Requires header:  X-Refresh-Secret: <REFRESH_SECRET>
  * POST /reports           → stores report HTML in R2, returns { id, url, expiresIn }
  * GET  /reports/:id       → serves stored report HTML (public, expires after 30 days)
+ * POST /cleanup-reports   → deletes expired reports from R2 (requires X-Refresh-Secret)
  *
  * R2 keys
  * ───────
@@ -30,6 +31,14 @@ const MAX_REPORT_SIZE = 100 * 1024 * 1024; // 100 MB
 const REPORT_TTL_DAYS = 30;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function corsHeaders(env) {
   return {
@@ -582,6 +591,7 @@ function generateReportId() {
 }
 
 async function handleStoreReport(request, env) {
+  // Quick reject based on Content-Length header (may be absent or forged)
   const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
   if (contentLength > MAX_REPORT_SIZE) {
     return json({ error: "Report too large", maxBytes: MAX_REPORT_SIZE }, 413, env);
@@ -590,6 +600,12 @@ async function handleStoreReport(request, env) {
   const html = await request.text();
   if (!html || html.length < 100) {
     return json({ error: "No report content provided" }, 400, env);
+  }
+
+  // Enforce size limit on actual body (header can be spoofed or absent)
+  const actualSize = new TextEncoder().encode(html).byteLength;
+  if (actualSize > MAX_REPORT_SIZE) {
+    return json({ error: "Report too large", maxBytes: MAX_REPORT_SIZE, actualBytes: actualSize }, 413, env);
   }
 
   const id = generateReportId();
@@ -643,17 +659,58 @@ async function handleGetReport(reportId, env) {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "public, max-age=86400",
+      "Content-Security-Policy": "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:;",
+      "X-Content-Type-Options": "nosniff",
       ...corsHeaders(env),
     },
   });
 }
 
 function notFoundPage(message) {
+  const safe = escapeHtml(message);
   return `<!doctype html><html><head><meta charset="utf-8"><title>Report Not Found</title>
 <style>body{font-family:'Source Sans Pro',sans-serif;background:#f5f0e6;color:#2c2c2c;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
 .card{background:#fff;border-radius:12px;padding:48px;max-width:480px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.1);}
 h1{color:#1a472a;font-size:24px;margin:0 0 12px;}p{color:#5a5a5a;font-size:15px;line-height:1.6;}</style>
-</head><body><div class="card"><h1>Report Not Found</h1><p>${message}</p></div></body></html>`;
+</head><body><div class="card"><h1>Report Not Found</h1><p>${safe}</p></div></body></html>`;
+}
+
+// ── Expired report cleanup ───────────────────────────────────────────────────
+
+const CLEANUP_BATCH_SIZE = 100;
+
+async function handleCleanupReports(request, env) {
+  // Auth check — same secret as /refresh
+  const secret = request.headers.get("X-Refresh-Secret");
+  if (!secret || secret !== env.REFRESH_SECRET) {
+    return json({ error: "Unauthorized" }, 401, env);
+  }
+
+  const now = new Date();
+  let deleted = 0;
+  let checked = 0;
+  let cursor = undefined;
+  let truncated = true;
+
+  while (truncated) {
+    const listOpts = { prefix: REPORT_KEY_PREFIX, limit: CLEANUP_BATCH_SIZE };
+    if (cursor) listOpts.cursor = cursor;
+    const listed = await env.METADATA_BUCKET.list(listOpts);
+
+    for (const obj of listed.objects) {
+      checked++;
+      const expiresAt = obj.customMetadata?.expiresAt;
+      if (expiresAt && new Date(expiresAt) < now) {
+        await env.METADATA_BUCKET.delete(obj.key);
+        deleted++;
+      }
+    }
+
+    truncated = listed.truncated;
+    cursor = listed.truncated ? listed.cursor : undefined;
+  }
+
+  return json({ ok: true, checked, deleted }, 200, env);
 }
 
 // ── Metadata handlers ────────────────────────────────────────────────────────
@@ -855,6 +912,10 @@ export default {
 
     if (request.method === "POST" && pathname === "/refresh") {
       return handleRefresh(request, env);
+    }
+
+    if (request.method === "POST" && pathname === "/cleanup-reports") {
+      return handleCleanupReports(request, env);
     }
 
     // ── Report sharing routes ──
