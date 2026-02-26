@@ -104,11 +104,13 @@ define([
                 if (!sym) return;
 
                 if (isPolygon) {
-                    // Thicken polygon outline
+                    // Override polygon outline to purple, fully opaque
+                    const purpleBorder = [128, 0, 128, 1];
                     if (sym.outline) {
+                        sym.outline.color = purpleBorder;
                         sym.outline.width = Math.max(sym.outline.width || 0, MIN_POLYGON_OUTLINE);
                     } else {
-                        sym.outline = { color: [0, 0, 0, 0.8], width: MIN_POLYGON_OUTLINE };
+                        sym.outline = { color: purpleBorder, width: MIN_POLYGON_OUTLINE };
                     }
                     // Reduce fill opacity (keep outlines opaque)
                     if (sym.color) {
@@ -146,7 +148,7 @@ define([
     }
 
     /**
-     * Create a FeatureLayer overlay that renders a backward-diagonal (\) purple
+     * Create a FeatureLayer overlay that renders a forward-diagonal (/)  purple
      * hash pattern on top of polygon data. Used for report layer maps.
      * @param {string} url — same URL as the data layer
      * @param {string|null} definitionExpression — same filter
@@ -163,8 +165,8 @@ define([
                 type: "simple",
                 symbol: {
                     type: "simple-fill",
-                    color: [138, 43, 226, 1],      // opaque purple hash lines
-                    style: "backward-diagonal",     // upper-right → lower-left
+                    color: [128, 0, 128, 1],        // opaque purple hash lines
+                    style: "forward-diagonal",      // upper-right → lower-left (/)
                     outline: { color: [0, 0, 0, 0], width: 0 }
                 }
             }
