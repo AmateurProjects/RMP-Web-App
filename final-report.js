@@ -3918,11 +3918,25 @@ define([
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
-                    // Lock the view container to a fixed square resolution
-                    // so all report screenshots are a consistent size
-                    // regardless of the browser window dimensions.
-                    const containerW = width;
-                    const containerH = width; // 1:1 square
+                    // Lock the view container so the aspect ratio matches
+                    // the AOI extent.  The longer dimension stays at `width`
+                    // (default 1400 px) and the shorter one scales down
+                    // proportionally.  This prevents the MapView from
+                    // padding the shorter axis with empty space.
+                    let containerW = width;
+                    let containerH = width;
+                    if (ext) {
+                        const ew = ext.width  || 1;
+                        const eh = ext.height || 1;
+                        if (ew > eh) {
+                            // wider AOI → full width, shorter height
+                            containerH = Math.round(width * (eh / ew));
+                        } else if (eh > ew) {
+                            // taller AOI → full height, shorter width
+                            containerW = Math.round(width * (ew / eh));
+                        }
+                        // else square AOI → keep 1:1
+                    }
 
                     lockViewContainer(containerW, containerH);
 
@@ -3944,32 +3958,10 @@ define([
                     // We then lock those values for every layer screenshot.
                     if (ext) {
                         const paddedExtent = ext.clone().expand(paddingFactor);
-                        // Debug: log the AOI graphic extent vs selectionGeom extent
-                        const aoiGraphicGeom = S.aoiGraphic?.geometry;
-                        if (aoiGraphicGeom) {
-                            const age = aoiGraphicGeom.extent;
-                            console.log("[buildReportInBackground] aoiGraphic extent:", JSON.stringify({
-                                xmin: age.xmin, ymin: age.ymin, xmax: age.xmax, ymax: age.ymax,
-                                width: age.width, height: age.height, sr: age.spatialReference?.wkid
-                            }));
-                        }
-                        console.log("[buildReportInBackground] selectionGeom extent:", JSON.stringify({
-                            xmin: ext.xmin, ymin: ext.ymin, xmax: ext.xmax, ymax: ext.ymax,
-                            width: ext.width, height: ext.height, sr: ext.spatialReference?.wkid
-                        }));
-                        console.log("[buildReportInBackground] paddingFactor:", paddingFactor);
-                        console.log("[buildReportInBackground] container:", containerW, "x", containerH,
-                            "view.width:", view.width, "view.height:", view.height);
                         await view.goTo(paddedExtent, { animate: false });
                         await waitForViewStationary(1000);
                         fixedCenter = view.center.clone();
                         fixedScale  = view.scale;
-                        console.log("[buildReportInBackground] fixedScale:", fixedScale,
-                            "view.extent:", JSON.stringify({
-                                xmin: view.extent.xmin, ymin: view.extent.ymin,
-                                xmax: view.extent.xmax, ymax: view.extent.ymax,
-                                width: view.extent.width, height: view.extent.height
-                            }));
                     }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
@@ -4019,8 +4011,7 @@ define([
                     // traversal for every single screenshot.
                     setVisibilityForScreenshot(null);
 
-                    // TEMPORARILY DISABLED — testing if mask causes zoom drift
-                    // updateAoiMask(true);
+                    updateAoiMask(true);
                     ensureAoiOnTop();
 
                     // Process each layer
@@ -4170,14 +4161,6 @@ define([
                                     ensureAoiOnTop();
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await _waitForOverlays(view, overlays);
-                                    // Debug: log extent right before screenshot
-                                    console.log("[screenshot-pre] layer:", layerTitle,
-                                        "view.scale:", view.scale, "fixedScale:", fixedScale,
-                                        "view.extent:", JSON.stringify({
-                                            xmin: view.extent.xmin, xmax: view.extent.xmax,
-                                            width: view.extent.width, height: view.extent.height
-                                        }),
-                                        "view.center:", view.center.x, view.center.y);
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } finally {
                                     try { view.map.remove(tempLayer); } catch (e) { }
