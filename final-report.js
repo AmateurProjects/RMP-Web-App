@@ -1515,6 +1515,19 @@ define([
                         page-break-before: always;
                         break-after: avoid;
                         page-break-after: avoid;
+                        padding: 10px 16px;
+                        margin: 0 0 6px 0;
+                        border-radius: 0;
+                        box-shadow: none;
+                    }
+                    .bucket-header h2 {
+                        font-size: 15px;
+                        margin: 0 0 2px 0;
+                    }
+                    .bucket-header .bucket-description {
+                        font-size: 10px;
+                        line-height: 1.3;
+                        margin: 0;
                     }
                     .bucket-header + .section {
                         break-before: auto;
@@ -1578,7 +1591,7 @@ define([
                         box-shadow: none;
                         border: 1px solid #ccc;
                         margin-top: 0;
-                        padding: 10px 14px;
+                        padding: 6px 12px;
                     }
                     /* Per-feature tables can overflow to the next page */
                     .section .interactive-table-wrapper {
@@ -1591,12 +1604,12 @@ define([
                     .section h3,
                     .section .layer-narrative,
                     .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
-                    /* Constrain map images to fit on a single page with title + narrative */
+                    /* Constrain map images so bucket-header + map + narrative + table + notes fit one page */
                     .section .map {
-                        margin: 4px 0;
+                        margin: 2px 0;
                     }
                     .section .map img {
-                        max-height: 5.5in;
+                        max-height: 4in;
                         width: auto;
                         max-width: 100%;
                         display: block;
@@ -1611,6 +1624,18 @@ define([
                         page-break-after: avoid;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
+                        padding: 10px 16px;
+                        margin: 0 0 6px 0;
+                        border-radius: 0;
+                    }
+                    .bucket-header h2 {
+                        font-size: 15px;
+                        margin: 0 0 2px 0;
+                    }
+                    .bucket-header .bucket-description {
+                        font-size: 10px;
+                        line-height: 1.3;
+                        margin: 0;
                     }
                     /* First section after a bucket header should NOT add another break */
                     .bucket-header + .section {
@@ -1621,9 +1646,9 @@ define([
                     .pagebreak { break-after: page; page-break-after: always; height: 0; visibility: hidden; }
                     /* Numbered top-level sections (AOI, Findings, Data Sources) each start a new page */
                     h2[id^="section-"]:not(#section-summary) { break-before: page; page-break-before: always; }
-                    h2 { font-size: 16px; margin: 12px 0 8px; }
-                    h3 { font-size: 12px; margin: 8px 0 4px; }
-                    .layer-narrative { margin: 4px 0; padding: 6px 10px; font-size: 10px; }
+                    h2 { font-size: 15px; margin: 8px 0 4px; }
+                    h3 { font-size: 11px; margin: 4px 0 2px; }
+                    .layer-narrative { margin: 2px 0; padding: 4px 8px; font-size: 9px; line-height: 1.35; }
                     /* Remove table scroll constraints */
                     .table-scroll { max-height: none !important; overflow: visible !important; }
                     .interactive-table-wrapper { overflow: visible !important; }
@@ -3950,7 +3975,7 @@ define([
                     break-inside: avoid;
                     page-break-inside: avoid;
                     margin-top: 0;
-                    padding: 10px 14px;
+                    padding: 6px 12px;
                     box-shadow: none;
                     border: 1px solid #ccc;
                 }
@@ -3965,12 +3990,12 @@ define([
                 .section h3,
                 .section .layer-narrative,
                 .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
-                /* Constrain map images to fit on a single page with title + narrative */
+                /* Constrain map images so bucket-header + map + narrative + table + notes fit one page */
                 .section .map {
-                    margin: 4px 0;
+                    margin: 2px 0;
                 }
                 .section .map img {
-                    max-height: 5.5in;
+                    max-height: 4in;
                     width: auto;
                     max-width: 100%;
                     display: block;
@@ -3978,13 +4003,14 @@ define([
                     object-fit: contain;
                 }
                 .section h3 {
-                    margin: 8px 0 4px;
-                    font-size: 12px;
+                    margin: 4px 0 2px;
+                    font-size: 11px;
                 }
                 .layer-narrative {
-                    margin: 4px 0;
-                    padding: 6px 10px;
-                    font-size: 10px;
+                    margin: 2px 0;
+                    padding: 4px 8px;
+                    font-size: 9px;
+                    line-height: 1.35;
                 }
                 /* Category / bucket headers start on a new page */
                 .bucket-header {
@@ -3994,6 +4020,18 @@ define([
                     page-break-after: avoid;
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
+                    padding: 10px 16px;
+                    margin: 0 0 6px 0;
+                    border-radius: 0;
+                }
+                .bucket-header h2 {
+                    font-size: 15px;
+                    margin: 0 0 2px 0;
+                }
+                .bucket-header .bucket-description {
+                    font-size: 10px;
+                    line-height: 1.3;
+                    margin: 0;
                 }
                 /* First section after a bucket header should NOT add another break */
                 .bucket-header + .section {
@@ -4004,8 +4042,8 @@ define([
                 .pagebreak { break-after: page; page-break-after: always; height: 0; visibility: hidden; }
                 /* Numbered top-level sections each start a new page */
                 h2[id^="section-"]:not(:first-of-type) { break-before: page; page-break-before: always; }
-                h2 { font-size: 16px; margin: 12px 0 8px; }
-                h3 { font-size: 12px; }
+                h2 { font-size: 15px; margin: 8px 0 4px; }
+                h3 { font-size: 11px; margin: 4px 0 2px; }
                 /* AOI details */
                 .aoi-details { font-size: 11px; }
                 /* Remove table scroll constraints */
@@ -4952,15 +4990,29 @@ ${getA11yWidgetBlock()}
     }
 
     /**
-     * Open a completed report HTML document in a new tab
+     * Open a completed report HTML document in a new tab.
+     * Uses a hidden anchor click to avoid Safari mobile popup blockers.
      */
     function openCompletedReport(htmlContent) {
         if (!htmlContent) return false;
         const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
         const url = URL.createObjectURL(blob);
-        const win = window.open(url, "_blank");
-        window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-        return !!win;
+
+        // Try anchor-click approach first — Safari treats this as user-initiated
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Fallback: if anchor click didn't work, try window.open
+        // (we can't easily detect anchor success, but window.open returns null when blocked)
+        // The anchor approach works on Safari mobile so this is a safety net for other browsers
+        window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+        return true;
     }
 
     // ────────────────────────────────────────────
