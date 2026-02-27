@@ -281,6 +281,13 @@ define([
         if (overlays.plssTownship) await waitForLayerReadyToCapture(overlays.plssTownship, view, { timeoutMs: 5000 });
     }
 
+    // Increase 3DEP layer wait time for report generation
+    async function waitFor3DEPLayerReady(layer, view) {
+        const { waitForLayerReadyToCapture } = mapUtils;
+        await waitForLayerReadyToCapture(layer, view, { timeoutMs: 20000 }); // 20s
+    }
+    }
+
     function _removeOverlays(view, overlays) {
         if (overlays.hashOverlay)  try { view.map.remove(overlays.hashOverlay);  } catch (_) {}
         // Only remove PLSS if it's NOT a persistent shared instance
@@ -4490,7 +4497,7 @@ define([
                                     await tempImg.when();
                                     tempImg.visible = true;
                                     ensureAoiOnTop();
-                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
+                                    await waitFor3DEPLayerReady(tempImg, view);
                                     dataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 5000 });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
@@ -4606,7 +4613,7 @@ define([
                                 try {
                                     tempLayer.visible = true;
                                     ensureAoiOnTop();
-                                    await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
+                                    await waitFor3DEPLayerReady(tempLayer, view);
                                     await _waitForOverlays(view, overlays);
                                     dataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 5000 });
                                 } finally {
@@ -4718,7 +4725,7 @@ define([
                                         await temp.when();
                                         temp.visible = true;
                                         ensureAoiOnTop();
-                                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
+                                        await waitFor3DEPLayerReady(temp, view);
                                         retryDataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
@@ -4738,7 +4745,7 @@ define([
                                     try {
                                         tempLayer.visible = true;
                                         ensureAoiOnTop();
-                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
+                                        await waitFor3DEPLayerReady(tempLayer, view);
                                         await _waitForOverlays(view, overlays);
                                         retryDataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 10000 });
                                     } finally {
@@ -5016,9 +5023,19 @@ ${getA11yWidgetBlock()}
         a.click();
         document.body.removeChild(a);
 
-        // Fallback: if anchor click didn't work, try window.open
-        // (we can't easily detect anchor success, but window.open returns null when blocked)
-        // The anchor approach works on Safari mobile so this is a safety net for other browsers
+        // Mobile Safari fallback: if isMobileBrowser() is true, also set window.location.href after a short delay
+        try {
+            if (typeof require === 'function') {
+                require(["map-utils"], function(mapUtils) {
+                    if (mapUtils && typeof mapUtils.isMobileBrowser === 'function' && mapUtils.isMobileBrowser()) {
+                        setTimeout(function() {
+                            window.location.href = url;
+                        }, 250);
+                    }
+                });
+            }
+        } catch (e) {}
+
         window.setTimeout(() => URL.revokeObjectURL(url), 120000);
         return true;
     }
