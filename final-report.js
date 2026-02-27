@@ -3941,30 +3941,17 @@ define([
 
                     // One-time goTo with the padded AOI extent so the API
                     // resolves center + scale for the fixed container.
-                    // We then lock those values for every layer screenshot.
-                    // Compute the screen-pixel area of the AOI extent
-                    // within the view.  We pass this to takeScreenshot's
-                    // `area` option so every layer screenshot is cropped
-                    // to exactly the AOI footprint (all 4 edges touch).
-                    let aoiScreenArea = null;
+                    // We store the padded extent and pass it to each
+                    // screenshot call, which uses view.toScreen() just
+                    // before capture to derive the pixel crop area.
+                    let aoiCropExtent = null;
                     if (ext) {
                         const paddedExtent = ext.clone().expand(paddingFactor);
                         await view.goTo(paddedExtent, { animate: false });
                         await waitForViewStationary(1000);
                         fixedCenter = view.center.clone();
                         fixedScale  = view.scale;
-
-                        // Convert the AOI (padded) extent to CSS-pixel
-                        // coordinates relative to the view canvas.
-                        const vExt = view.extent;
-                        const pxPerMapX = view.width  / vExt.width;
-                        const pxPerMapY = view.height / vExt.height;
-                        aoiScreenArea = {
-                            x:      Math.round((paddedExtent.xmin - vExt.xmin) * pxPerMapX),
-                            y:      Math.round((vExt.ymax - paddedExtent.ymax) * pxPerMapY),
-                            width:  Math.round(paddedExtent.width  * pxPerMapX),
-                            height: Math.round(paddedExtent.height * pxPerMapY)
-                        };
+                        aoiCropExtent = paddedExtent;
                     }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
@@ -4065,7 +4052,7 @@ define([
                                     tempImg.visible = true;
                                     ensureAoiOnTop();
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, cropArea: aoiScreenArea });
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, cropExtent: aoiCropExtent });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
                                 } finally {
@@ -4164,7 +4151,7 @@ define([
                                     ensureAoiOnTop();
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await _waitForOverlays(view, overlays);
-                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, cropArea: aoiScreenArea });
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, cropExtent: aoiCropExtent });
                                 } finally {
                                     try { view.map.remove(tempLayer); } catch (e) { }
                                     _removeOverlays(view, overlays);
@@ -4265,7 +4252,7 @@ define([
                                         temp.visible = true;
                                         ensureAoiOnTop();
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, cropArea: aoiScreenArea });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, cropExtent: aoiCropExtent });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
                                     }
@@ -4286,7 +4273,7 @@ define([
                                         ensureAoiOnTop();
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await _waitForOverlays(view, overlays);
-                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, cropArea: aoiScreenArea });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, cropExtent: aoiCropExtent });
                                     } finally {
                                         try { view.map.remove(tempLayer); } catch (e) { }
                                         _removeOverlays(view, overlays);

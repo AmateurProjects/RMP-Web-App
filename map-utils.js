@@ -580,32 +580,17 @@ define([
 
     /**
      * Crop a data-URL image to the given area using an off-screen canvas.
-     * `cropArea` is in CSS-pixel coordinates {x,y,width,height} relative
-     * to the view.  `imgW`/`imgH` are the output image dimensions from
-     * takeScreenshot and `viewW`/`viewH` are the MapView CSS dimensions.
+     * `cropArea` is in image-pixel coordinates {x,y,width,height}.
      * Returns a new JPEG data-URL of just the cropped region.
      */
-    function _canvasCrop(dataUrl, cropArea, imgW, imgH, viewW, viewH) {
+    function _canvasCrop(dataUrl, cropArea) {
         return new Promise(function (resolve) {
             var img = new Image();
             img.onload = function () {
-                // Map CSS-pixel crop coordinates to actual image pixels.
-                // takeScreenshot may return at a different resolution than
-                // the CSS view (e.g. devicePixelRatio scaling), so use the
-                // actual image dimensions for mapping.
-                var scaleX = img.naturalWidth  / viewW;
-                var scaleY = img.naturalHeight / viewH;
-
-                var sx = Math.round(cropArea.x      * scaleX);
-                var sy = Math.round(cropArea.y      * scaleY);
-                var sw = Math.round(cropArea.width   * scaleX);
-                var sh = Math.round(cropArea.height  * scaleY);
-
-                console.log("[_canvasCrop] img:", img.naturalWidth, "x", img.naturalHeight,
-                    "viewW:", viewW, "viewH:", viewH,
-                    "scale:", scaleX, scaleY,
-                    "crop sx:", sx, "sy:", sy, "sw:", sw, "sh:", sh,
-                    "cropArea:", JSON.stringify(cropArea));
+                var sx = Math.round(cropArea.x);
+                var sy = Math.round(cropArea.y);
+                var sw = Math.round(cropArea.width);
+                var sh = Math.round(cropArea.height);
 
                 // Clamp to image bounds
                 if (sx < 0) sx = 0;
@@ -656,11 +641,30 @@ define([
             try {
                 const ss = await view.takeScreenshot(ssOpts);
                 if (ss?.dataUrl) {
-                    // If a crop area was provided, post-crop via canvas
-                    // to remove any padding the view added around the AOI.
-                    if (screenConfig.cropArea) {
-                        return await _canvasCrop(ss.dataUrl, screenConfig.cropArea,
-                            ssOpts.width, ssOpts.height, view.width, view.height);
+                    // If a map-coordinate crop extent was provided,
+                    // convert it to pixel coordinates NOW (at capture
+                    // time) using view.toScreen() so it reflects the
+                    // current view state, then post-crop via canvas.
+                    if (screenConfig.cropExtent) {
+                        const ce = screenConfig.cropExtent;
+                        const tl = view.toScreen({
+                            x: ce.xmin, y: ce.ymax,
+                            spatialReference: view.spatialReference
+                        });
+                        const br = view.toScreen({
+                            x: ce.xmax, y: ce.ymin,
+                            spatialReference: view.spatialReference
+                        });
+                        // toScreen returns CSS pixels; scale to image pixels
+                        const scaleX = ssOpts.width  / view.width;
+                        const scaleY = ssOpts.height / view.height;
+                        const cropArea = {
+                            x:      tl.x * scaleX,
+                            y:      tl.y * scaleY,
+                            width:  (br.x - tl.x) * scaleX,
+                            height: (br.y - tl.y) * scaleY
+                        };
+                        return await _canvasCrop(ss.dataUrl, cropArea);
                     }
                     return ss.dataUrl;
                 }
