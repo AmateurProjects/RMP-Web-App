@@ -281,13 +281,6 @@ define([
         if (overlays.plssTownship) await waitForLayerReadyToCapture(overlays.plssTownship, view, { timeoutMs: 5000 });
     }
 
-    // Increase 3DEP layer wait time for report generation
-    async function waitFor3DEPLayerReady(layer, view) {
-        const { waitForLayerReadyToCapture } = mapUtils;
-        await waitForLayerReadyToCapture(layer, view, { timeoutMs: 20000 }); // 20s
-    }
-    }
-
     function _removeOverlays(view, overlays) {
         if (overlays.hashOverlay)  try { view.map.remove(overlays.hashOverlay);  } catch (_) {}
         // Only remove PLSS if it's NOT a persistent shared instance
@@ -4497,7 +4490,7 @@ define([
                                     await tempImg.when();
                                     tempImg.visible = true;
                                     ensureAoiOnTop();
-                                    await waitFor3DEPLayerReady(tempImg, view);
+                                    await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
                                     dataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 5000 });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
@@ -4613,7 +4606,7 @@ define([
                                 try {
                                     tempLayer.visible = true;
                                     ensureAoiOnTop();
-                                    await waitFor3DEPLayerReady(tempLayer, view);
+                                    await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await _waitForOverlays(view, overlays);
                                     dataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 5000 });
                                 } finally {
@@ -4725,7 +4718,7 @@ define([
                                         await temp.when();
                                         temp.visible = true;
                                         ensureAoiOnTop();
-                                        await waitFor3DEPLayerReady(temp, view);
+                                        await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
                                         retryDataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 10000 });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
@@ -4745,7 +4738,7 @@ define([
                                     try {
                                         tempLayer.visible = true;
                                         ensureAoiOnTop();
-                                        await waitFor3DEPLayerReady(tempLayer, view);
+                                        await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await _waitForOverlays(view, overlays);
                                         retryDataUrl = await captureScreenshotWithWait({ width: containerW, tabWaitTimeout: 10000 });
                                     } finally {
