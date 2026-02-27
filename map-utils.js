@@ -578,6 +578,53 @@ define([
         await waitForTabVisible(5000);
     }
 
+    /**
+     * Crop a data-URL image to the given area using an off-screen canvas.
+     * `cropArea` is in CSS-pixel coordinates {x,y,width,height} relative
+     * to the view.  `imgW`/`imgH` are the output image dimensions from
+     * takeScreenshot and `viewW`/`viewH` are the MapView CSS dimensions.
+     * Returns a new JPEG data-URL of just the cropped region.
+     */
+    function _canvasCrop(dataUrl, cropArea, imgW, imgH, viewW, viewH) {
+        return new Promise(function (resolve) {
+            var img = new Image();
+            img.onload = function () {
+                // Map CSS-pixel crop coordinates to actual image pixels.
+                // takeScreenshot may return at a different resolution than
+                // the CSS view (e.g. devicePixelRatio scaling), so use the
+                // actual image dimensions for mapping.
+                var scaleX = img.naturalWidth  / viewW;
+                var scaleY = img.naturalHeight / viewH;
+
+                var sx = Math.round(cropArea.x      * scaleX);
+                var sy = Math.round(cropArea.y      * scaleY);
+                var sw = Math.round(cropArea.width   * scaleX);
+                var sh = Math.round(cropArea.height  * scaleY);
+
+                console.log("[_canvasCrop] img:", img.naturalWidth, "x", img.naturalHeight,
+                    "viewW:", viewW, "viewH:", viewH,
+                    "scale:", scaleX, scaleY,
+                    "crop sx:", sx, "sy:", sy, "sw:", sw, "sh:", sh,
+                    "cropArea:", JSON.stringify(cropArea));
+
+                // Clamp to image bounds
+                if (sx < 0) sx = 0;
+                if (sy < 0) sy = 0;
+                if (sx + sw > img.naturalWidth)  sw = img.naturalWidth  - sx;
+                if (sy + sh > img.naturalHeight) sh = img.naturalHeight - sy;
+
+                var canvas = document.createElement("canvas");
+                canvas.width  = sw;
+                canvas.height = sh;
+                var ctx = canvas.getContext("2d");
+                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+                resolve(canvas.toDataURL("image/jpeg", 0.92));
+            };
+            img.onerror = function () { resolve(dataUrl); }; // fallback
+            img.src = dataUrl;
+        });
+    }
+
     async function captureScreenshotWithWait(screenConfig) {
         if (!screenConfig) screenConfig = {};
         const view = S.view;
@@ -599,25 +646,24 @@ define([
         const ssOpts = {
             format: "jpg",
             quality: 92,
-            width: width
-        };
-
-        // If an AOI crop area was provided, use it to clip the
-        // screenshot to exactly the AOI extent (all edges touch).
-        // Derive output height from the area's aspect ratio.
-        if (screenConfig.area) {
-            ssOpts.area = screenConfig.area;
-            ssOpts.height = Math.round(width * (screenConfig.area.height / screenConfig.area.width));
-        } else {
-            ssOpts.height = (view.width > 0 && view.height > 0)
+            width: width,
+            height: (view.width > 0 && view.height > 0)
                 ? Math.round(width * (view.height / view.width))
-                : Math.round(width * 0.5625);
-        }
+                : Math.round(width * 0.5625)
+        };
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 const ss = await view.takeScreenshot(ssOpts);
-                if (ss?.dataUrl) return ss.dataUrl;
+                if (ss?.dataUrl) {
+                    // If a crop area was provided, post-crop via canvas
+                    // to remove any padding the view added around the AOI.
+                    if (screenConfig.cropArea) {
+                        return await _canvasCrop(ss.dataUrl, screenConfig.cropArea,
+                            ssOpts.width, ssOpts.height, view.width, view.height);
+                    }
+                    return ss.dataUrl;
+                }
             } catch (e) {
                 console.warn("[map-utils] Screenshot attempt " + attempt + " failed:", e.message);
             }

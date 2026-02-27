@@ -3965,11 +3965,6 @@ define([
                             width:  Math.round(paddedExtent.width  * pxPerMapX),
                             height: Math.round(paddedExtent.height * pxPerMapY)
                         };
-                        console.log("[buildReport] aoiScreenArea:", JSON.stringify(aoiScreenArea),
-                            "view:", view.width, "x", view.height,
-                            "paddedExt w/h:", paddedExtent.width, paddedExtent.height,
-                            "viewExt w/h:", vExt.width, vExt.height,
-                            "dpr:", window.devicePixelRatio);
                     }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
@@ -4070,7 +4065,7 @@ define([
                                     tempImg.visible = true;
                                     ensureAoiOnTop();
                                     await waitForLayerReadyToCapture(tempImg, view, { timeoutMs: 12000 });
-                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, area: aoiScreenArea });
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, cropArea: aoiScreenArea });
                                 } catch (e) {
                                     console.warn(`Imagery screenshot failed for ${layerTitle}:`, e);
                                 } finally {
@@ -4169,7 +4164,7 @@ define([
                                     ensureAoiOnTop();
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await _waitForOverlays(view, overlays);
-                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, area: aoiScreenArea });
+                                    dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000, cropArea: aoiScreenArea });
                                 } finally {
                                     try { view.map.remove(tempLayer); } catch (e) { }
                                     _removeOverlays(view, overlays);
@@ -4270,7 +4265,7 @@ define([
                                         temp.visible = true;
                                         ensureAoiOnTop();
                                         await waitForLayerReadyToCapture(temp, view, { timeoutMs: 12000 });
-                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, area: aoiScreenArea });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, cropArea: aoiScreenArea });
                                     } finally {
                                         try { view.map.remove(temp); } catch (_) {}
                                     }
@@ -4291,7 +4286,7 @@ define([
                                         ensureAoiOnTop();
                                         await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 15000 });
                                         await _waitForOverlays(view, overlays);
-                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, area: aoiScreenArea });
+                                        retryDataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 10000, cropArea: aoiScreenArea });
                                     } finally {
                                         try { view.map.remove(tempLayer); } catch (e) { }
                                         _removeOverlays(view, overlays);
