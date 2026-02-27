@@ -599,13 +599,20 @@ define([
         const ssOpts = {
             format: "jpg",
             quality: 92,
-            width: width,
-            // Use the view's actual aspect ratio (set by lockViewContainer)
-            // instead of hardcoding 16:9 so the screenshot matches the container.
-            height: (view.width > 0 && view.height > 0)
-                ? Math.round(width * (view.height / view.width))
-                : Math.round(width * 0.5625)
+            width: width
         };
+
+        // If an AOI crop area was provided, use it to clip the
+        // screenshot to exactly the AOI extent (all edges touch).
+        // Derive output height from the area's aspect ratio.
+        if (screenConfig.area) {
+            ssOpts.area = screenConfig.area;
+            ssOpts.height = Math.round(width * (screenConfig.area.height / screenConfig.area.width));
+        } else {
+            ssOpts.height = (view.width > 0 && view.height > 0)
+                ? Math.round(width * (view.height / view.width))
+                : Math.round(width * 0.5625);
+        }
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
