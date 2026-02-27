@@ -2677,30 +2677,125 @@ define([
     }
 
     // ────────────────────────────────────────────
-    // _ringBBox — compute bounding box from ring vertex
-    // coordinates instead of relying on the Esri .extent
-    // property, which can be inflated on polygons created
-    // by the Sketch widget.
+    // DEBUG_AOI flag — toggle verbose AOI / map-fitting logs
+    // Set to false in production.
     // ────────────────────────────────────────────
-    function _ringBBox(geom) {
-        const rings = geom && geom.rings;
-        if (!rings || rings.length === 0) return geom ? geom.extent : null;
-        let xmin = Infinity, ymin = Infinity;
-        let xmax = -Infinity, ymax = -Infinity;
-        for (let ri = 0; ri < rings.length; ri++) {
-            const ring = rings[ri];
-            for (let vi = 0; vi < ring.length; vi++) {
-                const x = ring[vi][0], y = ring[vi][1];
-                if (x < xmin) xmin = x;
-                if (x > xmax) xmax = x;
-                if (y < ymin) ymin = y;
-                if (y > ymax) ymax = y;
+    const DEBUG_AOI = true;
+
+    function _debugAoi(label, geom, extra) {
+        if (!DEBUG_AOI) return;
+        if (!geom) { console.log("[AOI-DEBUG] " + label + " — geometry is null/undefined"); return; }
+        const ext = geom.extent;
+        const sr  = geom.spatialReference;
+        const info = {
+            type: geom.type,
+            sr: sr ? (sr.wkid || sr.wkt || 'unknown') : 'none',
+            extentW: ext ? (ext.xmax - ext.xmin).toFixed(1) : 'N/A',
+            extentH: ext ? (ext.ymax - ext.ymin).toFixed(1) : 'N/A',
+            xmin: ext ? ext.xmin.toFixed(2) : 'N/A',
+            ymin: ext ? ext.ymin.toFixed(2) : 'N/A',
+            xmax: ext ? ext.xmax.toFixed(2) : 'N/A',
+            ymax: ext ? ext.ymax.toFixed(2) : 'N/A',
+            rings: geom.rings ? geom.rings.length : 0,
+            vertices: geom.rings ? geom.rings.reduce(function(s,r){return s+r.length;},0) : 0
+        };
+        if (extra) Object.assign(info, extra);
+        console.log("[AOI-DEBUG] " + label, info);
+    }
+
+    /**
+     * fitViewToAoi — shared helper for all report map fitting.
+     *
+     * Navigates the MapView so the final AOI polygon fills the
+     * view frame.  Computes the bounding box directly from ring
+     * vertex coordinates (avoids the inflated `.extent` property
+     * observed on Sketch-created polygons with curved segments)
+     * and navigates using center + calculated scale.
+     *
+     * @param {MapView}  view          – the ArcGIS MapView
+     * @param {Geometry} finalAoiGeom  – the canonical AOI Polygon
+     * @param {number}   [expandK=1.1] – expand factor (1.1 = 10% padding)
+     * @param {Function} waitFn        – waitForViewStationary bound ref
+     * @returns {Promise<{center, scale}>}  resolved center+scale
+     */
+    async function fitViewToAoi(view, finalAoiGeom, expandK, waitFn) {
+        if (!view || !finalAoiGeom) return { center: null, scale: null };
+        expandK = expandK || 1.1;
+        if (!waitFn) waitFn = function(ms){ return new Promise(function(r){setTimeout(r,ms);}); };
+
+        try { view.constraints.snapToZoom = false; } catch (_) {}
+
+        // ── Compute the true bounding box from ring vertex coordinates ──
+        // The Esri Polygon .extent property can be inflated on Sketch-
+        // created polygons (~7.6× observed for freehand/curved polygons).
+        // We iterate raw ring vertices to get the correct bbox.
+        var xmin = Infinity, ymin = Infinity;
+        var xmax = -Infinity, ymax = -Infinity;
+        var rings = finalAoiGeom.rings;
+        if (rings && rings.length > 0) {
+            for (var ri = 0; ri < rings.length; ri++) {
+                var ring = rings[ri];
+                for (var vi = 0; vi < ring.length; vi++) {
+                    var px = ring[vi][0], py = ring[vi][1];
+                    if (px < xmin) xmin = px;
+                    if (px > xmax) xmax = px;
+                    if (py < ymin) ymin = py;
+                    if (py > ymax) ymax = py;
+                }
+            }
+        } else {
+            // Fallback to .extent if no rings (shouldn't happen for polygons)
+            var fe = finalAoiGeom.extent;
+            if (fe) { xmin = fe.xmin; ymin = fe.ymin; xmax = fe.xmax; ymax = fe.ymax; }
+        }
+
+        var bboxW = xmax - xmin;
+        var bboxH = ymax - ymin;
+        var cx = (xmin + xmax) / 2;
+        var cy = (ymin + ymax) / 2;
+
+        if (DEBUG_AOI) {
+            console.log("[AOI-DEBUG] fitViewToAoi — ringBBox W=" + bboxW.toFixed(1) +
+                " H=" + bboxH.toFixed(1) + " center=" + cx.toFixed(1) + "," + cy.toFixed(1));
+            var nativeExt = finalAoiGeom.extent;
+            if (nativeExt) {
+                console.log("[AOI-DEBUG] fitViewToAoi — native .extent W=" +
+                    (nativeExt.xmax - nativeExt.xmin).toFixed(1) + " H=" +
+                    (nativeExt.ymax - nativeExt.ymin).toFixed(1));
             }
         }
-        return {
-            xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax,
-            spatialReference: geom.spatialReference
-        };
+
+        // ── Compute the scale needed so the bbox fits the view ──
+        // ArcGIS formula:  resolution = scale / (DPI × 39.3701)
+        // Standard DPI = 96  →  scale = resolution × 3779.5275…
+        // resolution = mapUnits / pixels
+        var viewW = view.width;   // CSS pixels
+        var viewH = view.height;
+        var DPI_FACTOR = 96 * 39.3701;  // 3779.5296
+
+        var scaleX = (bboxW / viewW) * DPI_FACTOR;
+        var scaleY = (bboxH / viewH) * DPI_FACTOR;
+        var fitScale = Math.max(scaleX, scaleY) * expandK;
+
+        if (DEBUG_AOI) {
+            console.log("[AOI-DEBUG] fitViewToAoi — scaleX=" + scaleX.toFixed(0) +
+                " scaleY=" + scaleY.toFixed(0) + " fitScale=" + fitScale.toFixed(0) +
+                " expandK=" + expandK + " viewSize=" + viewW + "x" + viewH);
+        }
+
+        // Navigate using center + scale (completely bypasses polygon.extent)
+        await view.goTo({ center: [cx, cy], scale: fitScale }, { animate: false });
+        if (waitFn) await waitFn(800);
+
+        if (DEBUG_AOI) {
+            console.log("[AOI-DEBUG] fitViewToAoi done — view.extent W:" +
+                (view.extent.xmax - view.extent.xmin).toFixed(1) + " H:" +
+                (view.extent.ymax - view.extent.ymin).toFixed(1) +
+                " scale:" + view.scale.toFixed(0) +
+                " view.size: " + view.width + "x" + view.height);
+        }
+
+        return { center: view.center.clone(), scale: view.scale };
     }
 
     // ────────────────────────────────────────────
@@ -2716,11 +2811,13 @@ define([
         const aoiMaskLayer = S.aoiMaskLayer;
         const alwaysVisibleLayers = S.alwaysVisibleLayers;
 
-        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait, waitForTabVisible, waitForLayerReadyToCapture } = mapUtils;
+        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait, waitForTabVisible, waitForLayerReadyToCapture, lockViewContainer, unlockViewContainer, waitForViewStationary } = mapUtils;
 
         const width  = config?.visualReport?.screenshotWidth ?? 1400;
         const height = Math.round(width * 0.5625);
         const maps   = [];
+
+        if (DEBUG_AOI) _debugAoi("generateAoiMaps selectionGeom", selectionGeom, { aoiSource: S.aoiSource });
 
         const insetFrac = 0.22;
         const insetW = Math.round(width * insetFrac);
@@ -2792,8 +2889,7 @@ define([
 
         async function compositeWithOverview(mainDataUrl, mainExtent, scale) {
             const overviewScale = scale * overviewZoomFactor;
-            const overviewTarget = _ringBBox(selectionGeom) || selectionGeom.extent;
-            await view.goTo({ target: overviewTarget, scale: overviewScale }, { animate: false });
+            await view.goTo({ target: selectionGeom, scale: overviewScale }, { animate: false });
 
             // Wait for boundary layers to finish rendering at the new scale
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
@@ -2854,7 +2950,7 @@ define([
 
             // Draw red arrow pointing at the AOI
             {
-                const aoiExt = _ringBBox(selectionGeom) || selectionGeom.extent;
+                const aoiExt = selectionGeom.extent;
                 const mw = mainExtent.xmax - mainExtent.xmin;
                 const mh = mainExtent.ymax - mainExtent.ymin;
                 if (aoiExt && mw > 0 && mh > 0) {
@@ -2930,14 +3026,23 @@ define([
         }
 
         try {
+            // Lock view to 16:9 landscape for consistent overview maps
+            lockViewContainer(width, height);
+            // Wait for resize to take effect
+            const _ovResizeT0 = Date.now();
+            while (Date.now() - _ovResizeT0 < 3000) {
+                if (Math.abs(view.width - width) < 10 && Math.abs(view.height - height) < 10) break;
+                await new Promise(r => setTimeout(r, 80));
+            }
+            await waitForViewStationary(800);
+
             setVisibilityForAoi();
 
             // Wait for state/county boundary layers to fully load and render
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 8000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 8000 });
 
-            const ext1 = _ringBBox(selectionGeom) || selectionGeom.extent;
-            await view.goTo({ target: ext1, scale: 900000 }, { animate: false });
+            await view.goTo({ target: selectionGeom, scale: 900000 }, { animate: false });
 
             // Wait for boundary layers at new scale
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
@@ -2951,7 +3056,7 @@ define([
                 maps.push(`<div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
             }
 
-            const ext2 = _ringBBox(selectionGeom) || selectionGeom.extent;
+            const ext2 = selectionGeom;
             await view.goTo({ target: ext2, scale: 200000 }, { animate: false });
 
             // Wait for boundary layers at new scale
@@ -2968,6 +3073,9 @@ define([
 
         } finally {
             restoreVisibility();
+            // Unlock the container — buildReportInBackground will re-lock
+            // to the correct size for per-layer maps.
+            unlockViewContainer();
         }
 
         return maps.join("");
@@ -3724,6 +3832,14 @@ define([
         console.log("[buildReportInBackground] view:", !!view, "selectionGeom:", !!selectionGeom,
             "rows:", lastReportRowsByLayer?.length, "permitTypeKey:", permitTypeKey);
 
+        if (DEBUG_AOI) {
+            _debugAoi("buildReportInBackground entry", selectionGeom, {
+                aoiSource: S.aoiSource,
+                viewSR: view?.spatialReference?.wkid,
+                viewSize: view ? (view.width + "×" + view.height) : "N/A"
+            });
+        }
+
         if (!view || !selectionGeom) {
             throw new Error("No AOI selected");
         }
@@ -3902,41 +4018,36 @@ define([
                 const paddingFactor = config?.visualReport?.paddingFactor ?? 1;
                 const width = config?.visualReport?.screenshotWidth ?? 1400;
 
-                // Compute a padded bounding box from the final AOI geometry
-                // (selectionGeom, which includes any applied buffer).  We do
-                // one initial goTo with this extent so the ArcGIS API resolves
-                // the exact center + scale for the container's aspect ratio,
-                // then we lock that center+scale pair and reuse it for every
-                // layer screenshot.  This prevents any progressive drift and
-                // guarantees the full AOI boundary stays visible in every map.
+                // ── Canonical final AOI geometry ──
+                // This is THE geometry every report map fits to.
+                // It is always `selectionGeom` — the Esri Polygon in
+                // the view's spatial reference (Web Mercator).
+                // If a buffer was applied, selectionGeom already
+                // reflects the buffered polygon.
+                const finalAoiGeom = selectionGeom;
+
+                if (DEBUG_AOI) {
+                    _debugAoi('buildReport finalAoiGeom', finalAoiGeom, {
+                        aoiSource: S.aoiSource,
+                        paddingFactor: paddingFactor,
+                        bufferApplied: (S.aoiOriginalGeom && S.aoiOriginalGeom !== selectionGeom) ? 'yes' : 'no'
+                    });
+                }
+
                 let fixedCenter = null;
                 let fixedScale  = null;
-
-                // Compute the AOI bounding box directly from ring vertex
-                // coordinates.  The Esri Polygon .extent property can be
-                // inflated on geometries created by the Sketch widget
-                // (observed ~7.6× larger than the actual vertices).
-                const ext = _ringBBox(selectionGeom) || selectionGeom?.extent;
-
-                if (ext) {
-                    console.log("[buildReport] AOI bbox (from rings) W=" +
-                        (ext.xmax - ext.xmin).toFixed(1) + " H=" +
-                        (ext.ymax - ext.ymin).toFixed(1));
-                }
 
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
                 const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
                 const originalBasemap = view.map.basemap;
-                const imageryBasemapId = config?.map?.imageryBasemap || "satellite";
+                const imageryBasemapId = config?.map?.imageryBasemap || 'satellite';
 
                 function setVisibilityForScreenshot(tempLayer) {
                     for (const l of allLayers) {
                         if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                        // Keep the mask visible — it is built once before
-                        // the loop and stays on for every screenshot.
                         if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
-                        if (l?.type === "tile") { l.visible = true; continue; }
+                        if (l?.type === 'tile') { l.visible = true; continue; }
                         if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
                         l.visible = false;
                     }
@@ -3957,22 +4068,16 @@ define([
                     await new Promise(r => setTimeout(r, 500));
                     await waitForViewStationary(800);
 
-                    // Size the container to match the AOI extent's aspect
-                    // ratio so goTo() fills it perfectly — no post-crop needed.
-                    // The LONG dimension = configWidth (1400).  We cap the short
-                    // dimension at 200 px min so ultra-thin AOIs don't fail.
-                    const aoiMapW = ext ? (ext.xmax - ext.xmin) : 1;
-                    const aoiMapH = ext ? (ext.ymax - ext.ymin) : 1;
-                    let containerW, containerH;
-                    if (aoiMapW >= aoiMapH) {
-                        containerW = width;
-                        containerH = Math.max(200, Math.round(width * (aoiMapH / aoiMapW)));
-                    } else {
-                        containerH = width;
-                        containerW = Math.max(200, Math.round(width * (aoiMapW / aoiMapH)));
+                    // Use a square container (width × width) for per-layer
+                    // report maps.  This keeps images uniform regardless of
+                    // AOI shape.  The fitViewToAoi helper will center the
+                    // polygon within the square, with slight padding.
+                    const containerW = width;
+                    const containerH = width;
+
+                    if (DEBUG_AOI) {
+                        console.log('[AOI-DEBUG] container ' + containerW + '×' + containerH);
                     }
-                    console.log("[buildReport] container " + containerW + "×" + containerH +
-                        " (AOI map-units " + aoiMapW.toFixed(1) + "×" + aoiMapH.toFixed(1) + ")");
 
                     lockViewContainer(containerW, containerH);
 
@@ -3985,35 +4090,15 @@ define([
                     }
                     await waitForViewStationary(1500);
 
-                    // Disable LOD snapping so the API uses the exact scale
-                    // needed to fit the AOI bounding box (no rounding to tile LODs).
-                    try { view.constraints.snapToZoom = false; } catch (_) {}
-
-                    // One-time goTo with the (optionally padded) AOI extent so
-                    // the API resolves center + scale for the container.  Because
-                    // the container aspect ratio matches the extent, the view
-                    // should fill edge-to-edge without extra space.
-                    if (ext) {
-                        // Apply optional padding around the AOI extent.
-                        // ext is a plain object from _ringBBox, so expand manually.
-                        const cx = (ext.xmin + ext.xmax) / 2;
-                        const cy = (ext.ymin + ext.ymax) / 2;
-                        const hw = (ext.xmax - ext.xmin) / 2 * paddingFactor;
-                        const hh = (ext.ymax - ext.ymin) / 2 * paddingFactor;
-                        const paddedExtent = {
-                            xmin: cx - hw, ymin: cy - hh,
-                            xmax: cx + hw, ymax: cy + hh,
-                            spatialReference: ext.spatialReference
-                        };
-                        await view.goTo(paddedExtent, { animate: false });
-                        await waitForViewStationary(1000);
-                        fixedCenter = view.center.clone();
-                        fixedScale  = view.scale;
-                        console.log("[buildReport] after goTo — view.extent W:" +
-                            (view.extent.xmax - view.extent.xmin).toFixed(1) + " H:" +
-                            (view.extent.ymax - view.extent.ymin).toFixed(1) +
-                            " view.size: " + view.width + "×" + view.height);
-                    }
+                    // ── Fit view to AOI using the shared helper ──
+                    // expandK: paddingFactor=1 means no extra padding beyond
+                    // 10% default. If user has paddingFactor>1, multiply.
+                    const expandK = paddingFactor <= 1 ? 1.1 : paddingFactor;
+                    const fitResult = await fitViewToAoi(
+                        view, finalAoiGeom, expandK, waitForViewStationary
+                    );
+                    fixedCenter = fitResult.center;
+                    fixedScale  = fitResult.scale;
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
                     console.log("[buildReportInBackground] starting pre-load phase…");
