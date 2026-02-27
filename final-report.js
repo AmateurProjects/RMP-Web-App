@@ -3885,6 +3885,33 @@ define([
                 let fixedScale  = null;
                 const ext = selectionGeom?.extent;
 
+                // ── Diagnostic: why is the extent so large? ──
+                if (ext) {
+                    const w = ext.xmax - ext.xmin;
+                    const h = ext.ymax - ext.ymin;
+                    const rings = selectionGeom.rings || [];
+                    const vertexCount = rings.reduce((sum, r) => sum + r.length, 0);
+                    console.log("[buildReport] selectionGeom type=" + selectionGeom.type +
+                        " rings=" + rings.length + " vertices=" + vertexCount +
+                        " extent W=" + w.toFixed(1) + " H=" + h.toFixed(1) +
+                        " xmin=" + ext.xmin.toFixed(2) + " ymin=" + ext.ymin.toFixed(2) +
+                        " xmax=" + ext.xmax.toFixed(2) + " ymax=" + ext.ymax.toFixed(2));
+                    // Compare with aoiGraphic geometry
+                    const aoiG = S.aoiGraphic?.geometry;
+                    if (aoiG && aoiG.extent) {
+                        const ae = aoiG.extent;
+                        console.log("[buildReport] aoiGraphic.extent W=" + (ae.xmax - ae.xmin).toFixed(1) +
+                            " H=" + (ae.ymax - ae.ymin).toFixed(1) +
+                            " xmin=" + ae.xmin.toFixed(2) + " ymin=" + ae.ymin.toFixed(2) +
+                            " xmax=" + ae.xmax.toFixed(2) + " ymax=" + ae.ymax.toFixed(2));
+                    }
+                    // Dump first few vertices of each ring for eyeball inspection
+                    rings.forEach((ring, ri) => {
+                        const sample = ring.slice(0, 4).map(pt => "[" + pt[0].toFixed(2) + "," + pt[1].toFixed(2) + "]");
+                        console.log("[buildReport] ring[" + ri + "] length=" + ring.length + " first4: " + sample.join(", "));
+                    });
+                }
+
                 // Snapshot layer visibility
                 const allLayers = view.map.layers.toArray();
                 const visSnapshot = allLayers.map(l => ({ layer: l, visible: l.visible }));
