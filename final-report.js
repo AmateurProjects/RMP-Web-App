@@ -725,9 +725,17 @@ define([
     function openHtmlInNewTab(htmlString) {
         const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
         const url  = URL.createObjectURL(blob);
-        const win  = window.open(url, "_blank", "noopener,noreferrer");
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return win;
+        // Use anchor-click to avoid Safari mobile popup blocker
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+        return true;
     }
 
     function formatDateTimeForReport(d = new Date()) {
