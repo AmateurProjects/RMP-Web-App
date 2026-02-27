@@ -3871,7 +3871,7 @@ define([
             } else {
                 contentParts.push(`<h2>Layer Details</h2>`);
 
-                const paddingFactor = config?.visualReport?.paddingFactor ?? 1.25;
+                const paddingFactor = config?.visualReport?.paddingFactor ?? 1;
                 const width = config?.visualReport?.screenshotWidth ?? 1400;
 
                 // Compute a padded bounding box from the final AOI geometry
@@ -3894,9 +3894,9 @@ define([
                 function setVisibilityForScreenshot(tempLayer) {
                     for (const l of allLayers) {
                         if (aoiLayer && l === aoiLayer) { l.visible = true; continue; }
-                        // Keep the mask hidden during goTo; it is rebuilt after
-                        // the view settles so it doesn't influence the extent.
-                        if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = false; continue; }
+                        // Keep the mask visible — it is built once before
+                        // the loop and stays on for every screenshot.
+                        if (aoiMaskLayer && l === aoiMaskLayer) { l.visible = true; continue; }
                         if (l?.type === "tile") { l.visible = true; continue; }
                         if (alwaysVisibleLayers.includes(l)) { l.visible = true; continue; }
                         l.visible = false;
@@ -3944,10 +3944,22 @@ define([
                     // We then lock those values for every layer screenshot.
                     if (ext) {
                         const paddedExtent = ext.clone().expand(paddingFactor);
+                        console.log("[buildReportInBackground] AOI extent:", JSON.stringify({
+                            xmin: ext.xmin, ymin: ext.ymin, xmax: ext.xmax, ymax: ext.ymax,
+                            width: ext.width, height: ext.height, sr: ext.spatialReference?.wkid
+                        }));
+                        console.log("[buildReportInBackground] paddingFactor:", paddingFactor);
+                        console.log("[buildReportInBackground] container:", containerW, "x", containerH);
                         await view.goTo(paddedExtent, { animate: false });
                         await waitForViewStationary(1000);
                         fixedCenter = view.center.clone();
                         fixedScale  = view.scale;
+                        console.log("[buildReportInBackground] fixedScale:", fixedScale,
+                            "view.extent:", JSON.stringify({
+                                xmin: view.extent.xmin, ymin: view.extent.ymin,
+                                xmax: view.extent.xmax, ymax: view.extent.ymax,
+                                width: view.extent.width, height: view.extent.height
+                            }));
                     }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
