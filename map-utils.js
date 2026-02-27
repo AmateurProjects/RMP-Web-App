@@ -649,21 +649,32 @@ define([
                         const ce = screenConfig.cropExtent;
                         const tl = view.toScreen({
                             x: ce.xmin, y: ce.ymax,
-                            spatialReference: view.spatialReference
+                            spatialReference: ce.spatialReference
                         });
                         const br = view.toScreen({
                             x: ce.xmax, y: ce.ymin,
-                            spatialReference: view.spatialReference
+                            spatialReference: ce.spatialReference
                         });
                         // toScreen returns CSS pixels; scale to image pixels
                         const scaleX = ssOpts.width  / view.width;
                         const scaleY = ssOpts.height / view.height;
                         const cropArea = {
-                            x:      tl.x * scaleX,
-                            y:      tl.y * scaleY,
-                            width:  (br.x - tl.x) * scaleX,
-                            height: (br.y - tl.y) * scaleY
+                            x:      Math.round(tl.x * scaleX),
+                            y:      Math.round(tl.y * scaleY),
+                            width:  Math.round((br.x - tl.x) * scaleX),
+                            height: Math.round((br.y - tl.y) * scaleY)
                         };
+                        console.log("[captureScreenshot] cropExtent→pixel mapping:", {
+                            cropExtent: { xmin: ce.xmin, ymin: ce.ymin, xmax: ce.xmax, ymax: ce.ymax },
+                            viewExtent: { xmin: view.extent.xmin, ymin: view.extent.ymin, xmax: view.extent.xmax, ymax: view.extent.ymax },
+                            cssTopLeft: { x: tl.x, y: tl.y },
+                            cssBotRight: { x: br.x, y: br.y },
+                            viewSize: { w: view.width, h: view.height },
+                            ssSize: { w: ssOpts.width, h: ssOpts.height },
+                            scale: { x: scaleX, y: scaleY },
+                            cropArea: cropArea,
+                            dpr: window.devicePixelRatio
+                        });
                         return await _canvasCrop(ss.dataUrl, cropArea);
                     }
                     return ss.dataUrl;
