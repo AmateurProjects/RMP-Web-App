@@ -587,6 +587,9 @@ define([
         return new Promise(function (resolve) {
             var img = new Image();
             img.onload = function () {
+                console.log("[_canvasCrop] src=" + img.naturalWidth + "×" + img.naturalHeight +
+                    " crop x:" + cropArea.x + " y:" + cropArea.y +
+                    " w:" + cropArea.width + " h:" + cropArea.height);
                 var sx = Math.round(cropArea.x);
                 var sy = Math.round(cropArea.y);
                 var sw = Math.round(cropArea.width);
@@ -639,6 +642,8 @@ define([
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                console.log("[captureScreenshot] ssOpts " + ssOpts.width + "×" + ssOpts.height +
+                    " view " + view.width + "×" + view.height + " dpr=" + window.devicePixelRatio);
                 const ss = await view.takeScreenshot(ssOpts);
                 if (ss?.dataUrl) {
                     // If a map-coordinate crop extent was provided,
