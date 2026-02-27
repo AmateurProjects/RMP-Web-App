@@ -1568,31 +1568,35 @@ define([
                         background: var(--blm-green) !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
-                        break-after: page;
-                        page-break-after: always;
                     }
                     /* Each layer section starts on its own page */
                     .section{ 
                         break-before: page;
                         page-break-before: always;
-                        break-inside: auto;
-                        page-break-inside: auto;
+                        break-inside: avoid;
+                        page-break-inside: avoid;
                         box-shadow: none;
                         border: 1px solid #ccc;
                         margin-top: 0;
-                        padding: 14px 16px;
+                        padding: 10px 14px;
+                    }
+                    /* Per-feature tables can overflow to the next page */
+                    .section .interactive-table-wrapper {
+                        break-before: auto;
+                        break-inside: auto;
+                        page-break-inside: auto;
                     }
                     /* Sub-elements should not split across pages */
                     .section .map,
                     .section h3,
                     .section .layer-narrative,
                     .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
-                    /* Constrain map images to fit within a single page */
+                    /* Constrain map images to fit on a single page with title + narrative */
                     .section .map {
-                        margin: 8px 0;
+                        margin: 4px 0;
                     }
                     .section .map img {
-                        max-height: 7in;
+                        max-height: 5.5in;
                         width: auto;
                         max-width: 100%;
                         display: block;
@@ -1633,8 +1637,14 @@ define([
                     /* AOI details */
                     .aoi-details { font-size: 11px; }
                     /* AOI maps fit within a page */
-                    .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 8px 0; }
-                    .aoi-map img { max-height: 7.5in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
+                    .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 4px 0; }
+                    .aoi-map img { max-height: 3.4in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
+                    .aoi-map-title { font-size: 10px !important; margin: 4px 0 2px !important; }
+                    .aoi-section { break-inside: avoid; page-break-inside: avoid; }
+                    .aoi-section h2 { margin: 6px 0 4px; }
+                    .aoi-section p { font-size: 10px; margin: 2px 0 4px; }
+                    .aoi-details { margin-top: 4px; font-size: 10px; }
+                    .aoi-details .aoi-field { margin: 2px 0; font-size: 10px; }
                 }
                 /* Interactive Data Tables */
                 .interactive-table-wrapper {
@@ -2944,9 +2954,10 @@ define([
         const aoiMaskLayer = S.aoiMaskLayer;
         const alwaysVisibleLayers = S.alwaysVisibleLayers;
 
-        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait, waitForTabVisible, waitForLayerReadyToCapture, lockViewContainer, unlockViewContainer, waitForViewStationary } = mapUtils;
+        const { ensureAoiOnTop, hideAoiMask, captureScreenshotWithWait, waitForTabVisible, waitForLayerReadyToCapture, lockViewContainer, unlockViewContainer, waitForViewStationary, isMobileBrowser } = mapUtils;
 
-        const width  = config?.visualReport?.screenshotWidth ?? 1400;
+        const _cfgWidth = config?.visualReport?.screenshotWidth ?? 1400;
+        const width  = isMobileBrowser() ? Math.min(_cfgWidth, 900) : _cfgWidth;
         const height = Math.round(width * 0.5625);
         const maps   = [];
 
@@ -3186,7 +3197,7 @@ define([
 
             if (ss1) {
                 const composited1 = await compositeWithOverview(ss1, mainExtent1, 900000);
-                maps.push(`<p style="font-size:13px;font-weight:600;color:var(--blm-brown);margin:16px 0 4px;">Orientation Map at scale 1:900,000</p><div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
+                maps.push(`<p class="aoi-map-title" style="font-size:13px;font-weight:600;color:var(--blm-brown);margin:16px 0 4px;">Orientation Map at scale 1:900,000</p><div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
             }
 
             const ext2 = selectionGeom;
@@ -3201,7 +3212,7 @@ define([
 
             if (ss2) {
                 const composited2 = await compositeWithOverview(ss2, mainExtent2, 200000);
-                maps.push(`<p style="font-size:13px;font-weight:600;color:var(--blm-brown);margin:16px 0 4px;">Orientation Map at scale 1:200,000</p><div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:200,000)" /></div>`);
+                maps.push(`<p class="aoi-map-title" style="font-size:13px;font-weight:600;color:var(--blm-brown);margin:16px 0 4px;">Orientation Map at scale 1:200,000</p><div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:200,000)" /></div>`);
             }
 
         } finally {
@@ -3925,8 +3936,6 @@ define([
                     background: var(--blm-green) !important;
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
-                    break-after: page;
-                    page-break-after: always;
                 }
                 .interactive-table { font-size: 8px; }
                 .interactive-table th {
@@ -3938,24 +3947,30 @@ define([
                 .section {
                     break-before: page;
                     page-break-before: always;
-                    break-inside: auto;
-                    page-break-inside: auto;
+                    break-inside: avoid;
+                    page-break-inside: avoid;
                     margin-top: 0;
-                    padding: 14px 16px;
+                    padding: 10px 14px;
                     box-shadow: none;
                     border: 1px solid #ccc;
+                }
+                /* Per-feature tables can overflow to the next page */
+                .section .interactive-table-wrapper {
+                    break-before: auto;
+                    break-inside: auto;
+                    page-break-inside: auto;
                 }
                 /* Sub-elements should not split across pages */
                 .section .map,
                 .section h3,
                 .section .layer-narrative,
                 .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
-                /* Constrain map images to fit within a single page */
+                /* Constrain map images to fit on a single page with title + narrative */
                 .section .map {
-                    margin: 8px 0;
+                    margin: 4px 0;
                 }
                 .section .map img {
-                    max-height: 7in;
+                    max-height: 5.5in;
                     width: auto;
                     max-width: 100%;
                     display: block;
@@ -4006,8 +4021,14 @@ define([
                 .report-toc { break-inside: avoid; page-break-inside: avoid; }
                 .back-to-top { display: none !important; }
                 /* AOI maps fit within a page */
-                .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 8px 0; }
-                .aoi-map img { max-height: 7.5in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
+                .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 4px 0; }
+                .aoi-map img { max-height: 3.4in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
+                .aoi-map-title { font-size: 10px !important; margin: 4px 0 2px !important; }
+                .aoi-section { break-inside: avoid; page-break-inside: avoid; }
+                .aoi-section h2 { margin: 6px 0 4px; }
+                .aoi-section p { font-size: 10px; margin: 2px 0 4px; }
+                .aoi-details { margin-top: 4px; font-size: 10px; }
+                .aoi-details .aoi-field { margin: 2px 0; font-size: 10px; }
             }
         `;
     }
@@ -4202,14 +4223,16 @@ define([
 
             // Build AOI section
             contentParts.push(`
+                <div class="aoi-section">
                 <h2>2. Area of Interest</h2>
-                <p style="color: var(--muted); font-style: italic;">The geographic boundary used for this analysis.</p>
+                <p style="color: var(--muted); font-style: italic; font-size: 13px;">The geographic boundary used for this analysis.</p>
                 ${aoiMapsHtml}
                 <div class="aoi-details">
                     <div class="aoi-field"><span class="aoi-label">Area:</span> ~${formatNumber(Math.floor(aoiAcres), 0)} acres</div>
                     <div class="aoi-field"><span class="aoi-label">AOI Selection Method:</span> ${escapeHtml(aoiMethod)}</div>
                     ${aoiLocationLabel ? `<div class="aoi-field"><span class="aoi-label">Location:</span> ${escapeHtml(aoiLocationLabel)}</div>` : ''}
                     <div class="aoi-field"><span class="aoi-label">Legal Land Description:</span> <em style="color:var(--muted);">(To be determined)</em></div>
+                </div>
                 </div>
                 <div class="pagebreak"></div>
             `);
@@ -4230,7 +4253,8 @@ define([
             } else {
 
                 const paddingFactor = config?.visualReport?.paddingFactor ?? 1;
-                const width = config?.visualReport?.screenshotWidth ?? 1400;
+                const _cfgWidth2 = config?.visualReport?.screenshotWidth ?? 1400;
+                const width = mapUtils.isMobileBrowser() ? Math.min(_cfgWidth2, 900) : _cfgWidth2;
 
                 // ── Canonical final AOI geometry ──
                 // This is THE geometry every report map fits to.
@@ -4976,6 +5000,7 @@ ${getA11yWidgetBlock()}
             // IndexedDB report management
             getLastReportId: () => _lastReportId,
             getReportShareUrl,
+            saveReportToDb,
             loadReportFromDb,
             cleanupExpiredReports
         };

@@ -347,9 +347,14 @@ function setBusy(isBusy) {
             // Wire success "View Report" button
             const successCloseBtn = document.getElementById("reportSuccessCloseBtn");
             if (successCloseBtn) {
-                successCloseBtn.addEventListener("click", () => {
+                successCloseBtn.addEventListener("click", async () => {
                     this.hide();
-                    if (this._onViewReport) this._onViewReport();
+                    try {
+                        if (this._onViewReport) await this._onViewReport();
+                    } catch (e) {
+                        console.warn('[report] Error opening report:', e);
+                        alert("Could not open report. Please try again.");
+                    }
                 });
             }
         },
@@ -628,9 +633,11 @@ function setBusy(isBusy) {
     });
     const {
         openHtmlInNewTab, setCachedFinalReportHtml,
-        loadReportFromDb, cleanupExpiredReports,
+        saveReportToDb, loadReportFromDb, cleanupExpiredReports,
         buildReportInBackground, openCompletedReport
     } = finalReport;
+
+    const { isMobileBrowser } = mapUtils;
 
     // ── Initialize feature-picker module with shared state + deps ──
     featurePickerModule.init(state, { GraphicsLayer, Graphic });
@@ -1234,8 +1241,30 @@ function setActiveTab(tabName) {
         if (section) section.classList.toggle('open');
     }
 
-    // Cache for generated permit-type reports
+    // Cache for generated permit-type reports.
+    // On mobile: stores IndexedDB report IDs (strings) to avoid memory pressure.
+    // On desktop: stores full HTML strings for instant re-open.
     const cachedPermitReports = {};
+
+    /**
+     * Open a report from cache — loads from IndexedDB if the cache holds
+     * just a report ID (mobile), or opens directly from HTML (desktop).
+     */
+    async function openCachedReport(cacheEntry) {
+        if (!cacheEntry) return false;
+        // If it's a short string, it's an IDB report ID
+        if (typeof cacheEntry === 'string' && cacheEntry.length < 30) {
+            try {
+                const html = await loadReportFromDb(cacheEntry);
+                if (html) return openCompletedReport(html);
+            } catch (e) {
+                console.warn('[report] Failed to load report from IndexedDB:', e);
+            }
+            return false;
+        }
+        // Desktop path: it's the full HTML string
+        return openCompletedReport(cacheEntry);
+    }
 
     /**
      * Generate the report for the active permit type.
@@ -1260,7 +1289,7 @@ function setActiveTab(tabName) {
         
         // Check if report is already ready to view
         if (wizFullReport && wizFullReport.dataset.reportReady === 'true' && cachedPermitReports[ptKey]) {
-            const opened = openCompletedReport(cachedPermitReports[ptKey]);
+            const opened = await openCachedReport(cachedPermitReports[ptKey]);
             if (!opened) {
                 alert("Could not open report. Please allow popups for this site.");
             }
@@ -1272,6 +1301,7 @@ function setActiveTab(tabName) {
         reportModal.setStep(`Building ${ptLabel} Report`);
         console.log(`[report] Starting ${ptLabel} report generation…`);
         
+        const _isMobile = isMobileBrowser();
         let reportFinalStats = {};
         try {
             const htmlContent = await buildReportInBackground({
@@ -1292,10 +1322,27 @@ function setActiveTab(tabName) {
                 setStatus("Report canceled");
                 return;
             }
+
+            // On mobile, immediately save to IndexedDB and release the
+            // in-memory HTML string to prevent the browser from killing
+            // the page due to memory pressure.
+            let reportRef = htmlContent; // desktop: keep HTML in memory
+            if (_isMobile) {
+                try {
+                    reportModal.setProgressDetail('Saving report…');
+                    const idbId = await saveReportToDb(htmlContent);
+                    reportRef = idbId; // store only the short ID
+                    console.log(`[report] Saved to IndexedDB as "${idbId}" — releasing HTML from memory`);
+                } catch (idbErr) {
+                    console.warn('[report] IndexedDB save failed, keeping HTML in memory:', idbErr);
+                    // Fall back to in-memory on IDB failure
+                    reportRef = htmlContent;
+                }
+            }
             
             // Show success overlay with stats
-            reportModal._onViewReport = () => {
-                const opened = openCompletedReport(htmlContent);
+            reportModal._onViewReport = async () => {
+                const opened = await openCachedReport(reportRef);
                 if (!opened) {
                     alert("Could not open report. Please allow popups for this site.");
                 }
@@ -1308,8 +1355,8 @@ function setActiveTab(tabName) {
             
             console.log(`[report] ${ptLabel} report generated successfully`);
             
-            // Cache the report and update button to "View" state
-            cachedPermitReports[ptKey] = htmlContent;
+            // Cache the report reference and update button to "View" state
+            cachedPermitReports[ptKey] = reportRef;
             
             if (wizFullReport) {
                 wizFullReport.dataset.reportReady = 'true';

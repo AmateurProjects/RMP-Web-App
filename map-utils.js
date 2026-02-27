@@ -19,6 +19,14 @@ define([
     // ── Module-level reference to shared state (set by init) ──
     let S = null;
 
+    // ── Mobile detection ──────────────────────────────────────────
+    function isMobileBrowser() {
+        if (typeof navigator === 'undefined') return false;
+        const ua = navigator.userAgent || '';
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+            || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(ua)); // iPad desktop-mode
+    }
+
     // ── Renderer / Symbology ─────────────────────────────────────────
 
     function getPresetRenderer(kind, cfgObj, geometryType) {
@@ -633,7 +641,7 @@ define([
 
         const ssOpts = {
             format: "jpg",
-            quality: 92,
+            quality: isMobileBrowser() ? 72 : 92,
             width: width,
             height: screenConfig.height
                 ? screenConfig.height
@@ -1072,6 +1080,9 @@ define([
         hardRefreshLayer,
         lockViewContainer,
         unlockViewContainer,
+
+        // Mobile detection
+        isMobileBrowser,
 
         // Report layers
         buildReportDisplayLayers
