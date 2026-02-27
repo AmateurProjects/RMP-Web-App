@@ -2783,8 +2783,15 @@ define([
                 " expandK=" + expandK + " viewSize=" + viewW + "x" + viewH);
         }
 
-        // Navigate using center + scale (completely bypasses polygon.extent)
-        await view.goTo({ center: [cx, cy], scale: fitScale }, { animate: false });
+        // Navigate using center + scale (completely bypasses polygon.extent).
+        // Center must include spatialReference — a plain [x,y] array is
+        // interpreted as [longitude, latitude] (WGS84), which would be
+        // wildly wrong for Web Mercator meter values.
+        var sr = finalAoiGeom.spatialReference || view.spatialReference;
+        await view.goTo({
+            center: { x: cx, y: cy, spatialReference: sr },
+            scale: fitScale
+        }, { animate: false });
         if (waitFn) await waitFn(800);
 
         if (DEBUG_AOI) {
