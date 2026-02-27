@@ -596,6 +596,16 @@ define([
         // Force a render frame so the canvas is up-to-date
         await new Promise(r => requestAnimationFrame(r));
 
+        // Debug: log extent immediately before takeScreenshot
+        if (view.extent) {
+            console.log("[captureScreenshot] FINAL view.extent before takeScreenshot:",
+                JSON.stringify({
+                    xmin: view.extent.xmin, xmax: view.extent.xmax,
+                    width: view.extent.width, height: view.extent.height,
+                    scale: view.scale
+                }));
+        }
+
         const ssOpts = {
             format: "jpg",
             quality: 92,

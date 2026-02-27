@@ -4019,10 +4019,8 @@ define([
                     // traversal for every single screenshot.
                     setVisibilityForScreenshot(null);
 
-                    // Build the AOI mask ONCE — the view is already at
-                    // fixedCenter / fixedScale from the initial goTo above,
-                    // and nothing moves it between there and here.
-                    updateAoiMask(true);
+                    // TEMPORARILY DISABLED — testing if mask causes zoom drift
+                    // updateAoiMask(true);
                     ensureAoiOnTop();
 
                     // Process each layer
@@ -4172,6 +4170,14 @@ define([
                                     ensureAoiOnTop();
                                     await waitForLayerReadyToCapture(tempLayer, view, { timeoutMs: 10000 });
                                     await _waitForOverlays(view, overlays);
+                                    // Debug: log extent right before screenshot
+                                    console.log("[screenshot-pre] layer:", layerTitle,
+                                        "view.scale:", view.scale, "fixedScale:", fixedScale,
+                                        "view.extent:", JSON.stringify({
+                                            xmin: view.extent.xmin, xmax: view.extent.xmax,
+                                            width: view.extent.width, height: view.extent.height
+                                        }),
+                                        "view.center:", view.center.x, view.center.y);
                                     dataUrl = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
                                 } finally {
                                     try { view.map.remove(tempLayer); } catch (e) { }
