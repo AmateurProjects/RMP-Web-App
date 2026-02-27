@@ -635,9 +635,11 @@ define([
             format: "jpg",
             quality: 92,
             width: width,
-            height: (view.width > 0 && view.height > 0)
-                ? Math.round(width * (view.height / view.width))
-                : Math.round(width * 0.5625)
+            height: screenConfig.height
+                ? screenConfig.height
+                : (view.width > 0 && view.height > 0)
+                    ? Math.round(width * (view.height / view.width))
+                    : Math.round(width * 0.5625)
         };
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {

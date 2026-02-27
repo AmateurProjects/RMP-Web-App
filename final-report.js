@@ -2677,6 +2677,33 @@ define([
     }
 
     // ────────────────────────────────────────────
+    // _ringBBox — compute bounding box from ring vertex
+    // coordinates instead of relying on the Esri .extent
+    // property, which can be inflated on polygons created
+    // by the Sketch widget.
+    // ────────────────────────────────────────────
+    function _ringBBox(geom) {
+        const rings = geom && geom.rings;
+        if (!rings || rings.length === 0) return geom ? geom.extent : null;
+        let xmin = Infinity, ymin = Infinity;
+        let xmax = -Infinity, ymax = -Infinity;
+        for (let ri = 0; ri < rings.length; ri++) {
+            const ring = rings[ri];
+            for (let vi = 0; vi < ring.length; vi++) {
+                const x = ring[vi][0], y = ring[vi][1];
+                if (x < xmin) xmin = x;
+                if (x > xmax) xmax = x;
+                if (y < ymin) ymin = y;
+                if (y > ymax) ymax = y;
+            }
+        }
+        return {
+            xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax,
+            spatialReference: geom.spatialReference
+        };
+    }
+
+    // ────────────────────────────────────────────
     // generateAoiMapsWithCircles
     // ────────────────────────────────────────────
     async function generateAoiMapsWithCircles() {
@@ -2765,13 +2792,14 @@ define([
 
         async function compositeWithOverview(mainDataUrl, mainExtent, scale) {
             const overviewScale = scale * overviewZoomFactor;
-            await view.goTo({ target: selectionGeom.extent, scale: overviewScale }, { animate: false });
+            const overviewTarget = _ringBBox(selectionGeom) || selectionGeom.extent;
+            await view.goTo({ target: overviewTarget, scale: overviewScale }, { animate: false });
 
             // Wait for boundary layers to finish rendering at the new scale
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
 
-            const ovSs = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+            const ovSs = await captureScreenshotWithWait({ width, height, tabWaitTimeout: 5000 });
             if (!ovSs) return mainDataUrl;
 
             const ovExtent = view.extent;
@@ -2826,7 +2854,7 @@ define([
 
             // Draw red arrow pointing at the AOI
             {
-                const aoiExt = selectionGeom.extent;
+                const aoiExt = _ringBBox(selectionGeom) || selectionGeom.extent;
                 const mw = mainExtent.xmax - mainExtent.xmin;
                 const mh = mainExtent.ymax - mainExtent.ymin;
                 if (aoiExt && mw > 0 && mh > 0) {
@@ -2908,14 +2936,14 @@ define([
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 8000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 8000 });
 
-            const ext1 = selectionGeom.extent;
+            const ext1 = _ringBBox(selectionGeom) || selectionGeom.extent;
             await view.goTo({ target: ext1, scale: 900000 }, { animate: false });
 
             // Wait for boundary layers at new scale
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
 
-            const ss1 = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+            const ss1 = await captureScreenshotWithWait({ width, height, tabWaitTimeout: 5000 });
             const mainExtent1 = view.extent.clone();
 
             if (ss1) {
@@ -2923,14 +2951,14 @@ define([
                 maps.push(`<div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
             }
 
-            const ext2 = selectionGeom.extent;
+            const ext2 = _ringBBox(selectionGeom) || selectionGeom.extent;
             await view.goTo({ target: ext2, scale: 200000 }, { animate: false });
 
             // Wait for boundary layers at new scale
             await waitForLayerReadyToCapture(stateLayer, view, { timeoutMs: 5000 });
             await waitForLayerReadyToCapture(countyLayer, view, { timeoutMs: 5000 });
 
-            const ss2 = await captureScreenshotWithWait({ width, tabWaitTimeout: 5000 });
+            const ss2 = await captureScreenshotWithWait({ width, height, tabWaitTimeout: 5000 });
             const mainExtent2 = view.extent.clone();
 
             if (ss2) {
@@ -3883,33 +3911,17 @@ define([
                 // guarantees the full AOI boundary stays visible in every map.
                 let fixedCenter = null;
                 let fixedScale  = null;
-                const ext = selectionGeom?.extent;
 
-                // ── Diagnostic: why is the extent so large? ──
+                // Compute the AOI bounding box directly from ring vertex
+                // coordinates.  The Esri Polygon .extent property can be
+                // inflated on geometries created by the Sketch widget
+                // (observed ~7.6× larger than the actual vertices).
+                const ext = _ringBBox(selectionGeom) || selectionGeom?.extent;
+
                 if (ext) {
-                    const w = ext.xmax - ext.xmin;
-                    const h = ext.ymax - ext.ymin;
-                    const rings = selectionGeom.rings || [];
-                    const vertexCount = rings.reduce((sum, r) => sum + r.length, 0);
-                    console.log("[buildReport] selectionGeom type=" + selectionGeom.type +
-                        " rings=" + rings.length + " vertices=" + vertexCount +
-                        " extent W=" + w.toFixed(1) + " H=" + h.toFixed(1) +
-                        " xmin=" + ext.xmin.toFixed(2) + " ymin=" + ext.ymin.toFixed(2) +
-                        " xmax=" + ext.xmax.toFixed(2) + " ymax=" + ext.ymax.toFixed(2));
-                    // Compare with aoiGraphic geometry
-                    const aoiG = S.aoiGraphic?.geometry;
-                    if (aoiG && aoiG.extent) {
-                        const ae = aoiG.extent;
-                        console.log("[buildReport] aoiGraphic.extent W=" + (ae.xmax - ae.xmin).toFixed(1) +
-                            " H=" + (ae.ymax - ae.ymin).toFixed(1) +
-                            " xmin=" + ae.xmin.toFixed(2) + " ymin=" + ae.ymin.toFixed(2) +
-                            " xmax=" + ae.xmax.toFixed(2) + " ymax=" + ae.ymax.toFixed(2));
-                    }
-                    // Dump first few vertices of each ring for eyeball inspection
-                    rings.forEach((ring, ri) => {
-                        const sample = ring.slice(0, 4).map(pt => "[" + pt[0].toFixed(2) + "," + pt[1].toFixed(2) + "]");
-                        console.log("[buildReport] ring[" + ri + "] length=" + ring.length + " first4: " + sample.join(", "));
-                    });
+                    console.log("[buildReport] AOI bbox (from rings) W=" +
+                        (ext.xmax - ext.xmin).toFixed(1) + " H=" +
+                        (ext.ymax - ext.ymin).toFixed(1));
                 }
 
                 // Snapshot layer visibility
@@ -3982,7 +3994,17 @@ define([
                     // the container aspect ratio matches the extent, the view
                     // should fill edge-to-edge without extra space.
                     if (ext) {
-                        const paddedExtent = ext.clone().expand(paddingFactor);
+                        // Apply optional padding around the AOI extent.
+                        // ext is a plain object from _ringBBox, so expand manually.
+                        const cx = (ext.xmin + ext.xmax) / 2;
+                        const cy = (ext.ymin + ext.ymax) / 2;
+                        const hw = (ext.xmax - ext.xmin) / 2 * paddingFactor;
+                        const hh = (ext.ymax - ext.ymin) / 2 * paddingFactor;
+                        const paddedExtent = {
+                            xmin: cx - hw, ymin: cy - hh,
+                            xmax: cx + hw, ymax: cy + hh,
+                            spatialReference: ext.spatialReference
+                        };
                         await view.goTo(paddedExtent, { animate: false });
                         await waitForViewStationary(1000);
                         fixedCenter = view.center.clone();
