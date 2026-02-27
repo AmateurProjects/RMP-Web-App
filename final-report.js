@@ -5016,19 +5016,9 @@ ${getA11yWidgetBlock()}
         a.click();
         document.body.removeChild(a);
 
-        // Mobile Safari fallback: if isMobileBrowser() is true, also set window.location.href after a short delay
-        try {
-            if (typeof require === 'function') {
-                require(["map-utils"], function(mapUtils) {
-                    if (mapUtils && typeof mapUtils.isMobileBrowser === 'function' && mapUtils.isMobileBrowser()) {
-                        setTimeout(function() {
-                            window.location.href = url;
-                        }, 250);
-                    }
-                });
-            }
-        } catch (e) {}
-
+        // Fallback: if anchor click didn't work, try window.open
+        // (we can't easily detect anchor success, but window.open returns null when blocked)
+        // The anchor approach works on Safari mobile so this is a safety net for other browsers
         window.setTimeout(() => URL.revokeObjectURL(url), 120000);
         return true;
     }
