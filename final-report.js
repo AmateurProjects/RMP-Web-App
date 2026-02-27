@@ -3944,12 +3944,22 @@ define([
                     // We then lock those values for every layer screenshot.
                     if (ext) {
                         const paddedExtent = ext.clone().expand(paddingFactor);
-                        console.log("[buildReportInBackground] AOI extent:", JSON.stringify({
+                        // Debug: log the AOI graphic extent vs selectionGeom extent
+                        const aoiGraphicGeom = S.aoiGraphic?.geometry;
+                        if (aoiGraphicGeom) {
+                            const age = aoiGraphicGeom.extent;
+                            console.log("[buildReportInBackground] aoiGraphic extent:", JSON.stringify({
+                                xmin: age.xmin, ymin: age.ymin, xmax: age.xmax, ymax: age.ymax,
+                                width: age.width, height: age.height, sr: age.spatialReference?.wkid
+                            }));
+                        }
+                        console.log("[buildReportInBackground] selectionGeom extent:", JSON.stringify({
                             xmin: ext.xmin, ymin: ext.ymin, xmax: ext.xmax, ymax: ext.ymax,
                             width: ext.width, height: ext.height, sr: ext.spatialReference?.wkid
                         }));
                         console.log("[buildReportInBackground] paddingFactor:", paddingFactor);
-                        console.log("[buildReportInBackground] container:", containerW, "x", containerH);
+                        console.log("[buildReportInBackground] container:", containerW, "x", containerH,
+                            "view.width:", view.width, "view.height:", view.height);
                         await view.goTo(paddedExtent, { animate: false });
                         await waitForViewStationary(1000);
                         fixedCenter = view.center.clone();
