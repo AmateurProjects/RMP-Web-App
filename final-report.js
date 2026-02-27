@@ -920,7 +920,7 @@ define([
         if (landStatus.length > 0) {
             var lsNames = landStatus.map(function (f) { return f.name; }).join(", ");
             paragraphs.push('<h4 class="findings-subhead">Jurisdictional Context</h4>');
-            paragraphs.push("<p>The project area has been identified to include federal lands based on the following datasets: " + escapeHtml(lsNames) + ". Under FLPMA Section 302 (43 U.S.C. &sect;1732), the BLM has authority to manage these public lands through leases, permits, and easements. Applications for use of these lands must be filed with the BLM field office having jurisdiction (43 CFR &sect;2804.11 for rights-of-way; 43 CFR &sect;2920.5-1 for leases and permits). Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications, including pre-application meetings recommended under 43 CFR &sect;2804.10.</p>");
+            paragraphs.push("<p>The project area has been identified to include federal lands. Under FLPMA Section 302 (43 U.S.C. &sect;1732), the BLM has authority to manage these public lands through leases, permits, and easements. Applications for use of these lands must be filed with the BLM field office having jurisdiction (43 CFR &sect;2804.11 for rights-of-way; 43 CFR &sect;2920.5-1 for leases and permits). Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications, including pre-application meetings recommended under 43 CFR &sect;2804.10.</p>");
         }
 
         // Special designations (high priority for permitting)
@@ -1265,29 +1265,7 @@ define([
                     box-shadow: 0 1px 4px rgba(0,0,0,0.06);
                     position: relative;
                 }
-                .map img{ display:block; width:100%; height:auto; cursor: grab; transition: transform 0.2s ease; transform-origin: center center; }
-                .map img.zoomed{ cursor: grab; }
-                .map img.panning{ cursor: grabbing; }
-                .map-zoom-controls {
-                    position: absolute;
-                    top: 10px; right: 10px;
-                    display: flex; flex-direction: column; gap: 4px;
-                    z-index: 10;
-                }
-                .map-zoom-controls button {
-                    width: 32px; height: 32px;
-                    border: 1px solid var(--border);
-                    border-radius: 6px;
-                    background: rgba(255,255,255,0.92);
-                    font-size: 18px; font-weight: 700;
-                    cursor: pointer;
-                    color: var(--blm-green);
-                    display: flex; align-items: center; justify-content: center;
-                    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-                    transition: background 0.15s;
-                    line-height: 1;
-                }
-                .map-zoom-controls button:hover { background: #e8f5e9; }
+                .map img{ display:block; width:100%; height:auto; }
                 .slope-arrow-overlay {
                     position: absolute;
                     bottom: 12px; left: 12px;
@@ -1538,12 +1516,11 @@ define([
                 @media print{
                     html, body{ background: white; }
                     .actions, .hint{ display:none !important; }
-                    .map-zoom-controls { display:none !important; }
-                    .map img { transform: none !important; }
                     .section-hide-btn { display:none !important; }
                     .layer-maps-toolbar { display:none !important; }
                     .section.section-hidden { display:none !important; }
                     .section-hidden + .pagebreak { display:none !important; }
+                    .hidden-cols-bar { display:none !important; }
                     .wrap{ 
                         max-width: none; 
                         padding: 0; 
@@ -1556,11 +1533,20 @@ define([
                         print-color-adjust: exact;
                     }
                     .section{ 
-                        break-inside: avoid; 
+                        break-inside: auto; 
                         box-shadow: none;
                         border: 1px solid #ccc;
                     }
+                    .section .map,
+                    .section h3,
+                    .section .layer-narrative,
+                    .section table.metaTbl { break-inside: avoid; }
                     .pagebreak{ break-after: page; }
+                    /* Page break before each numbered section heading */
+                    h2[id^="section-"]:not(#section-summary) { break-before: page; }
+                    /* Remove table scroll constraints */
+                    .table-scroll { max-height: none !important; overflow: visible !important; }
+                    .interactive-table-wrapper { overflow: visible !important; }
                     table.data-sources-table th{
                         background: var(--blm-green) !important;
                         -webkit-print-color-adjust: exact;
@@ -1923,7 +1909,8 @@ define([
                     .interactive-table-wrapper .table-toolbar { display: none !important; }
                     .hidden-cols-bar { display: none !important; }
                     .col-hide-btn { display: none !important; }
-                    .table-scroll { max-height: none; overflow: visible; }
+                    .table-scroll { max-height: none !important; overflow: visible !important; }
+                    .interactive-table-wrapper { overflow: visible !important; }
                     .interactive-table { font-size: 9px; }
                     .interactive-table th {
                         background: var(--blm-green) !important;
@@ -2257,97 +2244,6 @@ define([
                 })();
             });
 
-            // ── Map zoom / pan controls ──
-            (function() {
-                document.querySelectorAll('.map').forEach(function(container) {
-                    var img = container.querySelector('img');
-                    if (!img) return;
-                    var scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
-                    function applyTransform() {
-                        img.style.transform = 'scale(' + scale + ') translate(' + panX + 'px,' + panY + 'px)';
-                    }
-                    var zoomControls = container.querySelector('.map-zoom-controls');
-                    if (!zoomControls) return;
-                    var btnPlus = zoomControls.querySelector('.zoom-in');
-                    var btnMinus = zoomControls.querySelector('.zoom-out');
-                    var btnReset = zoomControls.querySelector('.zoom-reset');
-                    if (btnPlus) btnPlus.addEventListener('click', function() {
-                        scale = Math.min(scale * 1.3, 8);
-                        applyTransform();
-                    });
-                    if (btnMinus) btnMinus.addEventListener('click', function() {
-                        scale = Math.max(scale / 1.3, 1);
-                        if (scale === 1) { panX = 0; panY = 0; }
-                        applyTransform();
-                    });
-                    if (btnReset) btnReset.addEventListener('click', function() {
-                        scale = 1; panX = 0; panY = 0;
-                        applyTransform();
-                    });
-                    // Mouse-wheel zoom
-                    container.addEventListener('wheel', function(e) {
-                        e.preventDefault();
-                        var delta = e.deltaY < 0 ? 1.15 : 1/1.15;
-                        scale = Math.max(1, Math.min(scale * delta, 8));
-                        if (scale === 1) { panX = 0; panY = 0; }
-                        applyTransform();
-                    }, { passive: false });
-                    // Touch: pinch-to-zoom and pan
-                    var lastTouchDist = 0, lastTouchX = 0, lastTouchY = 0;
-                    img.addEventListener('touchstart', function(e) {
-                        if (e.touches.length === 2) {
-                            var dx = e.touches[0].clientX - e.touches[1].clientX;
-                            var dy = e.touches[0].clientY - e.touches[1].clientY;
-                            lastTouchDist = Math.sqrt(dx*dx + dy*dy);
-                        } else if (e.touches.length === 1 && scale > 1) {
-                            dragging = true;
-                            lastTouchX = e.touches[0].clientX - panX;
-                            lastTouchY = e.touches[0].clientY - panY;
-                            img.classList.add('panning');
-                            e.preventDefault();
-                        }
-                    }, { passive: false });
-                    img.addEventListener('touchmove', function(e) {
-                        if (e.touches.length === 2) {
-                            e.preventDefault();
-                            var dx = e.touches[0].clientX - e.touches[1].clientX;
-                            var dy = e.touches[0].clientY - e.touches[1].clientY;
-                            var dist = Math.sqrt(dx*dx + dy*dy);
-                            if (lastTouchDist > 0) {
-                                scale = Math.max(1, Math.min(scale * (dist / lastTouchDist), 8));
-                                if (scale === 1) { panX = 0; panY = 0; }
-                                applyTransform();
-                            }
-                            lastTouchDist = dist;
-                        } else if (dragging && e.touches.length === 1) {
-                            e.preventDefault();
-                            panX = e.touches[0].clientX - lastTouchX;
-                            panY = e.touches[0].clientY - lastTouchY;
-                            applyTransform();
-                        }
-                    }, { passive: false });
-                    img.addEventListener('touchend', function() {
-                        lastTouchDist = 0;
-                        if (dragging) { dragging = false; img.classList.remove('panning'); }
-                    });
-                    // Pan via drag
-                    img.addEventListener('mousedown', function(e) {
-                        if (scale <= 1) return;
-                        dragging = true; startX = e.clientX - panX; startY = e.clientY - panY;
-                        img.classList.add('panning');
-                        e.preventDefault();
-                    });
-                    document.addEventListener('mousemove', function(e) {
-                        if (!dragging) return;
-                        panX = e.clientX - startX; panY = e.clientY - startY;
-                        applyTransform();
-                    });
-                    document.addEventListener('mouseup', function() {
-                        if (dragging) { dragging = false; img.classList.remove('panning'); }
-                    });
-                });
-            })();
-
             // ── Back-to-top button show/hide ──
             (function() {
                 var btn = document.getElementById('backToTop');
@@ -2431,11 +2327,13 @@ define([
     }
 
     /**
-     * Build a data sources table scoped to the layers used in a specific report.
-     * Each layer gets a row with Name, URL, Features in AOI, UP/Down,
-     * followed by a description row.
+     * Build a data sources section scoped to the layers used in a specific report.
+     * Split into 3 sub-sections:
+     *   1) Layers with features in the AOI (sorted by count desc)
+     *   2) Layers without features in the AOI
+     *   3) Layers that were down/unavailable
      */
-    async function buildLayerSourcesTable(layers) {
+    async function buildLayerSourcesTable(layers, sectionNumber) {
         if (!layers || !layers.length) return "";
 
         // Fetch descriptions in parallel (with timeout) — reuse cached ones
@@ -2452,7 +2350,6 @@ define([
                     const pjson = await fetchJsonWithTimeout(pjsonUrl, 5000);
                     const desc = pickServiceDescription(pjson) || "";
                     if (desc) S.serviceStatus.set(url + "::desc", desc);
-                    // Service responded from the browser — mark it UP regardless of R2 cache
                     S.serviceStatus.set(url, "UP");
                     return { url, desc };
                 } catch (e) {
@@ -2468,51 +2365,135 @@ define([
             }
         }
 
-        const rows = layers.map(item => {
+        // Classify layers into 3 buckets
+        const withFeatures = [];
+        const withoutFeatures = [];
+        const unavailable = [];
+
+        for (const item of layers) {
             const url = item.url || "";
             const status = lookupServiceStatus(url);
-            const statusClass = status === "UP" ? "status-up" : (status === "UNKNOWN" ? "status-unknown" : "status-down");
-            const desc = descByUrl.get(url) || S.serviceStatus.get(url + "::desc") || "";
             const featCount = item.count || 0;
+            const desc = descByUrl.get(url) || S.serviceStatus.get(url + "::desc") || "";
 
-            const countDisplay = featCount > 0
-                ? `<b>${escapeHtml(String(featCount))}</b>`
-                : '<span class="feat-count-zero">0</span>';
+            const entry = { item, url, status, featCount, desc };
 
-            const descRow = desc
-                ? `<tr class="desc-row"><td colspan="4">${escapeHtml(desc)}</td></tr>`
-                : `<tr class="desc-row"><td colspan="4" style="opacity:0.5;">(No description available)</td></tr>`;
+            if (status === "DOWN" || status === "UNKNOWN") {
+                unavailable.push(entry);
+            } else if (featCount > 0) {
+                withFeatures.push(entry);
+            } else {
+                withoutFeatures.push(entry);
+            }
+        }
 
-            return `
-                <tr>
-                    <td class="service-name-col">${escapeHtml(item.title || "Unknown")}</td>
-                    <td class="service-url-col"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a></td>
-                    <td class="feat-count">${countDisplay}</td>
-                    <td class="service-status-col"><span class="${statusClass}">${status}</span></td>
-                </tr>
-                ${descRow}
-            `;
-        }).join("");
+        // Sort "with features" by count descending
+        withFeatures.sort((a, b) => b.featCount - a.featCount);
+        // Sort others alphabetically by title
+        withoutFeatures.sort((a, b) => (a.item.title || '').localeCompare(b.item.title || ''));
+        unavailable.sort((a, b) => (a.item.title || '').localeCompare(b.item.title || ''));
 
-        return `
-            <div class="section" style="background: transparent; border: none; box-shadow: none; padding: 0;">
-                <h2>Data Sources</h2>
-                <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
-                    The following geospatial web services were queried for this report. Service availability was verified at the time of report generation.
-                </p>
+        function buildRows(entries, colSpan) {
+            return entries.map(e => {
+                const countDisplay = e.featCount > 0
+                    ? `<b>${escapeHtml(String(e.featCount))}</b>`
+                    : '<span class="feat-count-zero">0</span>';
+
+                const descRow = e.desc
+                    ? `<tr class="desc-row"><td colspan="${colSpan}">${escapeHtml(e.desc)}</td></tr>`
+                    : `<tr class="desc-row"><td colspan="${colSpan}" style="opacity:0.5;">(No description available)</td></tr>`;
+
+                return `
+                    <tr>
+                        <td class="service-name-col">${escapeHtml(e.item.title || "Unknown")}</td>
+                        <td class="service-url-col"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener">${escapeHtml(e.url)}</a></td>
+                        <td class="feat-count">${countDisplay}</td>
+                    </tr>
+                    ${descRow}
+                `;
+            }).join("");
+        }
+
+        function buildRowsNoCount(entries) {
+            return entries.map(e => {
+                const descRow = e.desc
+                    ? `<tr class="desc-row"><td colspan="2">${escapeHtml(e.desc)}</td></tr>`
+                    : `<tr class="desc-row"><td colspan="2" style="opacity:0.5;">(No description available)</td></tr>`;
+
+                return `
+                    <tr>
+                        <td class="service-name-col">${escapeHtml(e.item.title || "Unknown")}</td>
+                        <td class="service-url-col"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener">${escapeHtml(e.url)}</a></td>
+                    </tr>
+                    ${descRow}
+                `;
+            }).join("");
+        }
+
+        const numLabel = sectionNumber ? `${sectionNumber}. ` : '';
+
+        // Sub-section 1: Layers with features
+        let withFeaturesHtml = '';
+        if (withFeatures.length > 0) {
+            withFeaturesHtml = `
+                <h3 style="margin-top:24px;">Layers with Features in the Area of Interest</h3>
                 <table class="data-sources-table">
                     <thead>
                         <tr>
                             <th style="width: 30%;">Layer Name</th>
-                            <th style="width: 35%;">Web Service URL</th>
-                            <th style="width: 15%;">Features in AOI</th>
-                            <th style="width: 10%;">Status</th>
+                            <th style="width: 50%;">Web Service URL</th>
+                            <th style="width: 20%;">Features in AOI</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        ${rows}
-                    </tbody>
+                    <tbody>${buildRows(withFeatures, 3)}</tbody>
                 </table>
+            `;
+        }
+
+        // Sub-section 2: Layers without features
+        let withoutFeaturesHtml = '';
+        if (withoutFeatures.length > 0) {
+            withoutFeaturesHtml = `
+                <h3 style="margin-top:24px;">Layers without Features in the Area of Interest</h3>
+                <table class="data-sources-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35%;">Layer Name</th>
+                            <th style="width: 65%;">Web Service URL</th>
+                        </tr>
+                    </thead>
+                    <tbody>${buildRowsNoCount(withoutFeatures)}</tbody>
+                </table>
+            `;
+        }
+
+        // Sub-section 3: Unavailable layers
+        let unavailableHtml = '';
+        if (unavailable.length > 0) {
+            unavailableHtml = `
+                <h3 style="margin-top:24px;">Layers Unavailable at Time of Report</h3>
+                <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">These layers were down or unreachable when the report was generated. Features from these layers are not reflected in the analysis.</p>
+                <table class="data-sources-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35%;">Layer Name</th>
+                            <th style="width: 65%;">Web Service URL</th>
+                        </tr>
+                    </thead>
+                    <tbody>${buildRowsNoCount(unavailable)}</tbody>
+                </table>
+            `;
+        }
+
+        return `
+            <div class="section" style="background: transparent; border: none; box-shadow: none; padding: 0;">
+                <h2>${numLabel}Data Sources</h2>
+                <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
+                    The following geospatial web services were queried for this report.
+                </p>
+                ${withFeaturesHtml}
+                ${withoutFeaturesHtml}
+                ${unavailableHtml}
             </div>
         `;
     }
@@ -2530,7 +2511,6 @@ define([
         // Fetch descriptions in parallel (with timeout) for any service not already cached
         const descFetchResults = await Promise.allSettled(
             services.map(async svc => {
-                // Check cache first
                 const cached = S.serviceStatus.get(svc.url + "::desc");
                 if (cached) return { url: svc.url, desc: cached };
 
@@ -2546,7 +2526,6 @@ define([
             })
         );
 
-        // Merge fetched descriptions
         const descByUrl = new Map();
         for (const r of descFetchResults) {
             if (r.status === "fulfilled" && r.value) {
@@ -2554,53 +2533,109 @@ define([
             }
         }
 
-        const rows = services.map(svc => {
+        // Classify into 3 buckets
+        const withFeatures = [];
+        const withoutFeatures = [];
+        const unavailable = [];
+
+        for (const svc of services) {
             const status = lookupServiceStatus(svc.url);
-            const statusClass = status === "UP" ? "status-up" : (status === "UNKNOWN" ? "status-unknown" : "status-down");
             const desc = descByUrl.get(svc.url) || S.serviceStatus.get(svc.url + "::desc") || "";
             const normalUrl = String(svc.url).replace(/\/+$/, "");
-            const featCount = countByUrl.has(normalUrl) ? countByUrl.get(normalUrl) : null;
+            const featCount = countByUrl.has(normalUrl) ? countByUrl.get(normalUrl) : 0;
 
-            const countDisplay = featCount === null
-                ? '<span class="feat-count-zero">&mdash;</span>'
-                : featCount > 0
-                    ? `<b>${escapeHtml(String(featCount))}</b>`
+            const entry = { item: svc, url: svc.url, status, featCount, desc };
+
+            if (status === "DOWN" || status === "UNKNOWN") {
+                unavailable.push(entry);
+            } else if (featCount > 0) {
+                withFeatures.push(entry);
+            } else {
+                withoutFeatures.push(entry);
+            }
+        }
+
+        withFeatures.sort((a, b) => b.featCount - a.featCount);
+        withoutFeatures.sort((a, b) => (a.item.title || '').localeCompare(b.item.title || ''));
+        unavailable.sort((a, b) => (a.item.title || '').localeCompare(b.item.title || ''));
+
+        function buildRows(entries, colSpan) {
+            return entries.map(e => {
+                const countDisplay = e.featCount > 0
+                    ? `<b>${escapeHtml(String(e.featCount))}</b>`
                     : '<span class="feat-count-zero">0</span>';
+                const descRow = e.desc
+                    ? `<tr class="desc-row"><td colspan="${colSpan}">${escapeHtml(e.desc)}</td></tr>`
+                    : `<tr class="desc-row"><td colspan="${colSpan}" style="opacity:0.5;">(No description available)</td></tr>`;
+                return `
+                    <tr>
+                        <td class="service-name-col">${escapeHtml(e.item.title)}</td>
+                        <td class="service-url-col"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener">${escapeHtml(e.url)}</a></td>
+                        <td class="feat-count">${countDisplay}</td>
+                    </tr>
+                    ${descRow}
+                `;
+            }).join("");
+        }
 
-            const descRow = desc
-                ? `<tr class="desc-row"><td colspan="4">${escapeHtml(desc)}</td></tr>`
-                : `<tr class="desc-row"><td colspan="4" style="opacity:0.5;">(No description available)</td></tr>`;
+        function buildRowsNoCount(entries) {
+            return entries.map(e => {
+                const descRow = e.desc
+                    ? `<tr class="desc-row"><td colspan="2">${escapeHtml(e.desc)}</td></tr>`
+                    : `<tr class="desc-row"><td colspan="2" style="opacity:0.5;">(No description available)</td></tr>`;
+                return `
+                    <tr>
+                        <td class="service-name-col">${escapeHtml(e.item.title)}</td>
+                        <td class="service-url-col"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener">${escapeHtml(e.url)}</a></td>
+                    </tr>
+                    ${descRow}
+                `;
+            }).join("");
+        }
 
-            return `
-                <tr>
-                    <td class="service-name-col">${escapeHtml(svc.title)}</td>
-                    <td class="service-url-col"><a href="${escapeHtml(svc.url)}" target="_blank" rel="noopener">${escapeHtml(svc.url)}</a></td>
-                    <td class="feat-count">${countDisplay}</td>
-                    <td class="service-status-col"><span class="${statusClass}">${status}</span></td>
-                </tr>
-                ${descRow}
+        let withFeaturesHtml = '';
+        if (withFeatures.length > 0) {
+            withFeaturesHtml = `
+                <h3 style="margin-top:24px;">Layers with Features in the Area of Interest</h3>
+                <table class="data-sources-table">
+                    <thead><tr><th style="width:30%;">Layer Name</th><th style="width:50%;">Web Service URL</th><th style="width:20%;">Features in AOI</th></tr></thead>
+                    <tbody>${buildRows(withFeatures, 3)}</tbody>
+                </table>
             `;
-        }).join("");
+        }
+
+        let withoutFeaturesHtml = '';
+        if (withoutFeatures.length > 0) {
+            withoutFeaturesHtml = `
+                <h3 style="margin-top:24px;">Layers without Features in the Area of Interest</h3>
+                <table class="data-sources-table">
+                    <thead><tr><th style="width:35%;">Layer Name</th><th style="width:65%;">Web Service URL</th></tr></thead>
+                    <tbody>${buildRowsNoCount(withoutFeatures)}</tbody>
+                </table>
+            `;
+        }
+
+        let unavailableHtml = '';
+        if (unavailable.length > 0) {
+            unavailableHtml = `
+                <h3 style="margin-top:24px;">Layers Unavailable at Time of Report</h3>
+                <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">These layers were down or unreachable when the report was generated. Features from these layers are not reflected in the analysis.</p>
+                <table class="data-sources-table">
+                    <thead><tr><th style="width:35%;">Layer Name</th><th style="width:65%;">Web Service URL</th></tr></thead>
+                    <tbody>${buildRowsNoCount(unavailable)}</tbody>
+                </table>
+            `;
+        }
 
         return `
             <div class="section" style="background: transparent; border: none; box-shadow: none; padding: 0;">
-                <h2 id="section-sources"><span class="section-num">5.</span> Data Sources</h2>
+                <h2 id="section-sources">Data Sources</h2>
                 <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
-                    The following geospatial web services were used to generate this report. Service availability was verified at the time of report generation.
+                    The following geospatial web services were used to generate this report.
                 </p>
-                <table class="data-sources-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 30%;">Service Name</th>
-                            <th style="width: 40%;">Service URL</th>
-                            <th style="width: 15%;">Features in AOI</th>
-                            <th style="width: 15%;">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows}
-                    </tbody>
-                </table>
+                ${withFeaturesHtml}
+                ${withoutFeaturesHtml}
+                ${unavailableHtml}
             </div>
         `;
     }
@@ -3557,31 +3592,7 @@ define([
             .section-hide-btn:hover {
                 background: #e0ddd4;
             }
-            /* Map zoom controls */
-            .map-zoom-controls {
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-                z-index: 10;
-            }
-            .map-zoom-controls button {
-                width: 28px;
-                height: 28px;
-                border: 1px solid var(--border);
-                background: var(--white);
-                border-radius: 4px;
-                font-size: 16px;
-                font-weight: bold;
-                cursor: pointer;
-                color: var(--blm-green);
-                transition: background 0.15s;
-            }
-            .map-zoom-controls button:hover {
-                background: var(--blm-tan);
-            }
+
             .slope-arrow-overlay {
                 position: absolute;
                 bottom: 12px; left: 12px;
@@ -3804,7 +3815,8 @@ define([
                 .hidden-cols-bar { display: none !important; }
                 .col-hide-btn { display: none !important; }
                 .section-hide-btn { display: none !important; }
-                .map-zoom-controls { display: none !important; }
+                .section.section-hidden { display: none !important; }
+                .section-hidden + .pagebreak { display: none !important; }
                 .interactive-table { font-size: 9px; }
                 .interactive-table th {
                     background: var(--blm-green) !important;
@@ -3814,9 +3826,13 @@ define([
                 .section {
                     margin-top: 12px;
                     padding: 12px 16px;
-                    break-inside: avoid;
-                    page-break-inside: avoid;
+                    break-inside: auto;
+                    page-break-inside: auto;
                 }
+                .section .map,
+                .section h3,
+                .section .layer-narrative,
+                .section table.metaTbl { break-inside: avoid; }
                 .section .map {
                     margin: 6px 0;
                 }
@@ -3840,6 +3856,11 @@ define([
                     break-after: avoid;
                     page-break-after: avoid;
                 }
+                /* Page break before each numbered section heading */
+                h2[id^="section-"]:not(:first-of-type) { break-before: page; }
+                /* Remove table scroll constraints */
+                .table-scroll { max-height: none !important; overflow: visible !important; }
+                .interactive-table-wrapper { overflow: visible !important; }
             }
         `;
     }
@@ -3991,12 +4012,31 @@ define([
                 aoiAcres = 0;
             }
 
+            // Determine AOI selection method label
             let aoiMethod = "Manually Drawn";
-            if (S.aoiSource === "select") {
-                const tool = plssToolLabel(S.aoiSourcePlssTool);
-                aoiMethod = `Selected ${tool}`;
-            } else if (S.aoiSource === "upload") {
+            const _aoiMeth = S.currentAoiMethod || S.aoiSource;
+            if (_aoiMeth === "select") {
+                aoiMethod = "PLSS Boundary";
+            } else if (_aoiMeth === "permit") {
+                aoiMethod = "Existing Lease, Permit, or Authorization";
+            } else if (_aoiMeth === "draw") {
+                aoiMethod = "Manually Drawn";
+            } else if (_aoiMeth === "upload") {
                 aoiMethod = `Uploaded File: ${S.aoiSourceLayerTitle || "unknown"}`;
+            } else if (_aoiMeth === "search" || _aoiMeth === "namesearch") {
+                aoiMethod = "PLSS Boundary";
+            }
+            // Append buffer text if a buffer was applied
+            const _bufMi = S.aoiBufferMiles || 0;
+            if (_bufMi > 0) {
+                // Convert common decimals to friendly fractions
+                let bufLabel;
+                if (_bufMi === 0.25)      bufLabel = "1/4 mile";
+                else if (_bufMi === 0.5)  bufLabel = "1/2 mile";
+                else if (_bufMi === 0.75) bufLabel = "3/4 mile";
+                else if (_bufMi === 1)    bufLabel = "1 mile";
+                else                      bufLabel = _bufMi + " mile";
+                aoiMethod += " with a " + bufLabel + " buffer applied";
             }
 
             // Generate AOI maps
@@ -4031,6 +4071,8 @@ define([
             onProgress(20, mapsGenerated, sectionsComplete);
 
             // === STEP 3: Generate maps for each layer ===
+
+            let categoryNumber = 3; // Continues from "2. Area of Interest"
 
             if (mappableLayers.length === 0) {
                 const ptDef = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
@@ -4179,7 +4221,7 @@ define([
                     // Process each layer
                     const deferredScreenshots = [];
                     let lastGroupKey = null; // Track current group for section headers
-                    let categoryNumber = 3;  // Continues from "2. Area of Interest"
+                    // categoryNumber is declared in outer scope
                     let layersInCurrentGroup = 0; // Track count for 2-per-page layout
                     for (let i = 0; i < mappableLayers.length; i++) {
                         if (isCanceled()) throw new Error("Canceled");
@@ -4262,14 +4304,14 @@ define([
 
                             const slopeArrowHtml = buildSlopeArrowSvg(slopeAspect);
                             const mapHtml = dataUrl
-                                ? `<div class="map"><div class="map-zoom-controls"><button class="zoom-in" title="Zoom in">+</button><button class="zoom-out" title="Zoom out">&minus;</button><button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button></div><img src="${dataUrl}" alt="${escapeHtml(layerTitle)}" style="width:100%; border-radius:8px;" />${slopeArrowHtml}</div>`
+                                ? `<div class="map"><img src="${dataUrl}" alt="${escapeHtml(layerTitle)}" style="width:100%; border-radius:8px;" />${slopeArrowHtml}</div>`
                                 : screenshotDeferred ? deferToken : '';
 
                             contentParts.push(`
                                 <div class="section">
+                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
                                     ${mapHtml}
-                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     ${narrativeHtml}
                                     </div></div>
                                 </div>
@@ -4388,16 +4430,11 @@ define([
 
                             contentParts.push(`
                                 <div class="section">
+                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
                                     <div class="map">
-                                        <div class="map-zoom-controls">
-                                            <button class="zoom-in" title="Zoom in">+</button>
-                                            <button class="zoom-out" title="Zoom out">&minus;</button>
-                                            <button class="zoom-reset" title="Reset zoom" style="font-size:13px;">&#8634;</button>
-                                        </div>
                                         ${mapImgHtml}
                                     </div>
-                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     ${narrativeHtml}
                                     ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
                                     ${perFeatureTableHtml}
@@ -4533,7 +4570,8 @@ define([
             const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
 
             onStep("Building data sources table...");
-            const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);
+            const dataSourcesHtml = await buildLayerSourcesTable(targetLayers, categoryNumber);
+            categoryNumber++;
 
             // Generate regulatory/findings summary (uses updated feature counts from queries)
             const findingsSummaryHtml = generateFindingsSummary(targetLayers, aoiAcres, permitTypeKey);
@@ -4684,94 +4722,9 @@ define([
             }
         }
 
-        // Initialize zoom/pan controls for map images
+        // Initialize auto-hide for null columns
         document.addEventListener('DOMContentLoaded', function() {
             autoHideNullColumns();
-            document.querySelectorAll('.map').forEach(function(container) {
-                var img = container.querySelector('img');
-                if (!img) return;
-                var scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
-                function applyTransform() {
-                    img.style.transform = 'scale(' + scale + ') translate(' + panX + 'px,' + panY + 'px)';
-                }
-                var zoomControls = container.querySelector('.map-zoom-controls');
-                if (!zoomControls) return;
-                var btnPlus = zoomControls.querySelector('.zoom-in');
-                var btnMinus = zoomControls.querySelector('.zoom-out');
-                var btnReset = zoomControls.querySelector('.zoom-reset');
-                if (btnPlus) btnPlus.addEventListener('click', function() {
-                    scale = Math.min(scale * 1.3, 8);
-                    applyTransform();
-                });
-                if (btnMinus) btnMinus.addEventListener('click', function() {
-                    scale = Math.max(scale / 1.3, 1);
-                    if (scale === 1) { panX = 0; panY = 0; }
-                    applyTransform();
-                });
-                if (btnReset) btnReset.addEventListener('click', function() {
-                    scale = 1; panX = 0; panY = 0;
-                    applyTransform();
-                });
-                container.addEventListener('wheel', function(e) {
-                    e.preventDefault();
-                    var delta = e.deltaY < 0 ? 1.15 : 1/1.15;
-                    scale = Math.max(1, Math.min(scale * delta, 8));
-                    if (scale === 1) { panX = 0; panY = 0; }
-                    applyTransform();
-                }, { passive: false });
-                // Touch: pinch-to-zoom and pan
-                var lastTouchDist = 0, lastTouchX = 0, lastTouchY = 0;
-                img.addEventListener('touchstart', function(e) {
-                    if (e.touches.length === 2) {
-                        var dx = e.touches[0].clientX - e.touches[1].clientX;
-                        var dy = e.touches[0].clientY - e.touches[1].clientY;
-                        lastTouchDist = Math.sqrt(dx*dx + dy*dy);
-                    } else if (e.touches.length === 1 && scale > 1) {
-                        dragging = true;
-                        lastTouchX = e.touches[0].clientX - panX;
-                        lastTouchY = e.touches[0].clientY - panY;
-                        img.classList.add('panning');
-                        e.preventDefault();
-                    }
-                }, { passive: false });
-                img.addEventListener('touchmove', function(e) {
-                    if (e.touches.length === 2) {
-                        e.preventDefault();
-                        var dx = e.touches[0].clientX - e.touches[1].clientX;
-                        var dy = e.touches[0].clientY - e.touches[1].clientY;
-                        var dist = Math.sqrt(dx*dx + dy*dy);
-                        if (lastTouchDist > 0) {
-                            scale = Math.max(1, Math.min(scale * (dist / lastTouchDist), 8));
-                            if (scale === 1) { panX = 0; panY = 0; }
-                            applyTransform();
-                        }
-                        lastTouchDist = dist;
-                    } else if (dragging && e.touches.length === 1) {
-                        e.preventDefault();
-                        panX = e.touches[0].clientX - lastTouchX;
-                        panY = e.touches[0].clientY - lastTouchY;
-                        applyTransform();
-                    }
-                }, { passive: false });
-                img.addEventListener('touchend', function() {
-                    lastTouchDist = 0;
-                    if (dragging) { dragging = false; img.classList.remove('panning'); }
-                });
-                img.addEventListener('mousedown', function(e) {
-                    if (scale <= 1) return;
-                    dragging = true; startX = e.clientX - panX; startY = e.clientY - panY;
-                    img.classList.add('panning');
-                    e.preventDefault();
-                });
-                document.addEventListener('mousemove', function(e) {
-                    if (!dragging) return;
-                    panX = e.clientX - startX; panY = e.clientY - startY;
-                    applyTransform();
-                });
-                document.addEventListener('mouseup', function() {
-                    if (dragging) { dragging = false; img.classList.remove('panning'); }
-                });
-            });
         });
     </script>
     ${findingsSummaryHtml ? `

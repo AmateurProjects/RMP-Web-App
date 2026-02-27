@@ -1173,15 +1173,13 @@ define([
             </div>`
             : '';
 
-        const introText = `<p style="font-size:13px;line-height:1.5;margin:0 0 12px;">There are <b>${totalFeatureCount}</b> feature${totalFeatureCount !== 1 ? 's' : ''} in the Area of Interest. The top 5 largest features are shown in this table. For complete tables \u2014 please see the CSV file in the Report Package download.</p>`;
-
         return `
             <div class="interactive-table-wrapper" id="tbl-${tId}" style="margin-top:16px;">
-                ${introText}
                 <div class="table-toolbar">
                     <b>${escapeHtml(tableTitle)}</b>
                     <span style="font-size:12px;color:#5a5a5a;margin-left:8px;">(showing top ${displayRows.length} of ${totalFeatureCount} feature${totalFeatureCount !== 1 ? 's' : ''}, ${totalCols} columns \u2014 click \u2716 on a header to hide)</span>
                 </div>
+                <p style="font-size:12px;line-height:1.5;margin:0 0 10px;color:#5a5a5a;">For complete tables \u2014 please see the CSV file in the Report Package download.</p>
                 <div class="hidden-cols-bar" style="display:none;"></div>
                 <div class="table-scroll">
                     <table class="interactive-table">

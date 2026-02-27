@@ -547,6 +547,7 @@ function setBusy(isBusy) {
     let aoiSourceObjectIdField = null; // ObjectID field name for that layer
     let aoiSourceFeature = null;       // ✅ cached clicked feature (attributes for AOI Source card)
     let aoiLocationLabel = null;       // Reverse-geocoded location label for reports
+    let aoiBufferMiles = 0;            // Buffer distance applied to AOI (miles), 0 = none
 
 
     let sketch = null;
@@ -585,6 +586,8 @@ function setBusy(isBusy) {
         get aoiSourcePlssTool() { return aoiSourcePlssTool; },
         get aoiSourceLayerTitle() { return aoiSourceLayerTitle; },
         get aoiLocationLabel() { return aoiLocationLabel; },
+        get aoiBufferMiles() { return aoiBufferMiles; },
+        get currentAoiMethod() { return currentAoiMethod; },
         get reportLayerViews() { return reportLayerViews; },
         get layerCfgByUrl() { return layerCfgByUrl; },
         get alwaysVisibleLayers() { return alwaysVisibleLayers; },
@@ -882,6 +885,7 @@ function setActiveTab(tabName) {
         aoiSourceObjectIdField = null;
         aoiSourceFeature = null;
         aoiLocationLabel = null;
+        aoiBufferMiles = 0;
         if (aoiLayer) aoiLayer.removeAll();
         aoiGraphic = null;
         if (runBtn) runBtn.disabled = true;
@@ -3731,6 +3735,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     view.goTo(geometry.extent.expand(1.3), { animate: true, duration: 600 });
                 }
 
+                aoiBufferMiles = bufferMiles || 0;
                 const bufLabel = bufferMiles > 0 ? " with " + bufferMiles + " mi buffer" : "";
                 showUploadStatus("✅ <b>" + configHelpers.escapeHtml(result.fileName) + "</b> loaded" + bufLabel, "success");
 
@@ -4041,6 +4046,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 populateAoiConfirmation();
                 // Re-set the input value and reset button since populateAoiConfirmation clears them
                 if (input) input.value = val;
+                aoiBufferMiles = val;
                 if (confirmBufReset) confirmBufReset.classList.remove("hidden");
 
                 setStatus("Buffer applied (" + val + " mi)");
@@ -4067,6 +4073,7 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                     wizFullReport.classList.remove('ready-to-view');
                 }
 
+                aoiBufferMiles = 0;
                 populateAoiConfirmation();
                 setStatus("Buffer removed — original geometry restored");
             });
