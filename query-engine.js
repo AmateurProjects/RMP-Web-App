@@ -594,9 +594,10 @@ define([
     async function computeElevationStats(imageServerUrl, geometry) {
         if (!imageServerUrl || !geometry) return null;
 
-        try {
-            const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+        const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
 
+        // ── Attempt 1: /computeHistograms (gives min, max, and counts for mean) ──
+        try {
             const url    = `${imageServerUrl}/computeHistograms`;
             const params = new URLSearchParams({
                 f:            "json",
@@ -617,6 +618,7 @@ define([
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
             const data = await response.json();
+            if (data.error) throw new Error(`ArcGIS error ${data.error.code}: ${data.error.message}`);
 
             if (data.histograms && data.histograms.length > 0) {
                 const hist    = data.histograms[0];
@@ -646,11 +648,71 @@ define([
                     elevationChangeFt: (maxElev - minElev) * 3.28084
                 };
             }
-            return null;
+            console.warn("[computeElevationStats] /computeHistograms returned no histograms — falling back to /computeStatisticsHistograms");
         } catch (e) {
-            console.warn("Failed to compute elevation statistics:", e);
-            return null;
+            console.warn("[computeElevationStats] /computeHistograms failed:", e.message, "— falling back");
         }
+
+        // ── Attempt 2: /computeStatisticsHistograms (lighter, returns band statistics with min/max/mean) ──
+        try {
+            const url2    = `${imageServerUrl}/computeStatisticsHistograms`;
+            const params2 = new URLSearchParams({
+                f:            "json",
+                geometry:     geomJson,
+                geometryType: "esriGeometryPolygon"
+            });
+
+            const controller2 = new AbortController();
+            const timeoutId2 = setTimeout(() => controller2.abort(), 30000);
+
+            const response2 = await fetch(url2, {
+                method:  "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body:    params2.toString(),
+                signal:  controller2.signal
+            });
+            clearTimeout(timeoutId2);
+            if (!response2.ok) throw new Error(`HTTP ${response2.status}`);
+
+            const data2 = await response2.json();
+            if (data2.error) throw new Error(`ArcGIS error ${data2.error.code}: ${data2.error.message}`);
+
+            // Try statistics array first
+            const stats = data2.statistics && data2.statistics[0];
+            if (stats && stats.min != null && stats.max != null) {
+                const minElev = stats.min;
+                const maxElev = stats.max;
+                const mean    = stats.mean != null ? stats.mean : null;
+                return {
+                    min: minElev, max: maxElev, mean,
+                    minFt:             minElev * 3.28084,
+                    maxFt:             maxElev * 3.28084,
+                    meanFt:            mean != null ? mean * 3.28084 : null,
+                    elevationChange:   maxElev - minElev,
+                    elevationChangeFt: (maxElev - minElev) * 3.28084
+                };
+            }
+
+            // Fall back to histograms within the same response
+            if (data2.histograms && data2.histograms.length > 0) {
+                const hist = data2.histograms[0];
+                const minElev = hist.min;
+                const maxElev = hist.max;
+                return {
+                    min: minElev, max: maxElev, mean: null,
+                    minFt:             minElev * 3.28084,
+                    maxFt:             maxElev * 3.28084,
+                    meanFt:            null,
+                    elevationChange:   maxElev - minElev,
+                    elevationChangeFt: (maxElev - minElev) * 3.28084
+                };
+            }
+            console.warn("[computeElevationStats] /computeStatisticsHistograms returned no data");
+        } catch (e2) {
+            console.warn("[computeElevationStats] /computeStatisticsHistograms also failed:", e2.message);
+        }
+
+        return null;
     }
 
     // ── Slope aspect (mean slope direction) ─────────────────────
@@ -688,11 +750,16 @@ define([
                     renderingRule: JSON.stringify({ rasterFunction: fnName })
                 });
 
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+
                 const response = await fetch(url, {
                     method:  "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body:    params.toString()
+                    body:    params.toString(),
+                    signal:  controller.signal
                 });
+                clearTimeout(timeoutId);
                 if (!response.ok) continue; // try next function name
 
                 const data = await response.json();

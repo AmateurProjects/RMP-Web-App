@@ -2680,7 +2680,7 @@ define([
     // DEBUG_AOI flag — toggle verbose AOI / map-fitting logs
     // Set to false in production.
     // ────────────────────────────────────────────
-    const DEBUG_AOI = true;
+    const DEBUG_AOI = false;
 
     function _debugAoi(label, geom, extra) {
         if (!DEBUG_AOI) return;
