@@ -431,11 +431,11 @@
       <input type="text" id="searchReport" placeholder="Search layers…" oninput="renderReportTable()"/>
       <select id="filterCategory" onchange="renderReportTable()">
         <option value="">All Categories</option>
+        <option value="land-status">Land Status &amp; Authority</option>
+        <option value="land-use">Land Use Plans &amp; Allocations</option>
         <option value="special">Special Designations</option>
-        <option value="environmental">Environmental</option>
-        <option value="authorizations">Authorizations</option>
-        <option value="land-use">Land Use</option>
-        <option value="land-status">Land Status</option>
+        <option value="environmental">Environmental &amp; ESA</option>
+        <option value="authorizations">Existing Authorizations</option>
       </select>
       <select id="filterPermitType" onchange="renderReportTable()">
         <option value="">All Permit Types</option>
@@ -551,11 +551,11 @@
         <div class="form-row">
           <label>Category</label>
           <select id="fCategory">
+            <option value="land-status">Land Status &amp; Authority</option>
+            <option value="land-use">Land Use Plans &amp; Allocations</option>
             <option value="special">Special Designations</option>
-            <option value="environmental">Environmental</option>
-            <option value="authorizations">Authorizations</option>
-            <option value="land-use">Land Use</option>
-            <option value="land-status">Land Status</option>
+            <option value="environmental">Environmental &amp; ESA</option>
+            <option value="authorizations">Existing Authorizations</option>
           </select>
         </div>
         <div class="form-row">
@@ -1007,14 +1007,24 @@ function renderReportStats() {
   });
   var html = '<div class="stat-card"><div class="num">' + layers.length + '</div><div class="label">Total Layers</div></div>';
   Object.keys(cats).sort().forEach(function (c) {
-    html += '<div class="stat-card"><div class="num">' + cats[c] + '</div><div class="label">' + esc(c) + '</div></div>';
+    var catLabel = CATEGORY_LABELS[c] || c;
+    html += '<div class="stat-card"><div class="num">' + cats[c] + '</div><div class="label">' + esc(catLabel) + '</div></div>';
   });
   document.getElementById('reportStats').innerHTML = html;
 }
 
+var CATEGORY_LABELS = {
+  'land-status': 'Land Status & Authority',
+  'land-use': 'Land Use Plans & Allocations',
+  'special': 'Special Designations',
+  'environmental': 'Environmental & ESA',
+  'authorizations': 'Existing Authorizations'
+};
+
 function catBadge(cat) {
   var cls = 'badge-cat badge-' + (cat || '').replace(/\s+/g, '-');
-  return '<span class="' + cls + '">' + esc(cat || '—') + '</span>';
+  var label = CATEGORY_LABELS[cat] || cat || '—';
+  return '<span class="' + cls + '">' + esc(label) + '</span>';
 }
 
 function permitTypeBadges(pts) {
@@ -1070,10 +1080,16 @@ function renderReportTable() {
     var alsoSelBadge = selectionUrlSet.has(l.url.replace(/\/?$/, '')) ? '<span class="cross-type-badge also-selection" title="Also used as Selection Layer">selection</span>' : '';
     
     // Inline category dropdown
-    var catOptions = ['special','environmental','authorizations','land-use','land-status'];
+    var catOptions = [
+      {key:'land-status', label:'Land Status & Authority'},
+      {key:'land-use', label:'Land Use Plans & Allocations'},
+      {key:'special', label:'Special Designations'},
+      {key:'environmental', label:'Environmental & ESA'},
+      {key:'authorizations', label:'Existing Authorizations'}
+    ];
     var catSelectHtml = '<select class="inline-select" onchange="inlineUpdateCategory(' + idx + ', this.value)">';
-    catOptions.forEach(function(c) {
-      catSelectHtml += '<option value="' + c + '"' + (l.category === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+    catOptions.forEach(function(opt) {
+      catSelectHtml += '<option value="' + opt.key + '"' + (l.category === opt.key ? ' selected' : '') + '>' + esc(opt.label) + '</option>';
     });
     catSelectHtml += '</select>';
 
