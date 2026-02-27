@@ -546,6 +546,7 @@ function setBusy(isBusy) {
     let aoiSourceObjectId = null;      // ObjectID of the clicked AOI polygon (select mode)
     let aoiSourceObjectIdField = null; // ObjectID field name for that layer
     let aoiSourceFeature = null;       // ✅ cached clicked feature (attributes for AOI Source card)
+    let aoiLocationLabel = null;       // Reverse-geocoded location label for reports
 
 
     let sketch = null;
@@ -583,6 +584,7 @@ function setBusy(isBusy) {
         get aoiSource() { return aoiSource; },
         get aoiSourcePlssTool() { return aoiSourcePlssTool; },
         get aoiSourceLayerTitle() { return aoiSourceLayerTitle; },
+        get aoiLocationLabel() { return aoiLocationLabel; },
         get reportLayerViews() { return reportLayerViews; },
         get layerCfgByUrl() { return layerCfgByUrl; },
         get alwaysVisibleLayers() { return alwaysVisibleLayers; },
@@ -879,6 +881,7 @@ function setActiveTab(tabName) {
         aoiSourceObjectId = null;
         aoiSourceObjectIdField = null;
         aoiSourceFeature = null;
+        aoiLocationLabel = null;
         if (aoiLayer) aoiLayer.removeAll();
         aoiGraphic = null;
         if (runBtn) runBtn.disabled = true;
@@ -1016,9 +1019,13 @@ function setActiveTab(tabName) {
                     if (!data || !data.address) { sourceEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`; return; }
                     const a = data.address;
                     const parts = [a.Subregion || a.City || "", a.Region || ""].filter(Boolean);
-                    sourceEl.textContent = parts.length ? parts.join(", ") : `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+                    const locLabel = parts.length ? parts.join(", ") : `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+                    aoiLocationLabel = locLabel;
+                    sourceEl.textContent = locLabel;
                 }).catch(() => {
-                    sourceEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+                    const fallback = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+                    aoiLocationLabel = fallback;
+                    sourceEl.textContent = fallback;
                 });
             } catch (e) {
                 sourceEl.textContent = "—";

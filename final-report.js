@@ -738,47 +738,45 @@ define([
     // ────────────────────────────────────────────
     // buildLayerNarrative — readable summary paragraph under each map
     // ────────────────────────────────────────────
-    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isImagery, elevStats, slopeAspect }) {
-        const aoiStr   = `<b>${formatNumber(aoiAcres, 2)}</b> acres`;
-        const titleStr = `<b>${escapeHtml(layerTitle)}</b>`;
-
-        let narrative = `The Area of Interest is ${aoiStr}. `;
-
+    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isLine, totalLengthFeet, totalLengthMiles, isImagery, elevStats, slopeAspect }) {
         if (isImagery) {
-            // Imagery / raster layer narrative
-            narrative += `The Area of Interest intersects with ${titleStr}, which is an Imagery Layer; therefore details regarding the analysis of this layer are described below.`;
-
+            // 3DEP / Imagery layer — structured table of elevation & slope stats
+            let rows = [];
             if (elevStats) {
-                narrative += `<div style="margin-top:10px;">` +
-                    `Elevation within the Area of Interest ranges from a minimum of <b>${formatNumber(elevStats.minFt, 0)}</b> ft ` +
-                    `(<b>${formatNumber(elevStats.min, 1)}</b> m) to a maximum of <b>${formatNumber(elevStats.maxFt, 0)}</b> ft ` +
-                    `(<b>${formatNumber(elevStats.max, 1)}</b> m), an elevation change of <b>${formatNumber(elevStats.elevationChangeFt, 0)}</b> ft ` +
-                    `(<b>${formatNumber(elevStats.elevationChange, 1)}</b> m).` +
-                    (elevStats.meanFt ? ` The mean elevation is <b>${formatNumber(elevStats.meanFt, 0)}</b> ft (<b>${formatNumber(elevStats.mean, 1)}</b> m).` : '') +
-                    `</div>`;
+                rows.push({ label: 'Minimum Elevation', value: `${formatNumber(elevStats.minFt, 0)} ft` });
+                rows.push({ label: 'Maximum Elevation', value: `${formatNumber(elevStats.maxFt, 0)} ft` });
+                rows.push({ label: 'Elevation Change', value: `${formatNumber(elevStats.elevationChangeFt, 0)} ft` });
+                if (elevStats.meanFt) {
+                    rows.push({ label: 'Mean Elevation', value: `${formatNumber(elevStats.meanFt, 0)} ft` });
+                }
             }
-
             if (slopeAspect && slopeAspect.concentration > 0.05) {
-                narrative += `<div style="margin-top:8px;">` +
-                    `The mean slope direction within the AOI is <b>${escapeHtml(slopeAspect.cardinalDirection)}</b> ` +
-                    `(${formatNumber(slopeAspect.meanAspectDeg, 1)}°), indicating the terrain generally descends toward the ` +
-                    `<b>${escapeHtml(slopeAspect.cardinalDirection)}</b>.` +
-                    `</div>`;
+                rows.push({ label: 'Mean Slope Direction', value: `${escapeHtml(slopeAspect.cardinalDirection)} (${formatNumber(slopeAspect.meanAspectDeg, 1)}°)` });
+                rows.push({ label: 'Terrain Descends Toward', value: `${escapeHtml(slopeAspect.cardinalDirection)}` });
             }
-        } else {
-            // Feature layer narrative
-            const countStr = `<b>${escapeHtml(String(featureCount))}</b> feature${featureCount !== 1 ? 's' : ''}`;
-            narrative += `Within the Area of Interest, `;
 
-            if (isPolygon && acresCovered > 0) {
-                pctCovered = Math.min(pctCovered, 100);
-                const covStr = `<b>${formatNumber(acresCovered, 2)}</b> acres`;
-                const pctStr = `<b>${formatNumber(pctCovered, 1)}%</b>`;
-                narrative += `${covStr} (${countStr}) from the ${titleStr} layer was detected. `;
-                narrative += `This layer covers approximately ${pctStr} of the Area of Interest.`;
-            } else {
-                narrative += `${countStr} from the ${titleStr} layer ${featureCount !== 1 ? 'were' : 'was'} detected.`;
-            }
+            if (rows.length === 0) return '';
+
+            const tableRows = rows.map(r =>
+                `<tr><td style="font-weight:600;color:var(--blm-green);width:200px;padding:6px 14px;background:rgba(26,71,42,0.05);border-bottom:1px solid var(--border);">${r.label}</td><td style="padding:6px 14px;border-bottom:1px solid var(--border);">${r.value}</td></tr>`
+            ).join('');
+
+            return `<div class="layer-narrative" style="padding:0;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:13.5px;">${tableRows}</table></div>`;
+        }
+
+        // Feature layer narrative — varies by geometry type
+        let narrative = '';
+
+        if (isPolygon && acresCovered > 0) {
+            pctCovered = Math.min(pctCovered, 100);
+            const acresInt = Math.floor(acresCovered);
+            narrative = `The Area of Interest contains about <b>${formatNumber(acresInt, 0)}</b> acres of features from this layer or <b>${formatNumber(pctCovered, 1)}%</b> of the Area of Interest.`;
+        } else if (isLine && (totalLengthFeet > 0 || totalLengthMiles > 0)) {
+            const milesInt = Math.floor(totalLengthMiles || 0);
+            const feetInt = Math.floor(totalLengthFeet || 0);
+            narrative = `The Area of Interest contains about <b>${formatNumber(milesInt, 0)}</b> miles / <b>${formatNumber(feetInt, 0)}</b> feet of features from this layer.`;
+        } else {
+            narrative = `The Area of Interest contains <b>${escapeHtml(String(featureCount))}</b> feature${featureCount !== 1 ? 's' : ''} from this layer.`;
         }
 
         return `<div class="layer-narrative">${narrative}</div>`;
@@ -910,24 +908,24 @@ define([
         // Opening overview
         var acresStr = formatNumber(aoiAcres, 0);
         var purposePhrase = ptLabel
-            ? "that may be relevant to <strong>" + escapeHtml(ptLabel) + "</strong> permit applications, renewals, or challenges"
-            : "that may be relevant to permit applications, renewals, or challenges";
-        paragraphs.push("<p>This screening analysis examined <strong>" + totalLayers + " geospatial datasets</strong> to identify land management considerations " + purposePhrase + " within the approximately <strong>" + escapeHtml(acresStr) + "-acre</strong> project area. Of the datasets reviewed, <strong>" + layersWithHits.length + "</strong> contained features intersecting the area of interest, identifying a total of <strong>" + totalHits + " overlapping features</strong>.</p>");
+            ? "that may be relevant to <strong>" + escapeHtml(ptLabel) + "</strong> permit activity"
+            : "that may be relevant to permit activity";
+        paragraphs.push("<p>This screening analysis examined <strong>" + totalLayers + " geospatial datasets</strong> to identify land management considerations " + purposePhrase + " within the approximately <strong>" + escapeHtml(acresStr) + "-acre</strong> project area.</p>");
 
         // Regulatory framework overview
         paragraphs.push('<h4 class="findings-subhead">Regulatory Framework</h4>');
-        paragraphs.push('<p>The Bureau of Land Management administers public lands under the <strong>Federal Land Policy and Management Act of 1976 (FLPMA)</strong> (43 U.S.C. &sect;1701 et seq.), which establishes a multiple-use and sustained yield mandate for the management of public lands and their resources. All authorized uses must conform to the governing <strong>Resource Management Plan (RMP)</strong> prepared pursuant to 43 CFR Part 1600, and discretionary actions are subject to environmental review under the <strong>National Environmental Policy Act (NEPA)</strong> (42 U.S.C. &sect;4321 et seq.). The findings below identify regulatory and resource considerations applicable to the project area based on available geospatial data.</p>');
+        paragraphs.push('<p>The Bureau of Land Management administers public lands under the <strong>Federal Land Policy and Management Act of 1976 (FLPMA)</strong> (43 U.S.C. &sect;1701 et seq.), which establishes a multiple-use and sustained yield mandate for the management of public lands and their resources. All authorized uses must conform to the governing <strong>Resource Management Plan (RMP)</strong> prepared pursuant to 43 CFR Part 1600, and discretionary actions are subject to environmental review under the <strong>National Environmental Policy Act (NEPA)</strong> (42 U.S.C. &sect;4321 et seq.). The findings below identify potential regulatory and resource considerations applicable to the project area based on available geospatial data. Additional regulatory and resource considerations may apply.</p>');
 
         // Land status
         if (landStatus.length > 0) {
             var lsNames = landStatus.map(function (f) { return f.name; }).join(", ");
             paragraphs.push('<h4 class="findings-subhead">Jurisdictional Context</h4>');
-            paragraphs.push("<p>The project area has been identified within federal land boundaries based on the following datasets: " + escapeHtml(lsNames) + ". Under FLPMA Section 302 (43 U.S.C. &sect;1732), the BLM has authority to manage these public lands through leases, permits, and easements. Applications for use of these lands must be filed with the BLM field office having jurisdiction (43 CFR &sect;2804.11 for rights-of-way; 43 CFR &sect;2920.5-1 for leases and permits). Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications, including pre-application meetings recommended under 43 CFR &sect;2804.10.</p>");
+            paragraphs.push("<p>The project area has been identified to include federal lands based on the following datasets: " + escapeHtml(lsNames) + ". Under FLPMA Section 302 (43 U.S.C. &sect;1732), the BLM has authority to manage these public lands through leases, permits, and easements. Applications for use of these lands must be filed with the BLM field office having jurisdiction (43 CFR &sect;2804.11 for rights-of-way; 43 CFR &sect;2920.5-1 for leases and permits). Applicants should verify which BLM field office has authority over the project area, as this office will be the primary point of contact for all permit applications, including pre-application meetings recommended under 43 CFR &sect;2804.10.</p>");
         }
 
         // Special designations (high priority for permitting)
         if (specialDesignations.length > 0) {
-            var sdNames = specialDesignations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
+            var sdNames = specialDesignations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong>"; }).join(", ");
             paragraphs.push('<h4 class="findings-subhead">Special Designations</h4>');
             var sdText = "<p>The following special designations overlap the project area: " + sdNames + ". ";
             sdText += "Under FLPMA and BLM planning regulations (43 CFR Part 1600), special designations are established through the land use planning process and impose specific management prescriptions. ";
@@ -942,7 +940,7 @@ define([
 
         // Environmental concerns
         if (environmentalConcerns.length > 0) {
-            var ecNames = environmentalConcerns.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + ")"; }).join(", ");
+            var ecNames = environmentalConcerns.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong>"; }).join(", ");
             var hasCriticalHabitat = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("critical habitat"); });
             var hasMigration = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("migration") || f.name.toLowerCase().includes("ungulate"); });
             var hasWildHorse = environmentalConcerns.some(function (f) { return f.name.toLowerCase().includes("wild horse") || f.name.toLowerCase().includes("burro"); });
@@ -975,7 +973,7 @@ define([
 
         // Existing authorizations
         if (existingAuthorizations.length > 0) {
-            var eaNames = existingAuthorizations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong> (" + f.count + " feature" + (f.count !== 1 ? "s" : "") + ")"; }).join(", ");
+            var eaNames = existingAuthorizations.map(function (f) { return "<strong>" + escapeHtml(f.name) + "</strong>"; }).join(", ");
             paragraphs.push('<h4 class="findings-subhead">Existing Authorizations &amp; Land Uses</h4>');
             var eaText = "<p>The project area overlaps with the following existing authorizations: " + eaNames + ". ";
             eaText += "Under FLPMA, the BLM must consider existing valid rights when evaluating new applications. ";
@@ -1022,6 +1020,7 @@ define([
         // Closing disclaimer
         paragraphs.push('<h4 class="findings-subhead">Disclaimer</h4>');
         paragraphs.push('<p><em>This screening report is generated automatically from publicly available geospatial datasets and is provided for informational and preliminary planning purposes only. It does not constitute a formal determination by the Bureau of Land Management, a legal opinion, or a guarantee of any permit outcome. The analysis is limited to datasets available through BLM and partner agency web services and does not account for site-specific conditions including, but not limited to: on-the-ground cultural or archaeological resources protected under the National Historic Preservation Act (54 U.S.C. &sect;300101 et seq.) and the Archaeological Resources Protection Act (16 U.S.C. &sect;470aa et seq.); unlisted candidate or sensitive species; Tribal treaty rights and trust responsibilities; state and local permitting requirements; or recent changes to Resource Management Plans. All findings should be verified through field investigation and coordination with appropriate BLM resource specialists. This report does not establish any rights or obligations under FLPMA (43 U.S.C. &sect;1701 et seq.), NEPA (42 U.S.C. &sect;4321 et seq.), or any other federal, state, or local law. Applicants are strongly encouraged to contact their local BLM field office for authoritative guidance prior to submitting permit applications, renewals, or protests.</em></p>');
+        paragraphs.push('<div class="pagebreak"></div>');
 
         return paragraphs.join("\n");
     }
@@ -3060,7 +3059,7 @@ define([
 
             if (ss1) {
                 const composited1 = await compositeWithOverview(ss1, mainExtent1, 900000);
-                maps.push(`<div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
+                maps.push(`<p style="font-size:13px;font-weight:600;color:var(--blm-brown);margin:16px 0 4px;">Orientation Map at scale 1:900,000</p><div class="aoi-map"><img src="${composited1}" alt="AOI Context (Regional 1:900,000)" /></div>`);
             }
 
             const ext2 = selectionGeom;
@@ -3075,7 +3074,7 @@ define([
 
             if (ss2) {
                 const composited2 = await compositeWithOverview(ss2, mainExtent2, 200000);
-                maps.push(`<div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:200,000)" /></div>`);
+                maps.push(`<p style="font-size:13px;font-weight:600;color:var(--blm-brown);margin:16px 0 4px;">Orientation Map at scale 1:200,000</p><div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:200,000)" /></div>`);
             }
 
         } finally {
@@ -3812,6 +3811,35 @@ define([
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
                 }
+                .section {
+                    margin-top: 12px;
+                    padding: 12px 16px;
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+                .section .map {
+                    margin: 6px 0;
+                }
+                .section .map img {
+                    max-height: 320px;
+                    width: auto;
+                    max-width: 100%;
+                    display: block;
+                    margin: 0 auto;
+                }
+                .section h3 {
+                    margin: 6px 0 4px;
+                    font-size: 13px;
+                }
+                .layer-narrative {
+                    margin: 6px 0;
+                    padding: 8px 14px;
+                    font-size: 11px;
+                }
+                .bucket-header {
+                    break-after: avoid;
+                    page-break-after: avoid;
+                }
             }
         `;
     }
@@ -3982,31 +4010,23 @@ define([
 
             // === STEP 2: Generate per-layer sections ===
 
+            // Resolve location label from shared state (set by reverse geocode in app.js)
+            const aoiLocationLabel = S.aoiLocationLabel || "";
+
             // Build AOI section
             contentParts.push(`
-                <h2>Area of Interest</h2>
+                <h2>2. Area of Interest</h2>
                 <p style="color: var(--muted); font-style: italic;">The geographic boundary used for this analysis.</p>
                 ${aoiMapsHtml}
                 <div class="aoi-details">
-                    <div class="aoi-field"><span class="aoi-label">Area:</span> ${formatNumber(aoiAcres, 2)} acres</div>
-                    <div class="aoi-field"><span class="aoi-label">Method:</span> ${escapeHtml(aoiMethod)}</div>
+                    <div class="aoi-field"><span class="aoi-label">Area:</span> ~${formatNumber(Math.floor(aoiAcres), 0)} acres</div>
+                    <div class="aoi-field"><span class="aoi-label">AOI Selection Method:</span> ${escapeHtml(aoiMethod)}</div>
+                    ${aoiLocationLabel ? `<div class="aoi-field"><span class="aoi-label">Location:</span> ${escapeHtml(aoiLocationLabel)}</div>` : ''}
+                    <div class="aoi-field"><span class="aoi-label">Legal Land Description:</span> <em style="color:var(--muted);">(To be determined)</em></div>
                 </div>
+                <div class="pagebreak"></div>
             `);
 
-            // === STEP 2: Summary stats placeholder (updated after layer queries) ===
-            // Actual feature counts are computed during step 3; insert placeholder index
-            const summaryPlaceholderIndex = contentParts.length;
-            const layersInAoiEstimate = targetLayers.filter(x => x.hasCoverage).length;
-            contentParts.push(`
-                <h2>Summary</h2>
-                <div class="totals">
-                    <div class="row">
-                        <div class="pill">${targetLayers.length} Layers Queried</div>
-                        <div class="pill">${layersInAoiEstimate} Layers in AOI</div>
-                        <div class="pill">\u2026 Features in AOI</div>
-                    </div>
-                </div>
-            `);
             sectionsComplete++;
             onProgress(20, mapsGenerated, sectionsComplete);
 
@@ -4016,11 +4036,9 @@ define([
                 const ptDef = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
                 const noDataLabel = ptDef ? ptDef.label : 'screened';
                 contentParts.push(`
-                    <h2>Layer Details</h2>
                     <p style="color: var(--muted); font-style: italic;">No intersecting features found in the ${escapeHtml(noDataLabel)} datasets.</p>
                 `);
             } else {
-                contentParts.push(`<h2>Layer Details</h2>`);
 
                 const paddingFactor = config?.visualReport?.paddingFactor ?? 1;
                 const width = config?.visualReport?.screenshotWidth ?? 1400;
@@ -4118,10 +4136,11 @@ define([
                         );
                         const gtResults = await Promise.all(gtPromises);
                         featureItems.forEach((x, idx) => { _preGeomTypes[x.url] = gtResults[idx]; });
-                        // Fire all coverage stat queries in parallel
+                        // Fire all coverage stat queries in parallel (polygon + polyline)
                         featureItems.forEach(x => {
                             const gt = _preGeomTypes[x.url];
-                            if (gt && String(gt).toLowerCase().includes('polygon')) {
+                            const gtLower = gt ? String(gt).toLowerCase() : '';
+                            if (gtLower.includes('polygon') || gtLower.includes('polyline')) {
                                 _preCovPromises[x.url] = computeLayerCoverageStats(x, selectionGeom).catch(() => null);
                             }
                         });
@@ -4160,6 +4179,8 @@ define([
                     // Process each layer
                     const deferredScreenshots = [];
                     let lastGroupKey = null; // Track current group for section headers
+                    let categoryNumber = 3;  // Continues from "2. Area of Interest"
+                    let layersInCurrentGroup = 0; // Track count for 2-per-page layout
                     for (let i = 0; i < mappableLayers.length; i++) {
                         if (isCanceled()) throw new Error("Canceled");
 
@@ -4172,14 +4193,20 @@ define([
                             const layerGroup = layerGroupMap.get(urlKey);
                             const groupKey = layerGroup ? layerGroup.key : 'uncategorized';
                             if (groupKey !== lastGroupKey) {
+                                // Page break to end previous category (if not the first)
+                                if (lastGroupKey !== null && layersInCurrentGroup > 0 && layersInCurrentGroup % 2 !== 0) {
+                                    contentParts.push(`<div class="pagebreak"></div>`);
+                                }
+                                layersInCurrentGroup = 0;
                                 lastGroupKey = groupKey;
                                 if (layerGroup) {
                                     contentParts.push(`
                                         <div class="bucket-header" id="group-${escapeHtml(groupKey)}">
-                                            <h2>${layerGroup.icon} ${escapeHtml(layerGroup.label)}</h2>
+                                            <h2>${categoryNumber}. ${layerGroup.icon} ${escapeHtml(layerGroup.label)}</h2>
                                             <p class="bucket-description">${escapeHtml(layerGroup.description)}</p>
                                         </div>
                                     `);
+                                    categoryNumber++;
                                 }
                             }
                         }
@@ -4240,13 +4267,17 @@ define([
 
                             contentParts.push(`
                                 <div class="section">
-                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
                                     ${mapHtml}
+                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     ${narrativeHtml}
                                     </div></div>
                                 </div>
                             `);
+                            layersInCurrentGroup++;
+                            if (layersInCurrentGroup % 2 === 0) {
+                                contentParts.push(`<div class="pagebreak"></div>`);
+                            }
                             sectionsComplete++;
                             continue;
                         }
@@ -4321,15 +4352,21 @@ define([
                             }
 
                             // Coverage stats — use pre-fired parallel promise if available
-                            const isPolygonLayer = tempGeomType && String(tempGeomType).toLowerCase().includes('polygon');
+                            const tempGeomTypeLower = tempGeomType ? String(tempGeomType).toLowerCase() : '';
+                            const isPolygonLayer = tempGeomTypeLower.includes('polygon');
+                            const isLineLayer = tempGeomTypeLower.includes('polyline');
                             let acresCovered = 0;
                             let pctCovered = 0;
+                            let totalLengthFeet = 0;
+                            let totalLengthMiles = 0;
                             try {
-                                if (isPolygonLayer) {
+                                if (isPolygonLayer || isLineLayer) {
                                     const covStats = await (_preCovPromises[item.url] || computeLayerCoverageStats(item, selectionGeom));
                                     if (covStats) {
                                         acresCovered = covStats.acresCovered || 0;
                                         pctCovered = covStats.pctAoiCovered || 0;
+                                        totalLengthFeet = covStats.totalLengthFeet || 0;
+                                        totalLengthMiles = covStats.totalLengthMiles || 0;
                                     }
                                 }
                             } catch (e) { /* non-critical */ }
@@ -4340,7 +4377,8 @@ define([
 
                             const narrativeHtml = buildLayerNarrative({
                                 aoiAcres, featureCount, layerTitle,
-                                acresCovered, pctCovered, isPolygon: isPolygonLayer
+                                acresCovered, pctCovered, isPolygon: isPolygonLayer,
+                                isLine: isLineLayer, totalLengthFeet, totalLengthMiles
                             });
 
                             const attrSummary = generateLayerAttributeSummary(item);
@@ -4350,7 +4388,6 @@ define([
 
                             contentParts.push(`
                                 <div class="section">
-                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
                                     <div class="map">
                                         <div class="map-zoom-controls">
@@ -4360,13 +4397,17 @@ define([
                                         </div>
                                         ${mapImgHtml}
                                     </div>
+                                    <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     ${narrativeHtml}
                                     ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
                                     ${perFeatureTableHtml}
                                     </div></div>
                                 </div>
-                                <div class="pagebreak"></div>
                             `);
+                            layersInCurrentGroup++;
+                            if (layersInCurrentGroup % 2 === 0) {
+                                contentParts.push(`<div class="pagebreak"></div>`);
+                            }
                             sectionsComplete++;
 
                         } catch (e) {
@@ -4381,6 +4422,11 @@ define([
                         }
 
                         onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
+                    }
+
+                    // Page break after the final category (if odd count of layers)
+                    if (layersInCurrentGroup > 0 && layersInCurrentGroup % 2 !== 0) {
+                        contentParts.push(`<div class="pagebreak"></div>`);
                     }
 
                     // ── Retry deferred screenshots (tab was hidden during capture) ──
@@ -4481,20 +4527,10 @@ define([
             onStep("Finalizing report...");
             onProgress(95, mapsGenerated, sectionsComplete);
 
-            // Update summary stats now that actual feature counts are known
+            // Compute summary stats (used in findings summary, no longer rendered as a section)
             const totalLayers = targetLayers.length;
             const layersWithHits = targetLayers.filter(x => (x.count || 0) > 0).length;
             const totalFeatures = targetLayers.reduce((sum, x) => sum + (x.count || 0), 0);
-            contentParts[summaryPlaceholderIndex] = `
-                <h2>Summary</h2>
-                <div class="totals">
-                    <div class="row">
-                        <div class="pill">${totalLayers} Layers Queried</div>
-                        <div class="pill">${layersWithHits} Layers in AOI</div>
-                        <div class="pill">${totalFeatures} Features in AOI</div>
-                    </div>
-                </div>
-            `;
 
             onStep("Building data sources table...");
             const dataSourcesHtml = await buildLayerSourcesTable(targetLayers);

@@ -827,7 +827,7 @@ define([
         let aoiAreaSqm = 0;
         try { aoiAreaSqm = Math.max(0, geometryEngine.geodesicArea(aoiGeom, "square-meters")); }
         catch (e) { aoiAreaSqm = 0; }
-        if (!aoiAreaSqm) return { acresCovered: 0, pctAoiCovered: 0 };
+        if (!aoiAreaSqm) return { acresCovered: 0, pctAoiCovered: 0, totalLengthFeet: 0, totalLengthMiles: 0 };
 
         const pageSize  = S.config.report?.pageSize ?? 1000;
         const maxExport = S.config.report?.maxExportFeatures ?? 50000;
@@ -887,7 +887,15 @@ define([
         // Cache per-feature intersection results for buildPerFeatureTable
         _intersectionCache.set(cacheKey, perFeatureResults);
 
-        if (!interGeoms.length) return { acresCovered: 0, pctAoiCovered: 0 };
+        // Sum total line lengths from per-feature results
+        let totalLengthFeet = 0;
+        let totalLengthMiles = 0;
+        for (const [, pf] of perFeatureResults) {
+            totalLengthFeet += pf.lengthFeet || 0;
+            totalLengthMiles += pf.lengthMiles || 0;
+        }
+
+        if (!interGeoms.length) return { acresCovered: 0, pctAoiCovered: 0, totalLengthFeet, totalLengthMiles };
 
         let unionGeom = null;
         try { unionGeom = unionGeomsChunked(interGeoms); }
@@ -900,7 +908,7 @@ define([
         const acresCovered  = coveredSqm / SQM_PER_ACRE;
         const pctAoiCovered = Math.min(100, Math.max(0, (coveredSqm / aoiAreaSqm) * 100));
 
-        const out = { acresCovered, pctAoiCovered };
+        const out = { acresCovered, pctAoiCovered, totalLengthFeet, totalLengthMiles };
         coverageCache.set(cacheKey, out);
         return out;
     }
@@ -1104,6 +1112,10 @@ define([
             tableRows.sort((a, b) => b.lengthFeet - a.lengthFeet);
         }
 
+        // Limit to top 5 rows for the report table
+        const totalFeatureCount = tableRows.length;
+        const displayRows = tableRows.slice(0, 5);
+
         // Build column labels depending on geometry type
         const extraCols = [];
         if (isPolygonLayer) {
@@ -1126,7 +1138,7 @@ define([
         const headerHtml = `<tr>${thCells}</tr>`;
 
         let hasSliverWarning = false;
-        const bodyHtml = tableRows.map(row => {
+        const bodyHtml = displayRows.map(row => {
             // Build extra metric cells first (leftmost columns)
             const extraCells = [];
             let isSliverWarning = false;
@@ -1161,11 +1173,14 @@ define([
             </div>`
             : '';
 
+        const introText = `<p style="font-size:13px;line-height:1.5;margin:0 0 12px;">There are <b>${totalFeatureCount}</b> feature${totalFeatureCount !== 1 ? 's' : ''} in the Area of Interest. The top 5 largest features are shown in this table. For complete tables \u2014 please see the CSV file in the Report Package download.</p>`;
+
         return `
             <div class="interactive-table-wrapper" id="tbl-${tId}" style="margin-top:16px;">
+                ${introText}
                 <div class="table-toolbar">
                     <b>${escapeHtml(tableTitle)}</b>
-                    <span style="font-size:12px;color:#5a5a5a;margin-left:8px;">(${feats.length} feature${feats.length !== 1 ? 's' : ''}, ${totalCols} columns \u2014 click \u2716 on a header to hide)</span>
+                    <span style="font-size:12px;color:#5a5a5a;margin-left:8px;">(showing top ${displayRows.length} of ${totalFeatureCount} feature${totalFeatureCount !== 1 ? 's' : ''}, ${totalCols} columns \u2014 click \u2716 on a header to hide)</span>
                 </div>
                 <div class="hidden-cols-bar" style="display:none;"></div>
                 <div class="table-scroll">
