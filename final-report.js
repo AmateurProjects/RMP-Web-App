@@ -738,7 +738,7 @@ define([
     // ────────────────────────────────────────────
     // buildLayerNarrative — readable summary paragraph under each map
     // ────────────────────────────────────────────
-    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isLine, totalLengthFeet, totalLengthMiles, isImagery, elevStats, slopeAspect }) {
+    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isLine, totalLengthFeet, totalLengthMiles, isImagery, elevStats, slopeAspect, elevError, slopeError }) {
         if (isImagery) {
             // 3DEP / Imagery layer — structured table of elevation & slope stats
             let rows = [];
@@ -746,22 +746,49 @@ define([
                 rows.push({ label: 'Minimum Elevation', value: `${formatNumber(elevStats.minFt, 0)} ft` });
                 rows.push({ label: 'Maximum Elevation', value: `${formatNumber(elevStats.maxFt, 0)} ft` });
                 rows.push({ label: 'Elevation Change', value: `${formatNumber(elevStats.elevationChangeFt, 0)} ft` });
-                if (elevStats.meanFt) {
+                if (elevStats.meanFt != null) {
                     rows.push({ label: 'Mean Elevation', value: `${formatNumber(elevStats.meanFt, 0)} ft` });
                 }
             }
             if (slopeAspect && slopeAspect.concentration > 0.05) {
                 rows.push({ label: 'Mean Slope Direction', value: `${escapeHtml(slopeAspect.cardinalDirection)} (${formatNumber(slopeAspect.meanAspectDeg, 1)}°)` });
                 rows.push({ label: 'Terrain Descends Toward', value: `${escapeHtml(slopeAspect.cardinalDirection)}` });
+            } else if (slopeAspect && slopeAspect.concentration <= 0.05) {
+                rows.push({ label: 'Slope Direction', value: 'Relatively flat terrain — no dominant slope direction' });
             }
 
-            if (rows.length === 0) return '';
+            // Build status notes for anything that failed or was unavailable
+            let statusNotes = [];
+            if (!elevStats && elevError) {
+                statusNotes.push(`Elevation statistics could not be retrieved (${escapeHtml(elevError)}).`);
+            } else if (!elevStats) {
+                statusNotes.push('Elevation statistics were not available for this area. The image service may not support histogram queries for the selected geometry.');
+            }
+            if (!slopeAspect && slopeError) {
+                statusNotes.push(`Slope/aspect analysis could not be completed (${escapeHtml(slopeError)}).`);
+            } else if (!slopeAspect && !elevStats) {
+                // Only add slope note if elevStats also failed (avoid double messaging)
+                statusNotes.push('Slope direction analysis was not available for this area.');
+            } else if (!slopeAspect) {
+                statusNotes.push('Slope direction analysis was not available. The image service may not support the required raster functions.');
+            }
 
-            const tableRows = rows.map(r =>
-                `<tr><td style="font-weight:600;color:var(--blm-green);width:200px;padding:6px 14px;background:rgba(26,71,42,0.05);border-bottom:1px solid var(--border);">${r.label}</td><td style="padding:6px 14px;border-bottom:1px solid var(--border);">${r.value}</td></tr>`
-            ).join('');
+            // If we have no stats AND no useful status notes, show a clear fallback
+            if (rows.length === 0 && statusNotes.length === 0) {
+                return `<div class="layer-narrative"><em style="color:var(--muted);">Elevation and slope statistics were not available for this area. This may occur when the image service does not support histogram or statistics queries for the selected geometry.</em></div>`;
+            }
 
-            return `<div class="layer-narrative" style="padding:0;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:13.5px;">${tableRows}</table></div>`;
+            let html = '';
+            if (rows.length > 0) {
+                const tableRows = rows.map(r =>
+                    `<tr><td style="font-weight:600;color:var(--blm-green);width:200px;padding:6px 14px;background:rgba(26,71,42,0.05);border-bottom:1px solid var(--border);">${r.label}</td><td style="padding:6px 14px;border-bottom:1px solid var(--border);">${r.value}</td></tr>`
+                ).join('');
+                html += `<div class="layer-narrative" style="padding:0;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:13.5px;">${tableRows}</table></div>`;
+            }
+            if (statusNotes.length > 0) {
+                html += `<div class="layer-narrative" style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 14px;margin-top:${rows.length > 0 ? '4' : '0'}px;">${statusNotes.join(' ')}</div>`;
+            }
+            return html;
         }
 
         // Feature layer narrative — varies by geometry type
@@ -1484,8 +1511,14 @@ define([
                         background: var(--blm-green) !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
+                        break-before: page;
+                        page-break-before: always;
                         break-after: avoid;
                         page-break-after: avoid;
+                    }
+                    .bucket-header + .section {
+                        break-before: auto;
+                        page-break-before: auto;
                     }
                 }
                 .layer-maps-toolbar {
@@ -1513,8 +1546,12 @@ define([
                     color: var(--muted);
                     font-style: italic;
                 }
+                @page {
+                    size: letter portrait;
+                    margin: 0.5in 0.5in 0.6in 0.5in;
+                }
                 @media print{
-                    html, body{ background: white; }
+                    html, body{ background: white !important; margin: 0; padding: 0; font-size: 11px; }
                     .actions, .hint{ display:none !important; }
                     .section-hide-btn { display:none !important; }
                     .layer-maps-toolbar { display:none !important; }
@@ -1531,27 +1568,73 @@ define([
                         background: var(--blm-green) !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
+                        break-after: page;
+                        page-break-after: always;
                     }
+                    /* Each layer section starts on its own page */
                     .section{ 
-                        break-inside: auto; 
+                        break-before: page;
+                        page-break-before: always;
+                        break-inside: auto;
+                        page-break-inside: auto;
                         box-shadow: none;
                         border: 1px solid #ccc;
+                        margin-top: 0;
+                        padding: 14px 16px;
                     }
+                    /* Sub-elements should not split across pages */
                     .section .map,
                     .section h3,
                     .section .layer-narrative,
-                    .section table.metaTbl { break-inside: avoid; }
-                    .pagebreak{ break-after: page; }
-                    /* Page break before each numbered section heading */
-                    h2[id^="section-"]:not(#section-summary) { break-before: page; }
+                    .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
+                    /* Constrain map images to fit within a single page */
+                    .section .map {
+                        margin: 8px 0;
+                    }
+                    .section .map img {
+                        max-height: 7in;
+                        width: auto;
+                        max-width: 100%;
+                        display: block;
+                        margin: 0 auto;
+                        object-fit: contain;
+                    }
+                    /* Category / bucket headers start on a new page */
+                    .bucket-header {
+                        break-before: page;
+                        page-break-before: always;
+                        break-after: avoid;
+                        page-break-after: avoid;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    /* First section after a bucket header should NOT add another break */
+                    .bucket-header + .section {
+                        break-before: auto;
+                        page-break-before: auto;
+                    }
+                    /* Explicit pagebreak divs */
+                    .pagebreak { break-after: page; page-break-after: always; height: 0; visibility: hidden; }
+                    /* Numbered top-level sections (AOI, Findings, Data Sources) each start a new page */
+                    h2[id^="section-"]:not(#section-summary) { break-before: page; page-break-before: always; }
+                    h2 { font-size: 16px; margin: 12px 0 8px; }
+                    h3 { font-size: 12px; margin: 8px 0 4px; }
+                    .layer-narrative { margin: 4px 0; padding: 6px 10px; font-size: 10px; }
                     /* Remove table scroll constraints */
                     .table-scroll { max-height: none !important; overflow: visible !important; }
                     .interactive-table-wrapper { overflow: visible !important; }
+                    .interactive-table { font-size: 8px; }
                     table.data-sources-table th{
                         background: var(--blm-green) !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
+                    table.data-sources-table { font-size: 9px; }
+                    /* AOI details */
+                    .aoi-details { font-size: 11px; }
+                    /* AOI maps fit within a page */
+                    .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 8px 0; }
+                    .aoi-map img { max-height: 7.5in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
                 }
                 /* Interactive Data Tables */
                 .interactive-table-wrapper {
@@ -1902,7 +1985,7 @@ define([
                     scroll-margin-top: 16px;
                 }
                 @media print {
-                    .report-toc { break-inside: avoid; }
+                    .report-toc { break-inside: avoid; page-break-inside: avoid; }
                     .back-to-top { display: none !important; }
                     .a11y-widget { display: none !important; }
                     .actions { display: none !important; }
@@ -1911,7 +1994,7 @@ define([
                     .col-hide-btn { display: none !important; }
                     .table-scroll { max-height: none !important; overflow: visible !important; }
                     .interactive-table-wrapper { overflow: visible !important; }
-                    .interactive-table { font-size: 9px; }
+                    .interactive-table { font-size: 8px; }
                     .interactive-table th {
                         background: var(--blm-green) !important;
                         -webkit-print-color-adjust: exact;
@@ -2380,14 +2463,14 @@ define([
 
             if (status === "DOWN" || status === "UNKNOWN") {
                 unavailable.push(entry);
-            } else if (featCount > 0) {
+            } else if (featCount > 0 || item.__hasImageryData) {
                 withFeatures.push(entry);
             } else {
                 withoutFeatures.push(entry);
             }
         }
 
-        // Sort "with features" by count descending
+        // Sort "with features" by count descending (imagery layers with 0 count sort to end)
         withFeatures.sort((a, b) => b.featCount - a.featCount);
         // Sort others alphabetically by title
         withoutFeatures.sort((a, b) => (a.item.title || '').localeCompare(b.item.title || ''));
@@ -2395,9 +2478,11 @@ define([
 
         function buildRows(entries, colSpan) {
             return entries.map(e => {
-                const countDisplay = e.featCount > 0
-                    ? `<b>${escapeHtml(String(e.featCount))}</b>`
-                    : '<span class="feat-count-zero">0</span>';
+                const countDisplay = e.item.__hasImageryData
+                    ? '<span style="color:var(--blm-green);font-weight:600;">\u2713 Imagery Data</span>'
+                    : e.featCount > 0
+                        ? `<b>${escapeHtml(String(e.featCount))}</b>`
+                        : '<span class="feat-count-zero">0</span>';
 
                 const descRow = e.desc
                     ? `<tr class="desc-row"><td colspan="${colSpan}">${escapeHtml(e.desc)}</td></tr>`
@@ -2504,8 +2589,12 @@ define([
 
         // Build a lookup: normalised URL → feature count from the analysis
         const countByUrl = new Map();
+        const imageryDataUrls = new Set();
         for (const item of lastReport) {
-            if (item.url) countByUrl.set(String(item.url).replace(/\/+$/, ""), item.count || 0);
+            if (item.url) {
+                countByUrl.set(String(item.url).replace(/\/+$/, ""), item.count || 0);
+                if (item.__hasImageryData) imageryDataUrls.add(String(item.url).replace(/\/+$/, ""));
+            }
         }
 
         // Fetch descriptions in parallel (with timeout) for any service not already cached
@@ -2543,12 +2632,13 @@ define([
             const desc = descByUrl.get(svc.url) || S.serviceStatus.get(svc.url + "::desc") || "";
             const normalUrl = String(svc.url).replace(/\/+$/, "");
             const featCount = countByUrl.has(normalUrl) ? countByUrl.get(normalUrl) : 0;
+            const hasImageryData = imageryDataUrls.has(normalUrl);
 
-            const entry = { item: svc, url: svc.url, status, featCount, desc };
+            const entry = { item: svc, url: svc.url, status, featCount, desc, hasImageryData };
 
             if (status === "DOWN" || status === "UNKNOWN") {
                 unavailable.push(entry);
-            } else if (featCount > 0) {
+            } else if (featCount > 0 || hasImageryData) {
                 withFeatures.push(entry);
             } else {
                 withoutFeatures.push(entry);
@@ -2561,9 +2651,11 @@ define([
 
         function buildRows(entries, colSpan) {
             return entries.map(e => {
-                const countDisplay = e.featCount > 0
-                    ? `<b>${escapeHtml(String(e.featCount))}</b>`
-                    : '<span class="feat-count-zero">0</span>';
+                const countDisplay = (e.item.__hasImageryData || e.hasImageryData)
+                    ? '<span style="color:var(--blm-green);font-weight:600;">\u2713 Imagery Data</span>'
+                    : e.featCount > 0
+                        ? `<b>${escapeHtml(String(e.featCount))}</b>`
+                        : '<span class="feat-count-zero">0</span>';
                 const descRow = e.desc
                     ? `<tr class="desc-row"><td colspan="${colSpan}">${escapeHtml(e.desc)}</td></tr>`
                     : `<tr class="desc-row"><td colspan="${colSpan}" style="opacity:0.5;">(No description available)</td></tr>`;
@@ -3806,61 +3898,116 @@ define([
                 -webkit-filter: contrast(1.8) brightness(0.85) !important;
                 filter: contrast(1.8) brightness(0.85) !important;
             }
+            @page {
+                size: letter portrait;
+                margin: 0.5in 0.5in 0.6in 0.5in;
+            }
             @media print {
-                .report-actions { display: none; }
-                .export-btn { display: none; }
+                html, body { background: white !important; margin: 0; padding: 0; font-size: 11px; }
+                .report-actions { display: none !important; }
+                .export-btn { display: none !important; }
                 .actions { display: none !important; }
                 .a11y-widget { display: none !important; }
                 .interactive-table-wrapper .table-toolbar { display: none !important; }
                 .hidden-cols-bar { display: none !important; }
                 .col-hide-btn { display: none !important; }
                 .section-hide-btn { display: none !important; }
+                .layer-maps-toolbar { display: none !important; }
                 .section.section-hidden { display: none !important; }
                 .section-hidden + .pagebreak { display: none !important; }
-                .interactive-table { font-size: 9px; }
+                .wrap {
+                    max-width: none;
+                    padding: 0;
+                    box-shadow: none;
+                    background: white;
+                }
+                .report-header {
+                    background: var(--blm-green) !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                    break-after: page;
+                    page-break-after: always;
+                }
+                .interactive-table { font-size: 8px; }
                 .interactive-table th {
                     background: var(--blm-green) !important;
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
                 }
+                /* Each layer section starts on its own page */
                 .section {
-                    margin-top: 12px;
-                    padding: 12px 16px;
+                    break-before: page;
+                    page-break-before: always;
                     break-inside: auto;
                     page-break-inside: auto;
+                    margin-top: 0;
+                    padding: 14px 16px;
+                    box-shadow: none;
+                    border: 1px solid #ccc;
                 }
+                /* Sub-elements should not split across pages */
                 .section .map,
                 .section h3,
                 .section .layer-narrative,
-                .section table.metaTbl { break-inside: avoid; }
+                .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
+                /* Constrain map images to fit within a single page */
                 .section .map {
-                    margin: 6px 0;
+                    margin: 8px 0;
                 }
                 .section .map img {
-                    max-height: 320px;
+                    max-height: 7in;
                     width: auto;
                     max-width: 100%;
                     display: block;
                     margin: 0 auto;
+                    object-fit: contain;
                 }
                 .section h3 {
-                    margin: 6px 0 4px;
-                    font-size: 13px;
+                    margin: 8px 0 4px;
+                    font-size: 12px;
                 }
                 .layer-narrative {
-                    margin: 6px 0;
-                    padding: 8px 14px;
-                    font-size: 11px;
+                    margin: 4px 0;
+                    padding: 6px 10px;
+                    font-size: 10px;
                 }
+                /* Category / bucket headers start on a new page */
                 .bucket-header {
+                    break-before: page;
+                    page-break-before: always;
                     break-after: avoid;
                     page-break-after: avoid;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
                 }
-                /* Page break before each numbered section heading */
-                h2[id^="section-"]:not(:first-of-type) { break-before: page; }
+                /* First section after a bucket header should NOT add another break */
+                .bucket-header + .section {
+                    break-before: auto;
+                    page-break-before: auto;
+                }
+                /* Explicit pagebreak divs */
+                .pagebreak { break-after: page; page-break-after: always; height: 0; visibility: hidden; }
+                /* Numbered top-level sections each start a new page */
+                h2[id^="section-"]:not(:first-of-type) { break-before: page; page-break-before: always; }
+                h2 { font-size: 16px; margin: 12px 0 8px; }
+                h3 { font-size: 12px; }
+                /* AOI details */
+                .aoi-details { font-size: 11px; }
                 /* Remove table scroll constraints */
                 .table-scroll { max-height: none !important; overflow: visible !important; }
                 .interactive-table-wrapper { overflow: visible !important; }
+                table.data-sources-table th {
+                    background: var(--blm-green) !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }
+                table.data-sources-table { font-size: 9px; }
+                /* Report TOC */
+                .report-toc { break-inside: avoid; page-break-inside: avoid; }
+                .back-to-top { display: none !important; }
+                /* AOI maps fit within a page */
+                .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 8px 0; }
+                .aoi-map img { max-height: 7.5in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
             }
         `;
     }
@@ -4287,20 +4434,34 @@ define([
                             }
 
                             let elevStats = null;
+                            let elevError = null;
                             try {
                                 elevStats = await computeElevationStats(item.url, selectionGeom);
-                            } catch (e) { /* skip */ }
+                            } catch (e) {
+                                elevError = e.message || 'Unknown error';
+                                console.warn(`[bg-report] Elevation stats failed for "${layerTitle}":`, e);
+                            }
 
                             let slopeAspect = null;
+                            let slopeError = null;
                             try {
                                 slopeAspect = await computeSlopeAspect(item.url, selectionGeom);
-                            } catch (e) { /* skip */ }
+                            } catch (e) {
+                                slopeError = e.message || 'Unknown error';
+                                console.warn(`[bg-report] Slope/aspect failed for "${layerTitle}":`, e);
+                            }
 
                             const narrativeHtml = buildLayerNarrative({
                                 aoiAcres, featureCount: 0, layerTitle,
                                 acresCovered: 0, pctCovered: 0,
-                                isPolygon: false, isImagery: true, elevStats, slopeAspect
+                                isPolygon: false, isImagery: true, elevStats, slopeAspect,
+                                elevError, slopeError
                             });
+
+                            // Mark imagery layer as having data if any stats or screenshot succeeded
+                            if (elevStats || slopeAspect || dataUrl) {
+                                item.__hasImageryData = true;
+                            }
 
                             const slopeArrowHtml = buildSlopeArrowSvg(slopeAspect);
                             const mapHtml = dataUrl

@@ -595,121 +595,116 @@ define([
         if (!imageServerUrl || !geometry) return null;
 
         const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+        const baseParams = {
+            f:            "json",
+            geometry:     geomJson,
+            geometryType: "esriGeometryPolygon"
+        };
 
-        // ── Attempt 1: /computeHistograms (gives min, max, and counts for mean) ──
-        try {
-            const url    = `${imageServerUrl}/computeHistograms`;
-            const params = new URLSearchParams({
-                f:            "json",
-                geometry:     geomJson,
-                geometryType: "esriGeometryPolygon"
-            });
-
+        /**
+         * Helper: issue a POST with timeout + basic error handling.
+         * Returns parsed JSON or throws.
+         */
+        async function _post(url, extraParams, timeoutMs) {
+            const params = new URLSearchParams({ ...baseParams, ...extraParams });
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-            const response = await fetch(url, {
-                method:  "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body:    params.toString(),
-                signal:  controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const data = await response.json();
-            if (data.error) throw new Error(`ArcGIS error ${data.error.code}: ${data.error.message}`);
-
-            if (data.histograms && data.histograms.length > 0) {
-                const hist    = data.histograms[0];
-                const minElev = hist.min;
-                const maxElev = hist.max;
-
-                let mean = null;
-                if (hist.counts && hist.size) {
-                    const binWidth = (maxElev - minElev) / hist.counts.length;
-                    let sum = 0, total = 0;
-                    for (let i = 0; i < hist.counts.length; i++) {
-                        const binCenter = minElev + (i + 0.5) * binWidth;
-                        sum   += binCenter * hist.counts[i];
-                        total += hist.counts[i];
-                    }
-                    mean = total > 0 ? sum / total : null;
-                }
-
-                return {
-                    min: minElev,
-                    max: maxElev,
-                    mean,
-                    minFt:             minElev * 3.28084,
-                    maxFt:             maxElev * 3.28084,
-                    meanFt:            mean ? mean * 3.28084 : null,
-                    elevationChange:   maxElev - minElev,
-                    elevationChangeFt: (maxElev - minElev) * 3.28084
-                };
+            const tid = setTimeout(() => controller.abort(), timeoutMs || 30000);
+            try {
+                const resp = await fetch(url, {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body:    params.toString(),
+                    signal:  controller.signal
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const json = await resp.json();
+                if (json.error) throw new Error(`ArcGIS error ${json.error.code}: ${json.error.message}`);
+                return json;
+            } finally {
+                clearTimeout(tid);
             }
-            console.warn("[computeElevationStats] /computeHistograms returned no histograms — falling back to /computeStatisticsHistograms");
+        }
+
+        /** Validate & build the result object from raw min/max/mean (meters). */
+        function _buildResult(minElev, maxElev, mean) {
+            if (minElev == null || maxElev == null) return null;
+            if (!isFinite(minElev) || !isFinite(maxElev)) return null;
+            if (maxElev < minElev) { const tmp = minElev; minElev = maxElev; maxElev = tmp; }
+            // Reject wildly unreasonable values (Dead Sea ≈ -430 m, Everest ≈ 8849 m)
+            if (minElev < -500 || maxElev > 10000) {
+                console.warn("[computeElevationStats] Values outside plausible range:", minElev, maxElev);
+                return null;
+            }
+            if (mean != null && !isFinite(mean)) mean = null;
+            return {
+                min: minElev, max: maxElev, mean,
+                minFt:             minElev * 3.28084,
+                maxFt:             maxElev * 3.28084,
+                meanFt:            mean != null ? mean * 3.28084 : null,
+                elevationChange:   maxElev - minElev,
+                elevationChangeFt: (maxElev - minElev) * 3.28084
+            };
+        }
+
+        /** Extract result from histogram data. */
+        function _fromHistogram(hist) {
+            if (!hist || hist.min == null || hist.max == null) return null;
+            let mean = null;
+            if (hist.counts && hist.counts.length > 0) {
+                const binWidth = (hist.max - hist.min) / hist.counts.length;
+                let sum = 0, total = 0;
+                for (let i = 0; i < hist.counts.length; i++) {
+                    sum   += (hist.min + (i + 0.5) * binWidth) * hist.counts[i];
+                    total += hist.counts[i];
+                }
+                mean = total > 0 ? sum / total : null;
+            }
+            return _buildResult(hist.min, hist.max, mean);
+        }
+
+        // ── Attempt 1: /computeHistograms ──
+        try {
+            const data = await _post(`${imageServerUrl}/computeHistograms`, {}, 30000);
+            if (data.histograms && data.histograms.length > 0) {
+                const result = _fromHistogram(data.histograms[0]);
+                if (result) return result;
+            }
+            console.warn("[computeElevationStats] /computeHistograms returned no usable histograms — falling back");
         } catch (e) {
             console.warn("[computeElevationStats] /computeHistograms failed:", e.message, "— falling back");
         }
 
-        // ── Attempt 2: /computeStatisticsHistograms (lighter, returns band statistics with min/max/mean) ──
+        // ── Attempt 2: /computeStatisticsHistograms ──
         try {
-            const url2    = `${imageServerUrl}/computeStatisticsHistograms`;
-            const params2 = new URLSearchParams({
-                f:            "json",
-                geometry:     geomJson,
-                geometryType: "esriGeometryPolygon"
-            });
-
-            const controller2 = new AbortController();
-            const timeoutId2 = setTimeout(() => controller2.abort(), 30000);
-
-            const response2 = await fetch(url2, {
-                method:  "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body:    params2.toString(),
-                signal:  controller2.signal
-            });
-            clearTimeout(timeoutId2);
-            if (!response2.ok) throw new Error(`HTTP ${response2.status}`);
-
-            const data2 = await response2.json();
-            if (data2.error) throw new Error(`ArcGIS error ${data2.error.code}: ${data2.error.message}`);
+            const data2 = await _post(`${imageServerUrl}/computeStatisticsHistograms`, {}, 30000);
 
             // Try statistics array first
             const stats = data2.statistics && data2.statistics[0];
             if (stats && stats.min != null && stats.max != null) {
-                const minElev = stats.min;
-                const maxElev = stats.max;
-                const mean    = stats.mean != null ? stats.mean : null;
-                return {
-                    min: minElev, max: maxElev, mean,
-                    minFt:             minElev * 3.28084,
-                    maxFt:             maxElev * 3.28084,
-                    meanFt:            mean != null ? mean * 3.28084 : null,
-                    elevationChange:   maxElev - minElev,
-                    elevationChangeFt: (maxElev - minElev) * 3.28084
-                };
+                const result = _buildResult(stats.min, stats.max, stats.mean != null ? stats.mean : null);
+                if (result) return result;
             }
 
             // Fall back to histograms within the same response
             if (data2.histograms && data2.histograms.length > 0) {
-                const hist = data2.histograms[0];
-                const minElev = hist.min;
-                const maxElev = hist.max;
-                return {
-                    min: minElev, max: maxElev, mean: null,
-                    minFt:             minElev * 3.28084,
-                    maxFt:             maxElev * 3.28084,
-                    meanFt:            null,
-                    elevationChange:   maxElev - minElev,
-                    elevationChangeFt: (maxElev - minElev) * 3.28084
-                };
+                const result = _fromHistogram(data2.histograms[0]);
+                if (result) return result;
             }
-            console.warn("[computeElevationStats] /computeStatisticsHistograms returned no data");
+            console.warn("[computeElevationStats] /computeStatisticsHistograms returned no usable data");
         } catch (e2) {
             console.warn("[computeElevationStats] /computeStatisticsHistograms also failed:", e2.message);
+        }
+
+        // ── Attempt 3: /computeHistograms with explicit mosaic rule (first raster) ──
+        try {
+            const mosaicRule = JSON.stringify({ mosaicMethod: "esriMosaicNone", ascending: true });
+            const data3 = await _post(`${imageServerUrl}/computeHistograms`, { mosaicRule }, 20000);
+            if (data3.histograms && data3.histograms.length > 0) {
+                const result = _fromHistogram(data3.histograms[0]);
+                if (result) return result;
+            }
+        } catch (e3) {
+            console.warn("[computeElevationStats] /computeHistograms with mosaicRule failed:", e3.message);
         }
 
         return null;
@@ -734,14 +729,17 @@ define([
     async function computeSlopeAspect(imageServerUrl, geometry) {
         if (!imageServerUrl || !geometry) return null;
 
+        const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+
         // Try multiple aspect raster function names — different ImageServer
         // instances use different names for the same operation.
-        const aspectFunctionNames = ["Aspect", "Aspect_Map", "Aspect Map"];
+        const aspectFunctionNames = ["Aspect", "Aspect_Map", "Aspect Map", "Aspect Degrees"];
+        let lastError = null;
 
         for (const fnName of aspectFunctionNames) {
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), 30000);
             try {
-                const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
-
                 const url    = `${imageServerUrl}/computeHistograms`;
                 const params = new URLSearchParams({
                     f:            "json",
@@ -750,26 +748,22 @@ define([
                     renderingRule: JSON.stringify({ rasterFunction: fnName })
                 });
 
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
-
                 const response = await fetch(url, {
                     method:  "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
                     body:    params.toString(),
                     signal:  controller.signal
                 });
-                clearTimeout(timeoutId);
-                if (!response.ok) continue; // try next function name
+                if (!response.ok) { lastError = `HTTP ${response.status}`; continue; }
 
                 const data = await response.json();
-                if (data.error) continue; // service rejected the raster function name
+                if (data.error) { lastError = data.error.message || `code ${data.error.code}`; continue; }
 
-                if (!data.histograms || !data.histograms.length) continue;
+                if (!data.histograms || !data.histograms.length) { lastError = 'no histogram data'; continue; }
 
                 const hist     = data.histograms[0];
                 const binCount = hist.counts ? hist.counts.length : 0;
-                if (binCount === 0) continue;
+                if (binCount === 0) { lastError = 'empty histogram bins'; continue; }
 
                 const binWidth = (hist.max - hist.min) / binCount;
                 let sumSin = 0, sumCos = 0, totalCount = 0;
@@ -785,7 +779,7 @@ define([
                     totalCount += count;
                 }
 
-                if (totalCount === 0) continue;
+                if (totalCount === 0) { lastError = 'all flat pixels'; continue; }
 
                 // Circular mean direction (degrees, 0 = North, clockwise)
                 let meanAspect = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
@@ -800,12 +794,14 @@ define([
                     cardinalDirection: degToCardinal(meanAspect)
                 };
             } catch (e) {
-                // Try next function name
+                lastError = e.name === 'AbortError' ? 'request timed out' : e.message;
                 continue;
+            } finally {
+                clearTimeout(tid);
             }
         }
 
-        console.warn("[computeSlopeAspect] All aspect raster function names failed for:", imageServerUrl);
+        console.warn("[computeSlopeAspect] All aspect raster function names failed for:", imageServerUrl, "last error:", lastError);
         return null;
     }
 
