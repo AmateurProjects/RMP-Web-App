@@ -3965,6 +3965,11 @@ define([
                             width:  Math.round(paddedExtent.width  * pxPerMapX),
                             height: Math.round(paddedExtent.height * pxPerMapY)
                         };
+                        console.log("[buildReport] aoiScreenArea:", JSON.stringify(aoiScreenArea),
+                            "view:", view.width, "x", view.height,
+                            "paddedExt w/h:", paddedExtent.width, paddedExtent.height,
+                            "viewExt w/h:", vExt.width, vExt.height,
+                            "dpr:", window.devicePixelRatio);
                     }
 
                     // ── Pre-load phase: parallel geometry type + coverage stat fetches ──
