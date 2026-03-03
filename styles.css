@@ -2501,14 +2501,27 @@ body.cv-highcontrast {
     border-color: var(--blm-green, #2d6a4f);
 }
 .feature-search-inline .feature-search-results {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
+    position: relative;
+    top: 4px;
     max-height: 340px;
     box-shadow: 0 2px 12px rgba(0,0,0,0.12);
     border: 1px solid #e0e0e0;
     z-index: 10;
+}
+/* Pin icon/spinner/clear to fixed pixel offsets in inline mode
+   so they stay centered on the 44px-tall input even when
+   the results list expands the container height. */
+.feature-search-inline .feature-search-icon {
+    top: 13px;
+    transform: none;
+}
+.feature-search-inline .feature-search-spinner {
+    top: 13px;
+    margin-top: 0;
+}
+.feature-search-inline .feature-search-clear {
+    top: 11px;
+    transform: none;
 }
 
 .feature-search-container {

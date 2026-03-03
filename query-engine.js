@@ -585,30 +585,100 @@ define([
         };
     }
 
+    // ── Elevation / 3DEP helpers ───────────────────────────────
+
+    /**
+     * Count vertices in a polygon geometry.
+     */
+    function _countPolyVerts(geom) {
+        if (!geom || !geom.rings) return 0;
+        let n = 0;
+        for (const ring of geom.rings) n += ring.length;
+        return n;
+    }
+
+    /**
+     * For 3DEP ImageServer calls, produce a simplified geometry payload.
+     * The USGS 3DEP server can choke on large / high-vertex polygons.
+     *
+     * Strategy (applied progressively):
+     * • ≤ 200 vertices  → use as-is
+     * • ≤ 1000 vertices → generalize to ~50 m tolerance
+     * • ≤ 2000 vertices → generalize to ~100 m tolerance
+     * • > 2000 vertices → fall back to bounding envelope
+     *
+     * Returns { geomJson, geometryType } ready for URLSearchParams.
+     */
+    function _simplifyGeomFor3DEP(geometry) {
+        const raw  = geometry.toJSON ? geometry.toJSON() : geometry;
+        const verts = _countPolyVerts(raw);
+
+        // Small polygon — use directly
+        if (verts <= 200) {
+            return { geomJson: JSON.stringify(raw), geometryType: "esriGeometryPolygon" };
+        }
+
+        // Medium polygon — generalize
+        if (verts <= 2000) {
+            const tol = verts <= 1000 ? 50 : 100; // meters
+            try {
+                const simplified = geometryEngine.generalize(geometry, tol, true, "meters");
+                if (simplified && _countPolyVerts(simplified) >= 3) {
+                    const sJson = simplified.toJSON ? simplified.toJSON() : simplified;
+                    console.log(`[3DEP] Generalized polygon for raster query: ${verts} → ${_countPolyVerts(sJson)} vertices (tol=${tol}m)`);
+                    return { geomJson: JSON.stringify(sJson), geometryType: "esriGeometryPolygon" };
+                }
+            } catch (e) {
+                console.warn("[3DEP] Generalize failed, falling back to envelope", e);
+            }
+        }
+
+        // Large or generalize-failed → use bounding envelope
+        const ext = geometry.extent || raw.extent;
+        if (ext) {
+            const envJson = ext.toJSON ? ext.toJSON() : ext;
+            console.log(`[3DEP] Using bounding envelope for raster query (polygon had ${verts} vertices)`);
+            return { geomJson: JSON.stringify(envJson), geometryType: "esriGeometryEnvelope" };
+        }
+
+        // Last resort — send raw polygon anyway
+        return { geomJson: JSON.stringify(raw), geometryType: "esriGeometryPolygon" };
+    }
+
     // ── Elevation stats ─────────────────────────────────────────
 
     /**
      * Compute elevation statistics (min/max/mean) for an AOI
      * via an ImageServer's computeHistograms endpoint (POST).
+     *
+     * For large AOIs the polygon is simplified or replaced with its
+     * bounding envelope to avoid USGS server-side limits.
+     * If all polygon-based attempts fail, an envelope-only retry is
+     * performed automatically.
      */
     async function computeElevationStats(imageServerUrl, geometry) {
         if (!imageServerUrl || !geometry) return null;
 
-        const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+        const { geomJson, geometryType } = _simplifyGeomFor3DEP(geometry);
         const baseParams = {
             f:            "json",
             geometry:     geomJson,
-            geometryType: "esriGeometryPolygon"
+            geometryType: geometryType
         };
+
+        // Longer timeout for large AOIs (envelope queries are fast,
+        // but polygon-clipped raster histograms can be slow)
+        const defaultTimeout = 60000;
 
         /**
          * Helper: issue a POST with timeout + basic error handling.
          * Returns parsed JSON or throws.
          */
-        async function _post(url, extraParams, timeoutMs) {
-            const params = new URLSearchParams({ ...baseParams, ...extraParams });
+        async function _post(url, extraParams, timeoutMs, overrideBaseParams) {
+            const base = overrideBaseParams || baseParams;
+            const params = new URLSearchParams({ ...base, ...extraParams });
             const controller = new AbortController();
-            const tid = setTimeout(() => controller.abort(), timeoutMs || 30000);
+            const tid = setTimeout(() => controller.abort(), timeoutMs || defaultTimeout);
             try {
                 const resp = await fetch(url, {
                     method:  "POST",
@@ -664,7 +734,7 @@ define([
 
         // ── Attempt 1: /computeHistograms ──
         try {
-            const data = await _post(`${imageServerUrl}/computeHistograms`, {}, 30000);
+            const data = await _post(`${imageServerUrl}/computeHistograms`, {}, defaultTimeout);
             if (data.histograms && data.histograms.length > 0) {
                 const result = _fromHistogram(data.histograms[0]);
                 if (result) return result;
@@ -676,7 +746,7 @@ define([
 
         // ── Attempt 2: /computeStatisticsHistograms ──
         try {
-            const data2 = await _post(`${imageServerUrl}/computeStatisticsHistograms`, {}, 30000);
+            const data2 = await _post(`${imageServerUrl}/computeStatisticsHistograms`, {}, defaultTimeout);
 
             // Try statistics array first
             const stats = data2.statistics && data2.statistics[0];
@@ -698,13 +768,47 @@ define([
         // ── Attempt 3: /computeHistograms with explicit mosaic rule (first raster) ──
         try {
             const mosaicRule = JSON.stringify({ mosaicMethod: "esriMosaicNone", ascending: true });
-            const data3 = await _post(`${imageServerUrl}/computeHistograms`, { mosaicRule }, 20000);
+            const data3 = await _post(`${imageServerUrl}/computeHistograms`, { mosaicRule }, defaultTimeout);
             if (data3.histograms && data3.histograms.length > 0) {
                 const result = _fromHistogram(data3.histograms[0]);
                 if (result) return result;
             }
         } catch (e3) {
             console.warn("[computeElevationStats] /computeHistograms with mosaicRule failed:", e3.message);
+        }
+
+        // ── Attempt 4: Envelope-only fallback ──
+        // If all polygon-based attempts failed and we weren't already using
+        // an envelope, retry with just the bounding box.  This gives slightly
+        // less precise results but the USGS server handles it much better for
+        // large areas.
+        if (geometryType !== "esriGeometryEnvelope" && geometry.extent) {
+            const envJson = geometry.extent.toJSON ? JSON.stringify(geometry.extent.toJSON()) : JSON.stringify(geometry.extent);
+            const envParams = { f: "json", geometry: envJson, geometryType: "esriGeometryEnvelope" };
+            console.log("[computeElevationStats] All polygon attempts failed — retrying with bounding envelope");
+            try {
+                const data4 = await _post(`${imageServerUrl}/computeHistograms`, {}, defaultTimeout, envParams);
+                if (data4.histograms && data4.histograms.length > 0) {
+                    const result = _fromHistogram(data4.histograms[0]);
+                    if (result) return result;
+                }
+            } catch (e4) {
+                console.warn("[computeElevationStats] Envelope fallback also failed:", e4.message);
+            }
+            try {
+                const data5 = await _post(`${imageServerUrl}/computeStatisticsHistograms`, {}, defaultTimeout, envParams);
+                const stats5 = data5.statistics && data5.statistics[0];
+                if (stats5 && stats5.min != null && stats5.max != null) {
+                    const result = _buildResult(stats5.min, stats5.max, stats5.mean != null ? stats5.mean : null);
+                    if (result) return result;
+                }
+                if (data5.histograms && data5.histograms.length > 0) {
+                    const result = _fromHistogram(data5.histograms[0]);
+                    if (result) return result;
+                }
+            } catch (e5) {
+                console.warn("[computeElevationStats] Envelope /computeStatisticsHistograms also failed:", e5.message);
+            }
         }
 
         return null;
@@ -725,83 +829,106 @@ define([
      * the Aspect raster function and computing a circular mean from its
      * histogram.  Returns { meanAspectDeg, concentration, cardinalDirection }
      * or null on failure / flat terrain.
+     *
+     * For large AOIs the polygon is simplified / replaced with its envelope
+     * (via _simplifyGeomFor3DEP) to avoid USGS server-side limits.
+     * If polygon-based attempts all fail, an envelope-only retry runs.
      */
     async function computeSlopeAspect(imageServerUrl, geometry) {
         if (!imageServerUrl || !geometry) return null;
 
-        const geomJson = JSON.stringify(geometry.toJSON ? geometry.toJSON() : geometry);
+        const { geomJson, geometryType } = _simplifyGeomFor3DEP(geometry);
 
         // Try multiple aspect raster function names — different ImageServer
         // instances use different names for the same operation.
         const aspectFunctionNames = ["Aspect", "Aspect_Map", "Aspect Map", "Aspect Degrees"];
-        let lastError = null;
 
-        for (const fnName of aspectFunctionNames) {
-            const controller = new AbortController();
-            const tid = setTimeout(() => controller.abort(), 30000);
-            try {
-                const url    = `${imageServerUrl}/computeHistograms`;
-                const params = new URLSearchParams({
-                    f:            "json",
-                    geometry:     geomJson,
-                    geometryType: "esriGeometryPolygon",
-                    renderingRule: JSON.stringify({ rasterFunction: fnName })
-                });
+        /**
+         * Inner helper: attempt the aspect histogram with the given geometry
+         * payload.  Returns result object or null.
+         */
+        async function _tryAspect(gJson, gType) {
+            let lastError = null;
+            for (const fnName of aspectFunctionNames) {
+                const controller = new AbortController();
+                const tid = setTimeout(() => controller.abort(), 60000);
+                try {
+                    const url    = `${imageServerUrl}/computeHistograms`;
+                    const params = new URLSearchParams({
+                        f:            "json",
+                        geometry:     gJson,
+                        geometryType: gType,
+                        renderingRule: JSON.stringify({ rasterFunction: fnName })
+                    });
 
-                const response = await fetch(url, {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body:    params.toString(),
-                    signal:  controller.signal
-                });
-                if (!response.ok) { lastError = `HTTP ${response.status}`; continue; }
+                    const response = await fetch(url, {
+                        method:  "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body:    params.toString(),
+                        signal:  controller.signal
+                    });
+                    if (!response.ok) { lastError = `HTTP ${response.status}`; continue; }
 
-                const data = await response.json();
-                if (data.error) { lastError = data.error.message || `code ${data.error.code}`; continue; }
+                    const data = await response.json();
+                    if (data.error) { lastError = data.error.message || `code ${data.error.code}`; continue; }
 
-                if (!data.histograms || !data.histograms.length) { lastError = 'no histogram data'; continue; }
+                    if (!data.histograms || !data.histograms.length) { lastError = 'no histogram data'; continue; }
 
-                const hist     = data.histograms[0];
-                const binCount = hist.counts ? hist.counts.length : 0;
-                if (binCount === 0) { lastError = 'empty histogram bins'; continue; }
+                    const hist     = data.histograms[0];
+                    const binCount = hist.counts ? hist.counts.length : 0;
+                    if (binCount === 0) { lastError = 'empty histogram bins'; continue; }
 
-                const binWidth = (hist.max - hist.min) / binCount;
-                let sumSin = 0, sumCos = 0, totalCount = 0;
+                    const binWidth = (hist.max - hist.min) / binCount;
+                    let sumSin = 0, sumCos = 0, totalCount = 0;
 
-                for (let i = 0; i < binCount; i++) {
-                    const count = hist.counts[i];
-                    if (count === 0) continue;
-                    const angleDeg = hist.min + (i + 0.5) * binWidth;
-                    if (angleDeg < 0) continue;           // skip flat pixels (aspect = -1)
-                    const angleRad = angleDeg * Math.PI / 180;
-                    sumSin     += count * Math.sin(angleRad);
-                    sumCos     += count * Math.cos(angleRad);
-                    totalCount += count;
+                    for (let i = 0; i < binCount; i++) {
+                        const count = hist.counts[i];
+                        if (count === 0) continue;
+                        const angleDeg = hist.min + (i + 0.5) * binWidth;
+                        if (angleDeg < 0) continue;           // skip flat pixels (aspect = -1)
+                        const angleRad = angleDeg * Math.PI / 180;
+                        sumSin     += count * Math.sin(angleRad);
+                        sumCos     += count * Math.cos(angleRad);
+                        totalCount += count;
+                    }
+
+                    if (totalCount === 0) { lastError = 'all flat pixels'; continue; }
+
+                    // Circular mean direction (degrees, 0 = North, clockwise)
+                    let meanAspect = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+                    if (meanAspect < 0) meanAspect += 360;
+
+                    // Resultant length R ∈ [0,1]: 0 = uniform / flat, 1 = perfectly aligned
+                    const R = Math.sqrt(sumSin * sumSin + sumCos * sumCos) / totalCount;
+
+                    return {
+                        meanAspectDeg:     Math.round(meanAspect * 10) / 10,
+                        concentration:     Math.round(R * 1000) / 1000,
+                        cardinalDirection: degToCardinal(meanAspect)
+                    };
+                } catch (e) {
+                    lastError = e.name === 'AbortError' ? 'request timed out' : e.message;
+                    continue;
+                } finally {
+                    clearTimeout(tid);
                 }
-
-                if (totalCount === 0) { lastError = 'all flat pixels'; continue; }
-
-                // Circular mean direction (degrees, 0 = North, clockwise)
-                let meanAspect = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
-                if (meanAspect < 0) meanAspect += 360;
-
-                // Resultant length R ∈ [0,1]: 0 = uniform / flat, 1 = perfectly aligned
-                const R = Math.sqrt(sumSin * sumSin + sumCos * sumCos) / totalCount;
-
-                return {
-                    meanAspectDeg:     Math.round(meanAspect * 10) / 10,
-                    concentration:     Math.round(R * 1000) / 1000,
-                    cardinalDirection: degToCardinal(meanAspect)
-                };
-            } catch (e) {
-                lastError = e.name === 'AbortError' ? 'request timed out' : e.message;
-                continue;
-            } finally {
-                clearTimeout(tid);
             }
+            console.warn("[computeSlopeAspect] All raster function names failed with", gType, "— last error:", lastError);
+            return null;
         }
 
-        console.warn("[computeSlopeAspect] All aspect raster function names failed for:", imageServerUrl, "last error:", lastError);
+        // Primary attempt with simplified geometry
+        const result = await _tryAspect(geomJson, geometryType);
+        if (result) return result;
+
+        // Envelope fallback (if we weren't already using one)
+        if (geometryType !== "esriGeometryEnvelope" && geometry.extent) {
+            const envJson = geometry.extent.toJSON ? JSON.stringify(geometry.extent.toJSON()) : JSON.stringify(geometry.extent);
+            console.log("[computeSlopeAspect] Polygon attempt failed — retrying with bounding envelope");
+            const envResult = await _tryAspect(envJson, "esriGeometryEnvelope");
+            if (envResult) return envResult;
+        }
+
         return null;
     }
 
