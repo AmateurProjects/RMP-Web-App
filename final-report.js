@@ -1529,11 +1529,11 @@ define([
                         box-shadow: none;
                     }
                     .bucket-header h2 {
-                        font-size: 21px;
+                        font-size: 24px !important;
                         margin: 0 0 2px 0;
                     }
                     .bucket-header .bucket-description {
-                        font-size: 15px;
+                        font-size: 17px !important;
                         line-height: 1.3;
                         margin: 0;
                     }
@@ -1577,7 +1577,7 @@ define([
                 }
                 @media print{
                     /* ── Neutralize print-break killers ── */
-                    html, body{ background: white !important; margin: 0; padding: 0; font-size: 16px; overflow: visible !important; height: auto !important; }
+                    html, body{ background: white !important; margin: 0; padding: 0; font-size: 18px !important; overflow: visible !important; height: auto !important; }
                     * { transform: none !important; contain: none !important; will-change: auto !important; }
                     .cv-filter-wrap, .cv-filter-wrap.cv-protanopia, .cv-filter-wrap.cv-deuteranopia,
                     .cv-filter-wrap.cv-tritanopia, .cv-filter-wrap.cv-achromatopsia, .cv-filter-wrap.cv-highcontrast {
@@ -1607,44 +1607,49 @@ define([
                         box-shadow: none; border: 1px solid #ccc; margin-top: 0; padding: 6px 12px;
                     }
                     .map-section-head { break-inside: avoid; page-break-inside: avoid; }
-                    .section h3 { break-after: avoid; page-break-after: avoid; margin: 4px 0 2px; font-size: 16px; }
+                    .section h3 { break-after: avoid; page-break-after: avoid; margin: 4px 0 2px; font-size: 19px !important; }
                     .section .map, .section .layer-narrative, .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
-                    .section .interactive-table-wrapper { break-before: auto; break-inside: avoid; page-break-inside: avoid; padding: 0 8px 8px; margin-top: 8px; }
+                    .section .interactive-table-wrapper { break-before: auto; break-inside: avoid; page-break-inside: avoid; padding: 4px 14px 14px !important; margin-top: 8px; }
                     .bucket-header {
                         break-before: page; page-break-before: always;
                         break-after: avoid; page-break-after: avoid;
                         -webkit-print-color-adjust: exact; print-color-adjust: exact;
                         padding: 10px 16px; margin: 0 0 6px 0; border-radius: 0;
                     }
-                    .bucket-header h2 { font-size: 21px; margin: 0 0 2px 0; }
-                    .bucket-header .bucket-description { font-size: 15px; line-height: 1.3; margin: 0; }
+                    .bucket-header h2 { font-size: 24px !important; margin: 0 0 2px 0; }
+                    .bucket-header .bucket-description { font-size: 17px !important; line-height: 1.3; margin: 0; }
                     .bucket-header + .section { break-before: auto; page-break-before: auto; }
                     .pagebreak { break-after: page; page-break-after: always; height: 0; visibility: hidden; }
                     h2[id^="section-"]:not(#section-summary) { break-before: page; page-break-before: always; }
-                    h2 { font-size: 21px; margin: 8px 0 4px; }
-                    h3 { font-size: 16px; margin: 4px 0 2px; }
+                    h2 { font-size: 24px !important; margin: 8px 0 4px; }
+                    h3 { font-size: 19px !important; margin: 4px 0 2px; }
                     /* ── Uniform map size ── */
                     .section .map { width: 7in; height: 4.5in; margin: 6px auto; border: 1px solid #ccc; border-radius: 0; box-shadow: none; position: relative; }
                     .section .map img { width: 100%; height: 100%; display: block; object-fit: contain; margin: 0; }
                     .section .map canvas, .section .map svg { width: 100% !important; height: 100% !important; max-width: 7in; max-height: 4.5in; display: block; object-fit: contain; }
-                    .layer-narrative { margin: 2px 0; padding: 4px 8px; font-size: 14px; line-height: 1.4; }
+                    .layer-narrative { margin: 2px 0; padding: 4px 8px; font-size: 16px !important; line-height: 1.5; }
                     /* ── Tables ── */
-                    .table-scroll { max-height: none !important; overflow: visible !important; }
-                    .interactive-table-wrapper { overflow: visible !important; padding: 0 8px 8px; margin-top: 8px; }
-                    .interactive-table { font-size: 11px; }
-                    .interactive-table th { background: var(--blm-green) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .table-scroll { max-height: none !important; overflow: visible !important; border: 1px solid #ccc; border-radius: 0; }
+                    .interactive-table-wrapper { overflow: visible !important; padding: 4px 14px 14px !important; margin-top: 8px; }
+                    .interactive-table { font-size: 13px !important; }
+                    .interactive-table th { background: var(--blm-green) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 12px !important; padding: 8px 12px !important; }
+                    .interactive-table td { font-size: 13px !important; padding: 7px 12px !important; white-space: normal !important; max-width: none !important; }
                     table.data-sources-table th{ background: var(--blm-green) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                    table.data-sources-table { font-size: 13px; }
+                    table.data-sources-table { font-size: 14px !important; }
                     /* ── TOC & AOI ── */
                     .report-toc { break-inside: avoid; page-break-inside: avoid; }
                     .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 6px 0; }
                     .aoi-map img { max-height: 4in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
-                    .aoi-map-title { font-size: 15px !important; margin: 4px 0 2px !important; }
+                    .aoi-map-title { font-size: 17px !important; margin: 4px 0 2px !important; }
                     .aoi-section { break-inside: avoid; page-break-inside: avoid; }
-                    .aoi-section h2 { margin: 6px 0 4px; }
-                    .aoi-section p { font-size: 15px; margin: 2px 0 4px; }
-                    .aoi-details { margin-top: 4px; font-size: 15px; }
-                    .aoi-details .aoi-field { margin: 2px 0; font-size: 15px; }
+                    .aoi-section h2 { margin: 6px 0 4px; font-size: 24px !important; }
+                    .aoi-section p { font-size: 17px !important; margin: 2px 0 4px; }
+                    .aoi-details { margin-top: 4px; font-size: 17px !important; }
+                    .aoi-details .aoi-field { margin: 2px 0; font-size: 17px !important; }
+                    .aoi-label { font-size: 17px !important; }
+                    .findings-subhead { font-size: 21px !important; }
+                    .findings-summary { font-size: 16px !important; }
+                    .section .sub { font-size: 14px !important; }
                 }
                 /* Interactive Data Tables */
                 .interactive-table-wrapper {
@@ -2002,13 +2007,21 @@ define([
                     .interactive-table-wrapper .table-toolbar { display: none !important; }
                     .hidden-cols-bar { display: none !important; }
                     .col-hide-btn { display: none !important; }
-                    .table-scroll { max-height: none !important; overflow: visible !important; }
-                    .interactive-table-wrapper { overflow: visible !important; padding: 0 8px 8px; margin-top: 8px; }
-                    .interactive-table { font-size: 11px; }
+                    .table-scroll { max-height: none !important; overflow: visible !important; border: 1px solid #ccc; border-radius: 0; }
+                    .interactive-table-wrapper { overflow: visible !important; padding: 4px 14px 14px !important; margin-top: 8px; }
+                    .interactive-table { font-size: 13px !important; }
                     .interactive-table th {
                         background: var(--blm-green) !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
+                        font-size: 12px !important;
+                        padding: 8px 12px !important;
+                    }
+                    .interactive-table td {
+                        font-size: 13px !important;
+                        padding: 7px 12px !important;
+                        white-space: normal !important;
+                        max-width: none !important;
                     }
                     /* Neutralize print killers (supplementary for this template) */
                     .section-collapse-wrap, .section-collapse-inner {
@@ -3954,7 +3967,7 @@ define([
                 html, body {
                     background: white !important;
                     margin: 0; padding: 0;
-                    font-size: 16px;
+                    font-size: 18px !important;
                     overflow: visible !important;
                     height: auto !important;
                 }
@@ -4038,7 +4051,7 @@ define([
                     break-after: avoid;
                     page-break-after: avoid;
                     margin: 4px 0 2px;
-                    font-size: 16px;
+                    font-size: 19px !important;
                 }
                 /* Sub-elements should not split across pages */
                 .section .map,
@@ -4052,7 +4065,7 @@ define([
                     break-before: auto;
                     break-inside: avoid;
                     page-break-inside: avoid;
-                    padding: 0 8px 8px;
+                    padding: 4px 14px 14px !important;
                     margin-top: 8px;
                 }
 
@@ -4069,8 +4082,8 @@ define([
                     border-radius: 0;
                     box-shadow: none;
                 }
-                .bucket-header h2 { font-size: 21px; margin: 0 0 2px 0; }
-                .bucket-header .bucket-description { font-size: 15px; line-height: 1.3; margin: 0; }
+                .bucket-header h2 { font-size: 24px !important; margin: 0 0 2px 0; }
+                .bucket-header .bucket-description { font-size: 17px !important; line-height: 1.3; margin: 0; }
                 /* First section after a bucket header should NOT add another page break */
                 .bucket-header + .section {
                     break-before: auto;
@@ -4088,8 +4101,8 @@ define([
                     break-before: page;
                     page-break-before: always;
                 }
-                h2 { font-size: 21px; margin: 8px 0 4px; }
-                h3 { font-size: 16px; margin: 4px 0 2px; }
+                h2 { font-size: 24px !important; margin: 8px 0 4px; }
+                h3 { font-size: 19px !important; margin: 4px 0 2px; }
 
                 /* ── 5. Uniform printed map size ── */
                 .section .map {
@@ -4120,25 +4133,42 @@ define([
                 .layer-narrative {
                     margin: 2px 0;
                     padding: 4px 8px;
-                    font-size: 14px;
-                    line-height: 1.4;
+                    font-size: 16px !important;
+                    line-height: 1.5;
                 }
 
                 /* ── 6. Tables ── */
-                .interactive-table { font-size: 11px; }
+                .interactive-table { font-size: 13px !important; }
                 .interactive-table th {
                     background: var(--blm-green) !important;
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
+                    font-size: 12px !important;
+                    padding: 8px 12px !important;
                 }
-                .table-scroll { max-height: none !important; overflow: visible !important; }
-                .interactive-table-wrapper { overflow: visible !important; padding: 0 8px 8px; margin-top: 8px; }
+                .interactive-table td {
+                    font-size: 13px !important;
+                    padding: 7px 12px !important;
+                    white-space: normal !important;
+                    max-width: none !important;
+                }
+                .table-scroll {
+                    max-height: none !important;
+                    overflow: visible !important;
+                    border: 1px solid #ccc;
+                    border-radius: 0;
+                }
+                .interactive-table-wrapper {
+                    overflow: visible !important;
+                    padding: 4px 14px 14px !important;
+                    margin-top: 8px;
+                }
                 table.data-sources-table th {
                     background: var(--blm-green) !important;
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
                 }
-                table.data-sources-table { font-size: 13px; }
+                table.data-sources-table { font-size: 14px !important; }
 
                 /* ── 7. Report TOC ── */
                 .report-toc { break-inside: avoid; page-break-inside: avoid; }
@@ -4151,14 +4181,23 @@ define([
                     display: block; margin: 0 auto;
                     object-fit: contain;
                 }
-                .aoi-map-title { font-size: 15px !important; margin: 4px 0 2px !important; }
+                .aoi-map-title { font-size: 17px !important; margin: 4px 0 2px !important; }
                 .aoi-section { break-inside: avoid; page-break-inside: avoid; }
-                .aoi-section h2 { margin: 6px 0 4px; }
-                .aoi-section p { font-size: 15px; margin: 2px 0 4px; }
-                .aoi-details { margin-top: 4px; font-size: 15px; }
-                .aoi-details .aoi-field { margin: 2px 0; font-size: 15px; }
+                .aoi-section h2 { margin: 6px 0 4px; font-size: 24px !important; }
+                .aoi-section p { font-size: 17px !important; margin: 2px 0 4px; }
+                .aoi-details { margin-top: 4px; font-size: 17px !important; }
+                .aoi-details .aoi-field { margin: 2px 0; font-size: 17px !important; }
+                .aoi-label { font-size: 17px !important; }
                 /* Findings sub-headings */
-                .findings-subhead { font-size: 18px; }
+                .findings-subhead { font-size: 21px !important; }
+                .findings-summary { font-size: 16px !important; }
+                .findings-summary p { font-size: 16px !important; }
+                /* Section sub text */
+                .section .sub { font-size: 14px !important; }
+                /* Report header */
+                .report-header h1 { font-size: 28px !important; }
+                .report-header .meta { font-size: 17px !important; }
+                .report-header .agency-name { font-size: 14px !important; }
             }
         `;
     }
@@ -4329,7 +4368,11 @@ define([
             } else if (_aoiMeth === "upload") {
                 aoiMethod = `Uploaded File: ${S.aoiSourceLayerTitle || "unknown"}`;
             } else if (_aoiMeth === "search" || _aoiMeth === "namesearch") {
-                aoiMethod = "PLSS Boundary";
+                if (S.aoiSourceLayerTitle) {
+                    aoiMethod = `Selected Feature (${S.aoiSourceLayerTitle})`;
+                } else {
+                    aoiMethod = "Search by Name or ID";
+                }
             }
             // Append buffer text if a buffer was applied
             const _bufMi = S.aoiBufferMiles || 0;

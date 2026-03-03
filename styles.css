@@ -2501,11 +2501,14 @@ body.cv-highcontrast {
     border-color: var(--blm-green, #2d6a4f);
 }
 .feature-search-inline .feature-search-results {
-    position: relative;
-    top: 4px;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
     max-height: 340px;
     box-shadow: 0 2px 12px rgba(0,0,0,0.12);
     border: 1px solid #e0e0e0;
+    z-index: 10;
 }
 
 .feature-search-container {
