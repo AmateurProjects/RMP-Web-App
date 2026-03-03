@@ -3438,6 +3438,17 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 if (!skipAutoZoom) {
                     const lyr = selectionLayers[idxToEnable]?.layer;
                     await ensureLayerVisibleAtScale(lyr);
+                    // Township polygons are large — zoom in a bit more so
+                    // individual townships are clearly distinguishable.
+                    if (which === "township" && view) {
+                        const extraScale = Math.floor(view.scale * 0.45);
+                        if (extraScale > 0) {
+                            await view.goTo(
+                                { center: view.center, scale: extraScale },
+                                { animate: true, duration: 300 }
+                            );
+                        }
+                    }
                     await waitForViewStationary(1500);
                 }
 
