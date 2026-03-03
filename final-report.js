@@ -1516,6 +1516,7 @@ define([
                 }
                 @media print {
                     .bucket-header { display: none !important; }
+                    .print-hide-col { display: none !important; }
                     .map-section-head { break-inside: avoid; page-break-inside: avoid; }
                 }
                 .layer-maps-toolbar {
@@ -1573,6 +1574,7 @@ define([
                     .section-hidden + .pagebreak { display:none !important; }
                     .hidden-cols-bar { display:none !important; }
                     .bucket-header { display: none !important; }
+                    .print-hide-col { display: none !important; }
                     /* ── 3. Layout resets ── */
                     .wrap{ max-width: none; padding: 0; box-shadow: none; background: white; }
                     .report-header{ background: var(--blm-green) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1618,8 +1620,8 @@ define([
                     /* ── 11. TOC & AOI ── */
                     .report-toc { break-inside: avoid; page-break-inside: avoid; }
                     .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 4px 0; }
-                    .aoi-map img { max-height: 4in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
-                    .aoi-map-title { font-size: 13px !important; margin: 3px 0 1px !important; }
+                    .aoi-map img { max-height: 3.5in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
+                    .aoi-map-title { font-size: 12px !important; margin: 2px 0 0 !important; }
                     .aoi-section { break-inside: avoid; page-break-inside: avoid; }
                     .aoi-section h2 { margin: 4px 0 2px; font-size: 16px !important; }
                     .aoi-section p { font-size: 12px !important; margin: 2px 0; }
@@ -1988,6 +1990,7 @@ define([
                     .hidden-cols-bar { display: none !important; }
                     .col-hide-btn { display: none !important; }
                     .bucket-header { display: none !important; }
+                    .print-hide-col { display: none !important; }
                     /* Neutralize print killers (supplementary) */
                     .section-collapse-wrap, .section-collapse-inner {
                         display: block !important; overflow: visible !important;
@@ -4008,6 +4011,7 @@ define([
                 .section.section-hidden { display: none !important; }
                 .section-hidden + .pagebreak { display: none !important; }
                 .bucket-header { display: none !important; }
+                .print-hide-col { display: none !important; }
 
                 /* ── 3. Layout resets ── */
                 .wrap {
@@ -4184,12 +4188,12 @@ define([
                 /* ── 11. AOI section ── */
                 .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 4px 0; }
                 .aoi-map img {
-                    max-height: 4in;
+                    max-height: 3.5in;
                     width: auto; max-width: 100%;
                     display: block; margin: 0 auto;
                     object-fit: contain;
                 }
-                .aoi-map-title { font-size: 13px !important; margin: 3px 0 1px !important; }
+                .aoi-map-title { font-size: 12px !important; margin: 2px 0 0 !important; }
                 .aoi-section { break-inside: avoid; page-break-inside: avoid; }
                 .aoi-section h2 { margin: 4px 0 2px; font-size: 16px !important; }
                 .aoi-section p { font-size: 12px !important; margin: 2px 0; }

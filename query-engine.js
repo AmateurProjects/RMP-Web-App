@@ -1255,9 +1255,33 @@ define([
         const extraOffset = extraCols.length;
         const tableTitle = feats.length === 1 ? 'Feature Attributes' : 'Per-Feature Breakdown';
 
-        const thCells = colLabels.map((label, ci) =>
-            `<th data-col="${ci}" data-label="${escapeHtml(label)}" data-sort-dir="none" onclick="sortInteractiveTable(this)" title="Click to sort">${escapeHtml(label)} <span class="sort-arrow">\u21C5</span> <button class="col-hide-btn" onclick="event.stopPropagation(); hideColumn('tbl-${tId}',${ci});" title="Hide this column">\u2716</button></th>`
-        ).join("");
+        // Resolve highlightFields from config for print column filtering
+        let printKeepFields = null;
+        if (S && S.layerCfgByUrl && item.url) {
+            const cfgEntry = S.layerCfgByUrl.get(item.url)
+                          || S.layerCfgByUrl.get(item.url.replace(/\/\d+$/, ''));
+            const cfg = cfgEntry?.cfg || cfgEntry;
+            if (cfg && Array.isArray(cfg.highlightFields) && cfg.highlightFields.length > 0) {
+                printKeepFields = new Set(cfg.highlightFields.map(f => f.toLowerCase()));
+            }
+        }
+
+        const thCells = colLabels.map((label, ci) => {
+            // Extra cols (Acres in AOI, % of AOI, etc.) always visible in print;
+            // attribute cols visible only if they match highlightFields (or no config → show first 3)
+            let hideCls = '';
+            if (ci >= extraOffset) {
+                const attrIdx = ci - extraOffset;
+                const fieldKey = attrKeys[attrIdx];
+                if (printKeepFields) {
+                    if (!printKeepFields.has(fieldKey.toLowerCase())) hideCls = ' print-hide-col';
+                } else {
+                    // No highlightFields configured: keep first 3 attribute columns
+                    if (attrIdx >= 3) hideCls = ' print-hide-col';
+                }
+            }
+            return `<th data-col="${ci}" data-label="${escapeHtml(label)}" data-sort-dir="none" class="${hideCls}" onclick="sortInteractiveTable(this)" title="Click to sort">${escapeHtml(label)} <span class="sort-arrow">\u21C5</span> <button class="col-hide-btn" onclick="event.stopPropagation(); hideColumn('tbl-${tId}',${ci});" title="Hide this column">\u2716</button></th>`;
+        }).join("");
         const headerHtml = `<tr>${thCells}</tr>`;
 
         let hasSliverWarning = false;
@@ -1280,7 +1304,13 @@ define([
             const attrCells = attrKeys.map((k, ci) => {
                 const raw = (row.attrs[k] == null) ? "" : String(row.attrs[k]);
                 const display = raw.length > 100 ? raw.slice(0, 99) + "\u2026" : raw;
-                return `<td data-col="${ci + extraOffset}" data-sort-val="${escapeHtml(raw)}" title="${escapeHtml(raw)}">${escapeHtml(display)}</td>`;
+                let hideCls = '';
+                if (printKeepFields) {
+                    if (!printKeepFields.has(k.toLowerCase())) hideCls = ' print-hide-col';
+                } else if (ci >= 3) {
+                    hideCls = ' print-hide-col';
+                }
+                return `<td data-col="${ci + extraOffset}" data-sort-val="${escapeHtml(raw)}" class="${hideCls}" title="${escapeHtml(raw)}">${escapeHtml(display)}</td>`;
             });
 
             const allCells = [...extraCells, ...attrCells].join("");
