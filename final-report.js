@@ -4300,7 +4300,8 @@ define([
 
                 const paddingFactor = config?.visualReport?.paddingFactor ?? 1;
                 const _cfgWidth2 = config?.visualReport?.screenshotWidth ?? 1400;
-                const width = mapUtils.isMobileBrowser() ? Math.min(_cfgWidth2, 900) : _cfgWidth2;
+                const _isMobileDevice = mapUtils.isMobileBrowser();
+                const width = _isMobileDevice ? Math.min(_cfgWidth2, 600) : _cfgWidth2;
 
                 // ── Canonical final AOI geometry ──
                 // This is THE geometry every report map fits to.
@@ -4813,10 +4814,13 @@ define([
             const permitLabel = ptDef ? ptDef.label : null;
             
             // Prepare export data (layer title, count, and sample attribute rows)
+            // On mobile, embed fewer rows to reduce HTML size and memory pressure
+            const _isMobileReport = mapUtils.isMobileBrowser();
+            const _maxExportRows = _isMobileReport ? 25 : 100;
             const exportData = targetLayers.map(layer => ({
                 title: layer.title || "Unknown",
                 count: layer.count || 0,
-                rows: (layer.rows || []).slice(0, 100) // Limit to 100 rows per layer for embedding
+                rows: (layer.rows || []).slice(0, _maxExportRows)
             }));
             const exportDataJson = JSON.stringify(exportData).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
             const bgAoiGeoJsonStr = JSON.stringify(aoiGeomToGeoJSON(selectionGeom) || null)
@@ -5016,11 +5020,41 @@ ${getA11yWidgetBlock()}
         a.click();
         document.body.removeChild(a);
 
-        // Fallback: if anchor click didn't work, try window.open
-        // (we can't easily detect anchor success, but window.open returns null when blocked)
-        // The anchor approach works on Safari mobile so this is a safety net for other browsers
-        window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+        // Revoke sooner on mobile to free memory faster (10s vs 2min).
+        // The new tab should have finished reading the Blob by then.
+        const revokeDelay = isMobileBrowser() ? 10000 : 120000;
+        window.setTimeout(() => URL.revokeObjectURL(url), revokeDelay);
         return true;
+    }
+
+    /**
+     * Open a report by uploading to R2 worker and navigating to the
+     * shared URL.  This avoids holding the full HTML in both the
+     * originating tab and the new tab simultaneously — critical on
+     * mobile where memory is limited.
+     *
+     * Returns the shareable URL on success, or null on failure.
+     */
+    async function uploadAndOpenReport(htmlContent, autoOpen) {
+        if (autoOpen === undefined) autoOpen = true;
+        const workerUrl = S.config?.metadataWorkerUrl;
+        if (!workerUrl || !htmlContent) return null;
+        try {
+            const res = await fetch(workerUrl + "/reports", {
+                method: "POST",
+                headers: { "Content-Type": "text/html" },
+                body: htmlContent
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (!data?.url) return null;
+            // Open the remote URL — no Blob needed, no local memory
+            if (autoOpen) window.open(data.url, "_blank", "noopener");
+            return data.url;
+        } catch (e) {
+            console.warn("[report] R2 upload failed, falling back to local:", e);
+            return null;
+        }
     }
 
     // ────────────────────────────────────────────
@@ -5054,6 +5088,7 @@ ${getA11yWidgetBlock()}
             // Background report builder (builds complete HTML without opening window)
             buildReportInBackground,
             openCompletedReport,
+            uploadAndOpenReport,
             // Accessors for cachedFinalReportHtml
             getCachedFinalReportHtml: () => cachedFinalReportHtml,
             setCachedFinalReportHtml: (v) => { cachedFinalReportHtml = v; },

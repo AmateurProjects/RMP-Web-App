@@ -641,7 +641,7 @@ define([
 
         const ssOpts = {
             format: "jpg",
-            quality: isMobileBrowser() ? 72 : 92,
+            quality: isMobileBrowser() ? 60 : 92,
             width: width,
             height: screenConfig.height
                 ? screenConfig.height

@@ -634,7 +634,7 @@ function setBusy(isBusy) {
     const {
         openHtmlInNewTab, setCachedFinalReportHtml,
         saveReportToDb, loadReportFromDb, cleanupExpiredReports,
-        buildReportInBackground, openCompletedReport
+        buildReportInBackground, openCompletedReport, uploadAndOpenReport
     } = finalReport;
 
     const { isMobileBrowser } = mapUtils;
@@ -1252,6 +1252,11 @@ function setActiveTab(tabName) {
      */
     async function openCachedReport(cacheEntry) {
         if (!cacheEntry) return false;
+        // If it's an R2 URL, just open it — zero local memory needed
+        if (typeof cacheEntry === 'string' && cacheEntry.startsWith('http')) {
+            window.open(cacheEntry, '_blank', 'noopener');
+            return true;
+        }
         // If it's a short string, it's an IDB report ID
         if (typeof cacheEntry === 'string' && cacheEntry.length < 30) {
             try {
@@ -1304,7 +1309,7 @@ function setActiveTab(tabName) {
         const _isMobile = isMobileBrowser();
         let reportFinalStats = {};
         try {
-            const htmlContent = await buildReportInBackground({
+            let htmlContent = await buildReportInBackground({
                 bucketKey: null,
                 permitTypeKey: selectedPermitType || null,
                 onProgress: (pct, maps, sections, stats) => {
@@ -1323,21 +1328,37 @@ function setActiveTab(tabName) {
                 return;
             }
 
-            // On mobile, immediately save to IndexedDB and release the
-            // in-memory HTML string to prevent the browser from killing
-            // the page due to memory pressure.
+            // On mobile, save to IndexedDB as a fallback, then try
+            // uploading to R2 so we can open by URL with zero local
+            // memory.  Null out htmlContent ASAP to reduce pressure.
             let reportRef = htmlContent; // desktop: keep HTML in memory
             if (_isMobile) {
+                let idbId = null;
                 try {
                     reportModal.setProgressDetail('Saving report…');
-                    const idbId = await saveReportToDb(htmlContent);
-                    reportRef = idbId; // store only the short ID
-                    console.log(`[report] Saved to IndexedDB as "${idbId}" — releasing HTML from memory`);
+                    idbId = await saveReportToDb(htmlContent);
+                    console.log(`[report] Saved to IndexedDB as "${idbId}"`);
                 } catch (idbErr) {
-                    console.warn('[report] IndexedDB save failed, keeping HTML in memory:', idbErr);
-                    // Fall back to in-memory on IDB failure
-                    reportRef = htmlContent;
+                    console.warn('[report] IndexedDB save failed:', idbErr);
                 }
+
+                // Try uploading to R2 — opens via remote URL, no local Blob
+                try {
+                    reportModal.setProgressDetail('Preparing report link…');
+                    const r2Url = await uploadAndOpenReport(htmlContent, false);
+                    if (r2Url) {
+                        reportRef = r2Url;
+                        console.log('[report] Uploaded to R2 — will open via URL');
+                    } else if (idbId) {
+                        reportRef = idbId;
+                    }
+                } catch (uploadErr) {
+                    console.warn('[report] R2 upload failed, falling back to IDB:', uploadErr);
+                    if (idbId) reportRef = idbId;
+                }
+
+                // Release the large HTML string from memory
+                htmlContent = null;
             }
             
             // Show success overlay with stats
