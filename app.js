@@ -74,6 +74,13 @@ require([
 
     const viewBlockerEl = document.getElementById("viewBlocker");
 
+    // Feedback floating window
+    const feedbackBtn = document.getElementById("feedbackBtn");
+    const feedbackWindow = document.getElementById("feedbackWindow");
+    const feedbackCloseBtn = document.getElementById("feedbackCloseBtn");
+    const feedbackForm = document.getElementById("feedbackForm");
+    const feedbackStatus = document.getElementById("feedbackStatus");
+
     // Layer Manager floating window
     const advLayersBtn = document.getElementById("advLayersBtn");
     const layerManagerWindow = document.getElementById("layerManagerWindow");
@@ -2040,6 +2047,62 @@ cb.addEventListener("change", async () => {
     if (layerMgrCloseBtn) {
         layerMgrCloseBtn.addEventListener("click", () => {
             if (layerManagerWindow) layerManagerWindow.classList.add("hidden");
+        });
+    }
+
+    // Feedback window open/close & submit
+    if (feedbackBtn) {
+        feedbackBtn.addEventListener("click", () => {
+            if (!feedbackWindow) return;
+            feedbackWindow.classList.toggle("hidden");
+            if (!feedbackWindow.classList.contains("hidden")) {
+                feedbackStatus.textContent = "";
+                feedbackStatus.className = "feedback-status";
+            }
+        });
+    }
+    if (feedbackCloseBtn) {
+        feedbackCloseBtn.addEventListener("click", () => {
+            if (feedbackWindow) feedbackWindow.classList.add("hidden");
+        });
+    }
+    if (feedbackForm) {
+        feedbackForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const typeEl = document.getElementById("feedbackType");
+            const descEl = document.getElementById("feedbackDesc");
+            const submitBtn = document.getElementById("feedbackSubmitBtn");
+            const desc = (descEl.value || "").trim();
+            if (!desc) return;
+
+            feedbackStatus.textContent = "Submitting…";
+            feedbackStatus.className = "feedback-status info";
+            submitBtn.disabled = true;
+
+            try {
+                const workerUrl = config?.metadataWorkerUrl;
+                if (!workerUrl) throw new Error("Worker URL not configured");
+                const res = await fetch(workerUrl + "/feedback", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ type: typeEl.value, description: desc }),
+                });
+                const data = await res.json();
+                if (res.ok && data.ok) {
+                    feedbackStatus.textContent = "Thank you! Your feedback has been submitted.";
+                    feedbackStatus.className = "feedback-status success";
+                    descEl.value = "";
+                } else {
+                    feedbackStatus.textContent = data.error || "Submission failed. Please try again.";
+                    feedbackStatus.className = "feedback-status error";
+                }
+            } catch (err) {
+                console.error("Feedback submit error:", err);
+                feedbackStatus.textContent = "Network error. Please try again.";
+                feedbackStatus.className = "feedback-status error";
+            } finally {
+                submitBtn.disabled = false;
+            }
         });
     }
 

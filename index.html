@@ -53,6 +53,27 @@
   
   <div id="viewBlocker" class="view-blocker hidden" aria-hidden="true"></div>
 
+  <!-- Feedback Window -->
+  <div id="feedbackWindow" class="feedback-window hidden">
+    <div class="feedback-header">
+      <span class="feedback-title">Submit Feedback</span>
+      <button id="feedbackCloseBtn" class="feedback-close" type="button" title="Close">&times;</button>
+    </div>
+    <div class="feedback-body">
+      <form id="feedbackForm" autocomplete="off">
+        <label for="feedbackType">Type</label>
+        <select id="feedbackType" required>
+          <option value="bug">🐛 Bug Report</option>
+          <option value="suggestion">💡 Suggestion</option>
+        </select>
+        <label for="feedbackDesc">Description</label>
+        <textarea id="feedbackDesc" rows="5" required placeholder="Describe the bug or your suggestion..."></textarea>
+        <button type="submit" class="feedback-submit-btn" id="feedbackSubmitBtn">Submit</button>
+        <div id="feedbackStatus" class="feedback-status"></div>
+      </form>
+    </div>
+  </div>
+
   <!-- Floating Layer Manager Window -->
   <div id="layerManagerWindow" class="layer-mgr-window hidden">
     <div class="layer-mgr-header" id="layerMgrHeader">
@@ -236,6 +257,9 @@
           <button id="permitModeBtn" class="mode-btn active" type="button" title="Guided permitting workflow">Permitting</button>
           <!-- <button id="advancedModeBtn" class="mode-btn" type="button" title="Full GIS intersect tools">Advanced</button> -->
         </div>
+        <button id="feedbackBtn" class="panel-toggle-btn" type="button" title="Submit Feedback" aria-label="Submit Feedback">
+          <span style="font-size:15px;">💬</span>
+        </button>
         <button id="advLayersBtn" class="panel-toggle-btn" type="button" title="Layer Manager" aria-label="Layer Manager">
           <span style="font-size:15px;">☰</span>
         </button>
