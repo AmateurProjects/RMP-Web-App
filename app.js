@@ -353,7 +353,6 @@ function setBusy(isBusy) {
                         if (this._onViewReport) await this._onViewReport();
                     } catch (e) {
                         console.warn('[report] Error opening report:', e);
-                        alert("Could not open report. Please try again.");
                     }
                 });
             }
@@ -1296,7 +1295,7 @@ function setActiveTab(tabName) {
         if (wizFullReport && wizFullReport.dataset.reportReady === 'true' && cachedPermitReports[ptKey]) {
             const opened = await openCachedReport(cachedPermitReports[ptKey]);
             if (!opened) {
-                alert("Could not open report. Please allow popups for this site.");
+                console.warn('[report] openCachedReport returned false — popup may have been blocked');
             }
             return;
         }
@@ -1365,7 +1364,7 @@ function setActiveTab(tabName) {
             reportModal._onViewReport = async () => {
                 const opened = await openCachedReport(reportRef);
                 if (!opened) {
-                    alert("Could not open report. Please allow popups for this site.");
+                    console.warn('[report] openCachedReport returned false — popup may have been blocked');
                 }
             };
             reportModal.showSuccess({
