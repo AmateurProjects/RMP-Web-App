@@ -59,7 +59,7 @@ define([], function () {
         },
         "grazing": {
             label: "Grazing",
-            icon: "�",
+            icon: "\uD83D\uDC02",
             description: "Screening for grazing permits and allotment management on BLM-administered lands.",
             groups: [
                 {
