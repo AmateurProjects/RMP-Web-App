@@ -4414,16 +4414,29 @@ define([
                         await waitForLayerReadyToCapture(_persistentPlss, view, { timeoutMs: 8000 });
                     }
 
-                    // Sort layers by permit-type group order so section headers flow correctly
+                    // Sort layers by permit-type group order so section headers flow correctly.
+                    // ImageService layers (e.g. 3DEP Elevation) are always placed last so that
+                    // all feature-layer screenshots run on the imagery basemap first, and we
+                    // only switch to the non-imagery basemap once at the end.
                     if (permitGroupOrder && layerGroupMap) {
                         const groupIdx = {};
                         permitGroupOrder.forEach((g, idx) => { groupIdx[g.key] = idx; });
                         mappableLayers.sort((a, b) => {
+                            // ImageService always sorts after non-ImageService
+                            if (a.__isImageService && !b.__isImageService) return 1;
+                            if (!a.__isImageService && b.__isImageService) return -1;
                             const ga = layerGroupMap.get(String(a.url || ''));
                             const gb = layerGroupMap.get(String(b.url || ''));
                             const ia = ga ? (groupIdx[ga.key] ?? 999) : 999;
                             const ib = gb ? (groupIdx[gb.key] ?? 999) : 999;
                             return ia - ib;
+                        });
+                    } else {
+                        // Even without group ordering, push ImageService to the end
+                        mappableLayers.sort((a, b) => {
+                            if (a.__isImageService && !b.__isImageService) return 1;
+                            if (!a.__isImageService && b.__isImageService) return -1;
+                            return 0;
                         });
                     }
 
@@ -4441,6 +4454,7 @@ define([
                     let lastGroupKey = null; // Track current group for section headers
                     // categoryNumber is declared in outer scope
                     let layersInCurrentGroup = 0; // Track count for 2-per-page layout
+                    let _switchedToNonImageryBasemap = false; // flipped once when first ImageService appears
                     for (let i = 0; i < mappableLayers.length; i++) {
                         if (isCanceled()) throw new Error("Canceled");
 
@@ -4474,8 +4488,20 @@ define([
                         onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                         onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
 
-                        // ImageServer layers — capture screenshot + elevation narrative
+                        // ImageServer layers — capture screenshot + elevation narrative.
+                        // These are sorted to appear last, so the imagery basemap is
+                        // switched off once (not toggled per-layer).
                         if (item.__isImageService) {
+                            // On the first ImageService item, switch away from the imagery
+                            // basemap once.  The elevation imagery itself provides the
+                            // visual backdrop, so satellite underneath is redundant.
+                            if (!_switchedToNonImageryBasemap) {
+                                _switchedToNonImageryBasemap = true;
+                                view.map.basemap = originalBasemap;
+                                await new Promise(r => setTimeout(r, 400));
+                                await waitForViewStationary(800);
+                            }
+
                             let dataUrl = null;
                             let screenshotDeferred = false;
                             const deferToken = `__BG_DEFERRED_MAP_${i}__`;
@@ -4699,16 +4725,35 @@ define([
                     }
 
                     // ── Retry deferred screenshots (tab was hidden during capture) ──
+                    // Process feature-layer deferred items first (imagery basemap),
+                    // then ImageService items last (non-imagery basemap) — same order
+                    // as the main loop, one basemap switch at most.
                     if (deferredScreenshots.length > 0) {
                         console.log(`[bg-report] ${deferredScreenshots.length} deferred screenshot(s) — waiting for tab visibility…`);
                         onStep(`Waiting for tab visibility to capture ${deferredScreenshots.length} deferred map(s)…`);
                         await waitForTabVisible(300000);
 
-                        for (const def of deferredScreenshots) {
+                        // Sort: feature layers first, ImageService last
+                        const deferredSorted = deferredScreenshots.slice().sort((a, b) => {
+                            if (a.isImageService && !b.isImageService) return 1;
+                            if (!a.isImageService && b.isImageService) return -1;
+                            return 0;
+                        });
+                        let _deferredSwitchedBasemap = false;
+
+                        for (const def of deferredSorted) {
                             if (isCanceled()) break;
                             let retryDataUrl = null;
                             try {
                                 if (def.isImageService) {
+                                    // Switch to non-imagery basemap once for all deferred ImageService items
+                                    if (!_deferredSwitchedBasemap) {
+                                        _deferredSwitchedBasemap = true;
+                                        view.map.basemap = originalBasemap;
+                                        await new Promise(r => setTimeout(r, 400));
+                                        await waitForViewStationary(800);
+                                    }
+
                                     const imgOpts = { url: def.item.url, title: def.layerTitle, visible: true };
                                     if (def.item.__renderingRule) {
                                         imgOpts.renderingRule = { functionName: def.item.__renderingRule };
