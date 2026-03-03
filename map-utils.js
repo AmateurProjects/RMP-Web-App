@@ -530,6 +530,10 @@ define([
         const timeoutMs = opts.timeoutMs || 8000;
         if (!view || !layer) return;
 
+        // Detect ImageryLayer (tile-based imagery that loads progressively)
+        const isImagery = layer.type === 'imagery' ||
+            (layer.declaredClass && layer.declaredClass.indexOf('ImageryLayer') !== -1);
+
         try { await layer.when(); } catch (e) { console.warn("Layer.when() failed:", e); }
 
         let lv = null;
@@ -557,26 +561,64 @@ define([
         }
 
         // Wait for updating to complete, with a stability check:
-        // After updating goes false, wait 200ms and verify it's still false
-        // (some layers briefly go false then true again as sub-requests fire)
+        // After updating goes false, wait and verify it's still false
+        // (some layers briefly go false then true again as sub-requests fire).
+        // ImageryLayers need a longer stability window because tiles load
+        // progressively — low-res "overview" tiles arrive first while
+        // high-res tiles are still being fetched, making it look blurry.
+        const stabilityMs = isImagery ? 600 : 150;
+        const stabilityCycles = isImagery ? 3 : 1;
         const deadline = Date.now() + timeoutMs;
-        while (lv.updating && Date.now() < deadline) {
-            await new Promise(resolve => {
-                const remaining = Math.max(500, deadline - Date.now());
-                const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, remaining);
-                const h = lv.watch("updating", (u) => {
-                    if (!u) {
-                        clearTimeout(t);
-                        h.remove();
-                        resolve();
-                    }
+
+        for (let cycle = 0; cycle < stabilityCycles; cycle++) {
+            while (lv.updating && Date.now() < deadline) {
+                await new Promise(resolve => {
+                    const remaining = Math.max(500, deadline - Date.now());
+                    const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, remaining);
+                    const h = lv.watch("updating", (u) => {
+                        if (!u) {
+                            clearTimeout(t);
+                            h.remove();
+                            resolve();
+                        }
+                    });
                 });
-            });
-            // Stability check: wait a moment and see if it stays non-updating
-            if (!lv.updating) {
-                await new Promise(r => setTimeout(r, 150));
-                // If it started updating again, loop continues
             }
+            // Stability check: wait and see if it stays non-updating
+            if (!lv.updating) {
+                await new Promise(r => setTimeout(r, stabilityMs));
+                if (!lv.updating) {
+                    // If this is the last cycle, we're done
+                    if (cycle === stabilityCycles - 1) break;
+                    // Otherwise continue to next cycle for extra confidence
+                } else if (Date.now() >= deadline) {
+                    break; // timed out
+                }
+            }
+        }
+
+        // For ImageryLayers, also wait for the *entire view* to stop
+        // updating.  The view tracks all tile requests across all layers,
+        // catching residual tile loads that the LayerView may miss.
+        if (isImagery) {
+            const viewDeadline = Date.now() + Math.min(5000, Math.max(0, deadline - Date.now() + 2000));
+            while (view.updating && Date.now() < viewDeadline) {
+                await new Promise(resolve => {
+                    const remaining = Math.max(500, viewDeadline - Date.now());
+                    const t = window.setTimeout(() => { h?.remove?.(); resolve(); }, remaining);
+                    const h = view.watch("updating", (u) => {
+                        if (!u) {
+                            clearTimeout(t);
+                            h.remove();
+                            resolve();
+                        }
+                    });
+                });
+            }
+            // Extra settle for progressive imagery tile rendering
+            await new Promise(r => setTimeout(r, 500));
+            // Final rAF to ensure the GPU has composited the last tiles
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         }
 
         // Final render settle
