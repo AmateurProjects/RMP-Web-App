@@ -1840,7 +1840,7 @@ define([
                 /* Findings sub-headings */
                 .findings-subhead {
                     margin: 20px 0 6px 0;
-                    font-size: 15px;
+                    font-size: 18px;
                     color: var(--blm-brown);
                     border-bottom: 1px solid var(--border);
                     padding-bottom: 4px;
@@ -3533,6 +3533,35 @@ define([
             }
             .totals{ margin-top: 24px; }
             .totals .row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; }
+            /* Findings Summary */
+            .findings-summary {
+                margin: 0 0 24px 0;
+                padding: 20px 24px;
+                background: var(--white);
+                border: 1px solid var(--border);
+                border-left: 4px solid var(--blm-green);
+                border-radius: 0 8px 8px 0;
+                line-height: 1.65;
+                font-size: 14px;
+            }
+            .findings-summary p {
+                margin: 10px 0;
+            }
+            .findings-summary em {
+                font-size: 12px;
+                color: var(--muted);
+            }
+            .findings-subhead {
+                margin: 20px 0 6px 0;
+                font-size: 18px;
+                color: var(--blm-brown);
+                border-bottom: 1px solid var(--border);
+                padding-bottom: 4px;
+                letter-spacing: 0.2px;
+            }
+            .findings-summary .findings-subhead:first-child {
+                margin-top: 8px;
+            }
             .export-btn{
                 display: inline-flex;
                 align-items: center;
@@ -4128,6 +4157,8 @@ define([
                 .aoi-section p { font-size: 15px; margin: 2px 0 4px; }
                 .aoi-details { margin-top: 4px; font-size: 15px; }
                 .aoi-details .aoi-field { margin: 2px 0; font-size: 15px; }
+                /* Findings sub-headings */
+                .findings-subhead { font-size: 18px; }
             }
         `;
     }
@@ -4330,14 +4361,14 @@ define([
             // Build AOI section
             contentParts.push(`
                 <div class="aoi-section">
-                <h2>2. Area of Interest</h2>
+                <h2>2. Area of Interest (AOI)</h2>
                 <p style="color: var(--muted); font-style: italic; font-size: 13px;">The geographic boundary used for this analysis.</p>
                 ${aoiMapsHtml}
                 <div class="aoi-details">
-                    <div class="aoi-field"><span class="aoi-label">Area:</span> ~${formatNumber(Math.floor(aoiAcres), 0)} acres</div>
+                    <div class="aoi-field"><span class="aoi-label">Area of Interest Size:</span> ~${formatNumber(Math.floor(aoiAcres), 0)} acres</div>
                     <div class="aoi-field"><span class="aoi-label">AOI Selection Method:</span> ${escapeHtml(aoiMethod)}</div>
                     ${aoiLocationLabel ? `<div class="aoi-field"><span class="aoi-label">Location:</span> ${escapeHtml(aoiLocationLabel)}</div>` : ''}
-                    <div class="aoi-field"><span class="aoi-label">Legal Land Description:</span> <em style="color:var(--muted);">(To be determined)</em></div>
+                    <div class="aoi-field"><span class="aoi-label">Legal Land Description:</span> <em style="color:var(--muted);">(work in progress - coming soon)</em></div>
                 </div>
                 </div>
                 <div class="pagebreak"></div>
