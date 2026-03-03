@@ -563,7 +563,7 @@
           <div class="permit-type-checks" id="fPermitTypes">
             <label class="pt-check"><input type="checkbox" value="core"/> <span class="pt-badge pt-core">Core</span> (all permit types)</label>
             <label class="pt-check"><input type="checkbox" value="oil-gas"/> <span class="pt-badge pt-oil-gas">🛢️ Oil &amp; Gas</span></label>
-            <label class="pt-check"><input type="checkbox" value="grazing"/> <span class="pt-badge pt-grazing">🐄 Grazing</span></label>
+            <label class="pt-check"><input type="checkbox" value="grazing"/> <span class="pt-badge pt-grazing">� Grazing</span></label>
             <label class="pt-check"><input type="checkbox" value="mining"/> <span class="pt-badge pt-mining">⛏️ Mining</span></label>
             <label class="pt-check"><input type="checkbox" value="row"/> <span class="pt-badge pt-row">🛤️ ROW</span></label>
             <label class="pt-check"><input type="checkbox" value="realty"/> <span class="pt-badge pt-realty">🏠 Realty</span></label>
@@ -1029,7 +1029,7 @@ function catBadge(cat) {
 
 function permitTypeBadges(pts) {
   if (!pts || !pts.length) return '<span class="badge-cat" style="opacity:0.4">—</span>';
-  var labels = { core: '🔷', 'oil-gas': '🛢️', grazing: '🐄', mining: '⛏️', row: '🛤️', realty: '🏠' };
+  var labels = { core: '🔷', 'oil-gas': '🛢️', grazing: '�', mining: '⛏️', row: '🛤️', realty: '🏠' };
   return pts.map(function(p) {
     return '<span class="pt-badge pt-' + esc(p) + '" title="' + esc(p) + '">' + (labels[p] || esc(p)) + '</span>';
   }).join(' ');
@@ -1095,7 +1095,7 @@ function renderReportTable() {
 
     // Inline permit type checkboxes
     var ptKeys = ['core','oil-gas','grazing','mining','row','realty'];
-    var ptIcons = { core:'🔷', 'oil-gas':'🛢️', grazing:'🐄', mining:'⛏️', row:'🛤️', realty:'🏠' };
+    var ptIcons = { core:'🔷', 'oil-gas':'🛢️', grazing:'�', mining:'⛏️', row:'🛤️', realty:'🏠' };
     var curPts = l.permitTypes || [];
     var ptHtml = '<div class="inline-pt-checks">';
     ptKeys.forEach(function(pt) {
