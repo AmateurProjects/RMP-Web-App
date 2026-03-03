@@ -1515,32 +1515,9 @@ define([
                     line-height: 1.5;
                 }
                 @media print {
-                    .bucket-header {
-                        background: var(--blm-green) !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                        break-before: page;
-                        page-break-before: always;
-                        break-after: avoid;
-                        page-break-after: avoid;
-                        padding: 10px 16px;
-                        margin: 0 0 6px 0;
-                        border-radius: 0;
-                        box-shadow: none;
-                    }
-                    .bucket-header h2 {
-                        font-size: 15px;
-                        margin: 0 0 2px 0;
-                    }
-                    .bucket-header .bucket-description {
-                        font-size: 10px;
-                        line-height: 1.3;
-                        margin: 0;
-                    }
-                    .bucket-header + .section {
-                        break-before: auto;
-                        page-break-before: auto;
-                    }
+                    .bucket-header { display: none !important; }
+                    .print-hide-col { display: none !important; }
+                    .map-section-head { break-inside: avoid; page-break-inside: avoid; }
                 }
                 .layer-maps-toolbar {
                     display: flex;
@@ -1567,117 +1544,94 @@ define([
                     color: var(--muted);
                     font-style: italic;
                 }
+                /* Print-only category header (hidden on screen) */
+                .print-category-header { display: none; }
+                .report-map-page { display: contents; }
                 @page {
                     size: letter portrait;
                     margin: 0.5in 0.5in 0.6in 0.5in;
                 }
                 @media print{
-                    html, body{ background: white !important; margin: 0; padding: 0; font-size: 11px; }
-                    .actions, .hint{ display:none !important; }
+                    /* ── 1. Neutralize print-break killers ── */
+                    html, body{ background: white !important; margin: 0; padding: 0; font-size: 13px !important; overflow: visible !important; height: auto !important; }
+                    * { transform: none !important; contain: none !important; will-change: auto !important; }
+                    .cv-filter-wrap, .cv-filter-wrap.cv-protanopia, .cv-filter-wrap.cv-deuteranopia,
+                    .cv-filter-wrap.cv-tritanopia, .cv-filter-wrap.cv-achromatopsia, .cv-filter-wrap.cv-highcontrast {
+                        -webkit-filter: none !important; filter: none !important;
+                    }
+                    .section-collapse-wrap, .section-collapse-inner {
+                        display: block !important; overflow: visible !important;
+                        max-height: none !important; grid-template-rows: none !important;
+                        transition: none !important; min-height: 0 !important;
+                    }
+                    .wrap, .section, .map, .aoi-map, .report-map-page { overflow: visible !important; }
+                    .section { transition: none !important; }
+                    /* ── 2. Hide screen-only elements + bucket headers ── */
+                    .actions, .hint, .back-to-top, .a11y-widget { display:none !important; }
                     .section-hide-btn { display:none !important; }
                     .layer-maps-toolbar { display:none !important; }
                     .section.section-hidden { display:none !important; }
                     .section-hidden + .pagebreak { display:none !important; }
                     .hidden-cols-bar { display:none !important; }
-                    .wrap{ 
-                        max-width: none; 
-                        padding: 0; 
-                        box-shadow: none;
-                        background: white;
+                    .bucket-header { display: none !important; }
+                    .print-hide-col { display: none !important; }
+                    /* ── 3. Layout resets ── */
+                    .wrap{ max-width: none; padding: 0; box-shadow: none; background: white; }
+                    .report-header{ background: var(--blm-green) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    /* ── 4. Narrative sections — compact, natural pagination ── */
+                    .section{ box-shadow: none; border: none; margin-top: 0; padding: 4px 8px; }
+                    .section h3 { break-after: avoid; page-break-after: avoid; margin: 3px 0 1px; font-size: 12px !important; }
+                    .section .map, .section .layer-narrative, .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
+                    /* ── 5. Atomic map pages ── */
+                    .report-map-page { display: block; break-before: page; page-break-before: always; break-inside: avoid; page-break-inside: avoid; padding: 0; margin: 0; }
+                    .report-map-page .section { border: 1px solid #ccc; padding: 4px 10px; }
+                    .map-section-head { break-inside: avoid; page-break-inside: avoid; }
+                    /* ── 6. Print-only repeating category header ── */
+                    .print-category-header {
+                        display: block !important;
+                        background: var(--blm-green) !important; color: white !important;
+                        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+                        padding: 3px 10px; margin: 0 0 3px 0;
+                        font-size: 11px !important; font-weight: 700; letter-spacing: 0.3px;
                     }
-                    .report-header{
-                        background: var(--blm-green) !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                    }
-                    /* Each layer section starts on its own page */
-                    .section{ 
-                        break-before: page;
-                        page-break-before: always;
-                        break-inside: avoid;
-                        page-break-inside: avoid;
-                        box-shadow: none;
-                        border: 1px solid #ccc;
-                        margin-top: 0;
-                        padding: 6px 12px;
-                    }
-                    /* Per-feature tables can overflow to the next page */
-                    .section .interactive-table-wrapper {
-                        break-before: auto;
-                        break-inside: auto;
-                        page-break-inside: auto;
-                    }
-                    /* Sub-elements should not split across pages */
-                    .section .map,
-                    .section h3,
-                    .section .layer-narrative,
-                    .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
-                    /* Constrain map images so bucket-header + map + narrative + table + notes fit one page */
-                    .section .map {
-                        margin: 2px 0;
-                    }
-                    .section .map img {
-                        max-height: 4in;
-                        width: auto;
-                        max-width: 100%;
-                        display: block;
-                        margin: 0 auto;
-                        object-fit: contain;
-                    }
-                    /* Category / bucket headers start on a new page */
-                    .bucket-header {
-                        break-before: page;
-                        page-break-before: always;
-                        break-after: avoid;
-                        page-break-after: avoid;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                        padding: 10px 16px;
-                        margin: 0 0 6px 0;
-                        border-radius: 0;
-                    }
-                    .bucket-header h2 {
-                        font-size: 15px;
-                        margin: 0 0 2px 0;
-                    }
-                    .bucket-header .bucket-description {
-                        font-size: 10px;
-                        line-height: 1.3;
-                        margin: 0;
-                    }
-                    /* First section after a bucket header should NOT add another break */
-                    .bucket-header + .section {
-                        break-before: auto;
-                        page-break-before: auto;
-                    }
-                    /* Explicit pagebreak divs */
+                    /* ── 7. Pagebreaks ── */
                     .pagebreak { break-after: page; page-break-after: always; height: 0; visibility: hidden; }
-                    /* Numbered top-level sections (AOI, Findings, Data Sources) each start a new page */
                     h2[id^="section-"]:not(#section-summary) { break-before: page; page-break-before: always; }
-                    h2 { font-size: 15px; margin: 8px 0 4px; }
-                    h3 { font-size: 11px; margin: 4px 0 2px; }
-                    .layer-narrative { margin: 2px 0; padding: 4px 8px; font-size: 9px; line-height: 1.35; }
-                    /* Remove table scroll constraints */
-                    .table-scroll { max-height: none !important; overflow: visible !important; }
-                    .interactive-table-wrapper { overflow: visible !important; }
-                    .interactive-table { font-size: 8px; }
-                    table.data-sources-table th{
-                        background: var(--blm-green) !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                    }
-                    table.data-sources-table { font-size: 9px; }
-                    /* AOI details */
-                    .aoi-details { font-size: 11px; }
-                    /* AOI maps fit within a page */
+                    /* ── 8. Compact print typography ── */
+                    .report-header h1 { font-size: 20px !important; margin: 4px 0; }
+                    .report-header .meta { font-size: 11px !important; }
+                    .report-header .agency-name { font-size: 10px !important; }
+                    h2 { font-size: 16px !important; margin: 6px 0 3px; }
+                    h3 { font-size: 13px !important; margin: 3px 0 1px; }
+                    p { margin: 2px 0; line-height: 1.35; }
+                    /* ── 9. Uniform map size (scoped to map pages) ── */
+                    .report-map-page .map { width: 7in; height: 4.5in; margin: 4px auto; border: 1px solid #ccc; border-radius: 0; box-shadow: none; position: relative; }
+                    .report-map-page .map img { width: 100%; height: 100%; display: block; object-fit: contain; margin: 0; }
+                    .report-map-page .map canvas, .report-map-page .map svg { width: 100% !important; height: 100% !important; max-width: 7in; max-height: 4.5in; display: block; object-fit: contain; }
+                    .report-map-page .layer-narrative { margin: 1px 0; padding: 2px 6px; font-size: 11px !important; line-height: 1.3; }
+                    /* ── 10. Tables — constrained for atomic map pages ── */
+                    .report-map-page .interactive-table-wrapper { break-before: auto; break-inside: avoid; page-break-inside: avoid; padding: 2px 6px 6px !important; margin-top: 2px; box-sizing: border-box !important; max-width: 100% !important; max-height: 2.5in; overflow: hidden !important; }
+                    .report-map-page .table-scroll { max-height: 2.3in !important; overflow: hidden !important; border: 1px solid #ccc; border-radius: 0; box-sizing: border-box !important; max-width: 100% !important; }
+                    .interactive-table { font-size: 9px !important; width: 100% !important; table-layout: fixed !important; box-sizing: border-box !important; }
+                    .interactive-table th { background: var(--blm-green) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 8px !important; padding: 3px 4px !important; word-wrap: break-word !important; overflow-wrap: break-word !important; white-space: normal !important; }
+                    .interactive-table td { font-size: 9px !important; padding: 2px 4px !important; white-space: normal !important; word-wrap: break-word !important; overflow-wrap: break-word !important; max-width: none !important; }
+                    table.data-sources-table th{ background: var(--blm-green) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    table.data-sources-table { font-size: 11px !important; }
+                    /* ── 11. TOC & AOI ── */
+                    .report-toc { break-inside: avoid; page-break-inside: avoid; }
                     .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 4px 0; }
-                    .aoi-map img { max-height: 3.4in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
-                    .aoi-map-title { font-size: 10px !important; margin: 4px 0 2px !important; }
+                    .aoi-map img { max-height: 3.5in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
+                    .aoi-map-title { font-size: 12px !important; margin: 2px 0 0 !important; }
                     .aoi-section { break-inside: avoid; page-break-inside: avoid; }
-                    .aoi-section h2 { margin: 6px 0 4px; }
-                    .aoi-section p { font-size: 10px; margin: 2px 0 4px; }
-                    .aoi-details { margin-top: 4px; font-size: 10px; }
-                    .aoi-details .aoi-field { margin: 2px 0; font-size: 10px; }
+                    .aoi-section h2 { margin: 4px 0 2px; font-size: 16px !important; }
+                    .aoi-section p { font-size: 12px !important; margin: 2px 0; }
+                    .aoi-details { margin-top: 4px; font-size: 12px !important; }
+                    .aoi-details .aoi-field { margin: 1px 0; font-size: 12px !important; }
+                    .aoi-label { font-size: 12px !important; }
+                    .findings-subhead { font-size: 15px !important; }
+                    .findings-summary { font-size: 12px !important; }
+                    .findings-summary p { font-size: 12px !important; line-height: 1.35; }
+                    .section .sub { font-size: 11px !important; }
                 }
                 /* Interactive Data Tables */
                 .interactive-table-wrapper {
@@ -1873,7 +1827,7 @@ define([
                 /* Findings sub-headings */
                 .findings-subhead {
                     margin: 20px 0 6px 0;
-                    font-size: 15px;
+                    font-size: 18px;
                     color: var(--blm-brown);
                     border-bottom: 1px solid var(--border);
                     padding-bottom: 4px;
@@ -2035,13 +1989,40 @@ define([
                     .interactive-table-wrapper .table-toolbar { display: none !important; }
                     .hidden-cols-bar { display: none !important; }
                     .col-hide-btn { display: none !important; }
-                    .table-scroll { max-height: none !important; overflow: visible !important; }
-                    .interactive-table-wrapper { overflow: visible !important; }
-                    .interactive-table { font-size: 8px; }
+                    .bucket-header { display: none !important; }
+                    .print-hide-col { display: none !important; }
+                    /* Neutralize print killers (supplementary) */
+                    .section-collapse-wrap, .section-collapse-inner {
+                        display: block !important; overflow: visible !important;
+                        max-height: none !important; grid-template-rows: none !important;
+                        transition: none !important;
+                    }
+                    .map-section-head { break-inside: avoid; page-break-inside: avoid; }
+                    /* Atomic map pages */
+                    .report-map-page { display: block; break-before: page; page-break-before: always; break-inside: avoid; page-break-inside: avoid; }
+                    .report-map-page .section { border: 1px solid #ccc; padding: 4px 10px; }
+                    .section { box-shadow: none; border: none; margin-top: 0; padding: 4px 8px; }
+                    .print-category-header {
+                        display: block !important;
+                        background: var(--blm-green) !important; color: white !important;
+                        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+                        padding: 3px 10px; margin: 0 0 3px 0;
+                        font-size: 11px !important; font-weight: 700; letter-spacing: 0.3px;
+                    }
+                    /* Tables — constrained for atomic map pages */
+                    .report-map-page .interactive-table-wrapper { break-before: auto; break-inside: avoid; page-break-inside: avoid; padding: 2px 6px 6px !important; margin-top: 2px; box-sizing: border-box !important; max-width: 100% !important; max-height: 2.5in; overflow: hidden !important; }
+                    .report-map-page .table-scroll { max-height: 2.3in !important; overflow: hidden !important; border: 1px solid #ccc; border-radius: 0; box-sizing: border-box !important; max-width: 100% !important; }
+                    .interactive-table { font-size: 9px !important; width: 100% !important; table-layout: fixed !important; box-sizing: border-box !important; }
                     .interactive-table th {
                         background: var(--blm-green) !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
+                        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+                        font-size: 8px !important; padding: 3px 4px !important;
+                        word-wrap: break-word !important; overflow-wrap: break-word !important; white-space: normal !important;
+                    }
+                    .interactive-table td {
+                        font-size: 9px !important; padding: 2px 4px !important;
+                        white-space: normal !important; word-wrap: break-word !important;
+                        overflow-wrap: break-word !important; max-width: none !important;
                     }
                 }
             </style>
@@ -2431,8 +2412,8 @@ define([
 
     function getAoiSummaryForReport(aoiAcres) {
         const src = S.aoiSource === "draw" ? "Drawn AOI" : "Selected AOI";
-        const tool = S.aoiSource === "select" ? plssToolLabel(S.aoiSourcePlssTool) : "";
-        const srcDetail = (S.aoiSource === "select" && tool) ? ` (${tool})` : "";
+        const tool = (S.aoiSource === "select" && S.aoiSourcePlssTool) ? plssToolLabel(S.aoiSourcePlssTool) : "";
+        const srcDetail = tool ? ` (${tool})` : "";
         const layer = S.aoiSourceLayerTitle ? ` \u2022 Source layer: ${S.aoiSourceLayerTitle}` : "";
         return `${src}${srcDetail} \u2022 AOI area: ${formatNumber(aoiAcres, 2)} acres${layer}`;
     }
@@ -3559,6 +3540,35 @@ define([
             }
             .totals{ margin-top: 24px; }
             .totals .row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; }
+            /* Findings Summary */
+            .findings-summary {
+                margin: 0 0 24px 0;
+                padding: 20px 24px;
+                background: var(--white);
+                border: 1px solid var(--border);
+                border-left: 4px solid var(--blm-green);
+                border-radius: 0 8px 8px 0;
+                line-height: 1.65;
+                font-size: 14px;
+            }
+            .findings-summary p {
+                margin: 10px 0;
+            }
+            .findings-summary em {
+                font-size: 12px;
+                color: var(--muted);
+            }
+            .findings-subhead {
+                margin: 20px 0 6px 0;
+                font-size: 18px;
+                color: var(--blm-brown);
+                border-bottom: 1px solid var(--border);
+                padding-bottom: 4px;
+                letter-spacing: 0.2px;
+            }
+            .findings-summary .findings-subhead:first-child {
+                margin-top: 8px;
+            }
             .export-btn{
                 display: inline-flex;
                 align-items: center;
@@ -3942,23 +3952,68 @@ define([
                 -webkit-filter: contrast(1.8) brightness(0.85) !important;
                 filter: contrast(1.8) brightness(0.85) !important;
             }
+            /* ── Print-only elements (hidden on screen) ── */
+            .print-category-header {
+                display: none;
+            }
+            .report-map-page {
+                display: contents;
+            }
             @page {
                 size: letter portrait;
                 margin: 0.5in 0.5in 0.6in 0.5in;
             }
             @media print {
-                html, body { background: white !important; margin: 0; padding: 0; font-size: 11px; }
-                .report-actions { display: none !important; }
-                .export-btn { display: none !important; }
-                .actions { display: none !important; }
-                .a11y-widget { display: none !important; }
-                .interactive-table-wrapper .table-toolbar { display: none !important; }
-                .hidden-cols-bar { display: none !important; }
-                .col-hide-btn { display: none !important; }
-                .section-hide-btn { display: none !important; }
-                .layer-maps-toolbar { display: none !important; }
+                /* ── 1. Neutralize print-break killers ── */
+                html, body {
+                    background: white !important;
+                    margin: 0; padding: 0;
+                    font-size: 13px !important;
+                    overflow: visible !important;
+                    height: auto !important;
+                }
+                * {
+                    transform: none !important;
+                    contain: none !important;
+                    will-change: auto !important;
+                }
+                .cv-filter-wrap,
+                .cv-filter-wrap.cv-protanopia,
+                .cv-filter-wrap.cv-deuteranopia,
+                .cv-filter-wrap.cv-tritanopia,
+                .cv-filter-wrap.cv-achromatopsia,
+                .cv-filter-wrap.cv-highcontrast {
+                    -webkit-filter: none !important;
+                    filter: none !important;
+                }
+                .section-collapse-wrap,
+                .section-collapse-inner {
+                    display: block !important;
+                    overflow: visible !important;
+                    max-height: none !important;
+                    grid-template-rows: none !important;
+                    transition: none !important;
+                    min-height: 0 !important;
+                }
+                .wrap, .section, .map, .aoi-map, .report-map-page {
+                    overflow: visible !important;
+                }
+                .section {
+                    transition: none !important;
+                }
+
+                /* ── 2. Hide screen-only elements + bucket headers ── */
+                .report-actions, .export-btn, .actions, .hint,
+                .a11y-widget, .back-to-top,
+                .interactive-table-wrapper .table-toolbar,
+                .hidden-cols-bar, .col-hide-btn,
+                .section-hide-btn, .layer-maps-toolbar { display: none !important; }
                 .section.section-hidden { display: none !important; }
                 .section-hidden + .pagebreak { display: none !important; }
+                .bucket-header { display: none !important; }
+                .print-hide-col { display: none !important; }
+
+                /* ── 3. Layout resets ── */
                 .wrap {
                     max-width: none;
                     padding: 0;
@@ -3970,111 +4025,187 @@ define([
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
                 }
-                .interactive-table { font-size: 8px; }
-                .interactive-table th {
-                    background: var(--blm-green) !important;
-                    -webkit-print-color-adjust: exact;
-                    print-color-adjust: exact;
-                }
-                /* Each layer section starts on its own page */
+
+                /* ── 4. Narrative sections — compact, natural pagination ── */
                 .section {
+                    box-shadow: none;
+                    border: none;
+                    margin-top: 0;
+                    padding: 4px 8px;
+                }
+                .section h3 {
+                    break-after: avoid;
+                    page-break-after: avoid;
+                    margin: 3px 0 1px;
+                    font-size: 12px !important;
+                }
+                .section .map,
+                .section .layer-narrative,
+                .section table.metaTbl {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+
+                /* ── 5. Atomic map pages ── */
+                .report-map-page {
+                    display: block;
                     break-before: page;
                     page-break-before: always;
                     break-inside: avoid;
                     page-break-inside: avoid;
-                    margin-top: 0;
-                    padding: 6px 12px;
-                    box-shadow: none;
-                    border: 1px solid #ccc;
-                }
-                /* Per-feature tables can overflow to the next page */
-                .section .interactive-table-wrapper {
-                    break-before: auto;
-                    break-inside: auto;
-                    page-break-inside: auto;
-                }
-                /* Sub-elements should not split across pages */
-                .section .map,
-                .section h3,
-                .section .layer-narrative,
-                .section table.metaTbl { break-inside: avoid; page-break-inside: avoid; }
-                /* Constrain map images so bucket-header + map + narrative + table + notes fit one page */
-                .section .map {
-                    margin: 2px 0;
-                }
-                .section .map img {
-                    max-height: 4in;
-                    width: auto;
-                    max-width: 100%;
-                    display: block;
-                    margin: 0 auto;
-                    object-fit: contain;
-                }
-                .section h3 {
-                    margin: 4px 0 2px;
-                    font-size: 11px;
-                }
-                .layer-narrative {
-                    margin: 2px 0;
-                    padding: 4px 8px;
-                    font-size: 9px;
-                    line-height: 1.35;
-                }
-                /* Category / bucket headers start on a new page */
-                .bucket-header {
-                    break-before: page;
-                    page-break-before: always;
-                    break-after: avoid;
-                    page-break-after: avoid;
-                    -webkit-print-color-adjust: exact;
-                    print-color-adjust: exact;
-                    padding: 10px 16px;
-                    margin: 0 0 6px 0;
-                    border-radius: 0;
-                }
-                .bucket-header h2 {
-                    font-size: 15px;
-                    margin: 0 0 2px 0;
-                }
-                .bucket-header .bucket-description {
-                    font-size: 10px;
-                    line-height: 1.3;
+                    padding: 0;
                     margin: 0;
                 }
-                /* First section after a bucket header should NOT add another break */
-                .bucket-header + .section {
-                    break-before: auto;
-                    page-break-before: auto;
+                .report-map-page .section {
+                    border: 1px solid #ccc;
+                    padding: 4px 10px;
                 }
-                /* Explicit pagebreak divs */
-                .pagebreak { break-after: page; page-break-after: always; height: 0; visibility: hidden; }
-                /* Numbered top-level sections each start a new page */
-                h2[id^="section-"]:not(:first-of-type) { break-before: page; page-break-before: always; }
-                h2 { font-size: 15px; margin: 8px 0 4px; }
-                h3 { font-size: 11px; margin: 4px 0 2px; }
-                /* AOI details */
-                .aoi-details { font-size: 11px; }
-                /* Remove table scroll constraints */
-                .table-scroll { max-height: none !important; overflow: visible !important; }
-                .interactive-table-wrapper { overflow: visible !important; }
+                .map-section-head {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+
+                /* ── 6. Print-only repeating category header ── */
+                .print-category-header {
+                    display: block !important;
+                    background: var(--blm-green) !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                    padding: 3px 10px;
+                    margin: 0 0 3px 0;
+                    font-size: 11px !important;
+                    font-weight: 700;
+                    letter-spacing: 0.3px;
+                }
+
+                /* ── 7. Compact print typography ── */
+                .report-header h1 { font-size: 20px !important; margin: 4px 0; }
+                .report-header .meta { font-size: 11px !important; }
+                .report-header .agency-name { font-size: 10px !important; }
+                h2 { font-size: 16px !important; margin: 6px 0 3px; }
+                h3 { font-size: 13px !important; margin: 3px 0 1px; }
+                h2[id^="section-"]:not(:first-of-type) {
+                    break-before: page;
+                    page-break-before: always;
+                }
+                p { margin: 2px 0; line-height: 1.35; }
+                .pagebreak {
+                    break-after: page;
+                    page-break-after: always;
+                    height: 0;
+                    visibility: hidden;
+                }
+
+                /* ── 8. Uniform printed map size (scoped to map pages) ── */
+                .report-map-page .map {
+                    width: 7in;
+                    height: 4.5in;
+                    margin: 4px auto;
+                    border: 1px solid #ccc;
+                    border-radius: 0;
+                    box-shadow: none;
+                    position: relative;
+                }
+                .report-map-page .map img {
+                    width: 100%;
+                    height: 100%;
+                    display: block;
+                    object-fit: contain;
+                    margin: 0;
+                }
+                .report-map-page .map canvas,
+                .report-map-page .map svg {
+                    width: 100% !important;
+                    height: 100% !important;
+                    max-width: 7in;
+                    max-height: 4.5in;
+                    display: block;
+                    object-fit: contain;
+                }
+                .report-map-page .layer-narrative {
+                    margin: 1px 0;
+                    padding: 2px 6px;
+                    font-size: 11px !important;
+                    line-height: 1.3;
+                }
+
+                /* ── 9. Tables — constrained for atomic map pages ── */
+                .report-map-page .interactive-table-wrapper {
+                    break-before: auto;
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                    padding: 2px 6px 6px !important;
+                    margin-top: 2px;
+                    box-sizing: border-box !important;
+                    max-width: 100% !important;
+                    max-height: 2.5in;
+                    overflow: hidden !important;
+                }
+                .report-map-page .table-scroll {
+                    max-height: 2.3in !important;
+                    overflow: hidden !important;
+                    border: 1px solid #ccc;
+                    border-radius: 0;
+                    box-sizing: border-box !important;
+                    max-width: 100% !important;
+                }
+                .interactive-table {
+                    font-size: 9px !important;
+                    width: 100% !important;
+                    table-layout: fixed !important;
+                    box-sizing: border-box !important;
+                }
+                .interactive-table th {
+                    background: var(--blm-green) !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                    font-size: 8px !important;
+                    padding: 3px 4px !important;
+                    word-wrap: break-word !important;
+                    overflow-wrap: break-word !important;
+                    white-space: normal !important;
+                }
+                .interactive-table td {
+                    font-size: 9px !important;
+                    padding: 2px 4px !important;
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                    overflow-wrap: break-word !important;
+                    max-width: none !important;
+                }
+                /* Standalone tables (data sources, etc.) can flow normally */
                 table.data-sources-table th {
                     background: var(--blm-green) !important;
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
                 }
-                table.data-sources-table { font-size: 9px; }
-                /* Report TOC */
+                table.data-sources-table { font-size: 11px !important; }
+
+                /* ── 10. Report TOC ── */
                 .report-toc { break-inside: avoid; page-break-inside: avoid; }
-                .back-to-top { display: none !important; }
-                /* AOI maps fit within a page */
+
+                /* ── 11. AOI section ── */
                 .aoi-map { break-inside: avoid; page-break-inside: avoid; margin: 4px 0; }
-                .aoi-map img { max-height: 3.4in; width: auto; max-width: 100%; display: block; margin: 0 auto; object-fit: contain; }
-                .aoi-map-title { font-size: 10px !important; margin: 4px 0 2px !important; }
+                .aoi-map img {
+                    max-height: 3.5in;
+                    width: auto; max-width: 100%;
+                    display: block; margin: 0 auto;
+                    object-fit: contain;
+                }
+                .aoi-map-title { font-size: 12px !important; margin: 2px 0 0 !important; }
                 .aoi-section { break-inside: avoid; page-break-inside: avoid; }
-                .aoi-section h2 { margin: 6px 0 4px; }
-                .aoi-section p { font-size: 10px; margin: 2px 0 4px; }
-                .aoi-details { margin-top: 4px; font-size: 10px; }
-                .aoi-details .aoi-field { margin: 2px 0; font-size: 10px; }
+                .aoi-section h2 { margin: 4px 0 2px; font-size: 16px !important; }
+                .aoi-section p { font-size: 12px !important; margin: 2px 0; }
+                .aoi-details { margin-top: 4px; font-size: 12px !important; }
+                .aoi-details .aoi-field { margin: 1px 0; font-size: 12px !important; }
+                .aoi-label { font-size: 12px !important; }
+                /* Findings sub-headings */
+                .findings-subhead { font-size: 15px !important; }
+                .findings-summary { font-size: 12px !important; }
+                .findings-summary p { font-size: 12px !important; line-height: 1.35; }
+                /* Section sub text */
+                .section .sub { font-size: 11px !important; }
             }
         `;
     }
@@ -4230,7 +4361,14 @@ define([
             let aoiMethod = "Manually Drawn";
             const _aoiMeth = S.currentAoiMethod || S.aoiSource;
             if (_aoiMeth === "select") {
-                aoiMethod = "PLSS Boundary";
+                // Distinguish PLSS boundary selection from generic feature selection
+                if (S.aoiSourcePlssTool) {
+                    aoiMethod = "PLSS Boundary";
+                } else if (S.aoiSourceLayerTitle) {
+                    aoiMethod = `Selected Feature (${S.aoiSourceLayerTitle})`;
+                } else {
+                    aoiMethod = "Selected Feature";
+                }
             } else if (_aoiMeth === "permit") {
                 aoiMethod = "Existing Lease, Permit, or Authorization";
             } else if (_aoiMeth === "draw") {
@@ -4238,7 +4376,11 @@ define([
             } else if (_aoiMeth === "upload") {
                 aoiMethod = `Uploaded File: ${S.aoiSourceLayerTitle || "unknown"}`;
             } else if (_aoiMeth === "search" || _aoiMeth === "namesearch") {
-                aoiMethod = "PLSS Boundary";
+                if (S.aoiSourceLayerTitle) {
+                    aoiMethod = `Selected Feature (${S.aoiSourceLayerTitle})`;
+                } else {
+                    aoiMethod = "Search by Name or ID";
+                }
             }
             // Append buffer text if a buffer was applied
             const _bufMi = S.aoiBufferMiles || 0;
@@ -4270,14 +4412,14 @@ define([
             // Build AOI section
             contentParts.push(`
                 <div class="aoi-section">
-                <h2>2. Area of Interest</h2>
+                <h2>2. Area of Interest (AOI)</h2>
                 <p style="color: var(--muted); font-style: italic; font-size: 13px;">The geographic boundary used for this analysis.</p>
                 ${aoiMapsHtml}
                 <div class="aoi-details">
-                    <div class="aoi-field"><span class="aoi-label">Area:</span> ~${formatNumber(Math.floor(aoiAcres), 0)} acres</div>
+                    <div class="aoi-field"><span class="aoi-label">Area of Interest Size:</span> ~${formatNumber(Math.floor(aoiAcres), 0)} acres</div>
                     <div class="aoi-field"><span class="aoi-label">AOI Selection Method:</span> ${escapeHtml(aoiMethod)}</div>
                     ${aoiLocationLabel ? `<div class="aoi-field"><span class="aoi-label">Location:</span> ${escapeHtml(aoiLocationLabel)}</div>` : ''}
-                    <div class="aoi-field"><span class="aoi-label">Legal Land Description:</span> <em style="color:var(--muted);">(To be determined)</em></div>
+                    <div class="aoi-field"><span class="aoi-label">Legal Land Description:</span> <em style="color:var(--muted);">(work in progress - coming soon)</em></div>
                 </div>
                 </div>
                 <div class="pagebreak"></div>
@@ -4455,6 +4597,7 @@ define([
                     // categoryNumber is declared in outer scope
                     let layersInCurrentGroup = 0; // Track count for 2-per-page layout
                     let _switchedToNonImageryBasemap = false; // flipped once when first ImageService appears
+                    let currentCategoryLabel = ''; // Track current category for print-only header
                     for (let i = 0; i < mappableLayers.length; i++) {
                         if (isCanceled()) throw new Error("Canceled");
 
@@ -4467,12 +4610,9 @@ define([
                             const layerGroup = layerGroupMap.get(urlKey);
                             const groupKey = layerGroup ? layerGroup.key : 'uncategorized';
                             if (groupKey !== lastGroupKey) {
-                                // Page break to end previous category (if not the first)
-                                if (lastGroupKey !== null && layersInCurrentGroup > 0 && layersInCurrentGroup % 2 !== 0) {
-                                    contentParts.push(`<div class="pagebreak"></div>`);
-                                }
                                 layersInCurrentGroup = 0;
                                 lastGroupKey = groupKey;
+                                currentCategoryLabel = layerGroup ? `${categoryNumber}. ${layerGroup.icon} ${escapeHtml(layerGroup.label)}` : '';
                                 if (layerGroup) {
                                     contentParts.push(`
                                         <div class="bucket-header" id="group-${escapeHtml(groupKey)}">
@@ -4566,18 +4706,20 @@ define([
                                 : screenshotDeferred ? deferToken : '';
 
                             contentParts.push(`
+                                <section class="report-map-page" data-category="${escapeHtml(lastGroupKey || '')}">
+                                <div class="print-category-header">${currentCategoryLabel}</div>
                                 <div class="section">
                                     <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
+                                    <div class="map-section-head">
                                     ${mapHtml}
                                     ${narrativeHtml}
+                                    </div>
                                     </div></div>
                                 </div>
+                                </section>
                             `);
                             layersInCurrentGroup++;
-                            if (layersInCurrentGroup % 2 === 0) {
-                                contentParts.push(`<div class="pagebreak"></div>`);
-                            }
                             sectionsComplete++;
                             continue;
                         }
@@ -4687,22 +4829,24 @@ define([
                                 : screenshotDeferred ? deferToken : '<div class="sub">Map generation failed</div>';
 
                             contentParts.push(`
+                                <section class="report-map-page" data-category="${escapeHtml(lastGroupKey || '')}">
+                                <div class="print-category-header">${currentCategoryLabel}</div>
                                 <div class="section">
                                     <h3><button class="section-hide-btn" onclick="toggleSection(this)">✕ Hide</button>${escapeHtml(layerTitle)}</h3>
                                     <div class="section-collapse-wrap"><div class="section-collapse-inner">
+                                    <div class="map-section-head">
                                     <div class="map">
                                         ${mapImgHtml}
                                     </div>
                                     ${narrativeHtml}
                                     ${attrSummary ? `<table class="metaTbl">${attrSummary}</table>` : ''}
+                                    </div>
                                     ${perFeatureTableHtml}
                                     </div></div>
                                 </div>
+                                </section>
                             `);
                             layersInCurrentGroup++;
-                            if (layersInCurrentGroup % 2 === 0) {
-                                contentParts.push(`<div class="pagebreak"></div>`);
-                            }
                             sectionsComplete++;
 
                         } catch (e) {
@@ -4719,10 +4863,8 @@ define([
                         onProgress(20 + (70 * (i + 1) / mappableLayers.length), mapsGenerated, sectionsComplete);
                     }
 
-                    // Page break after the final category (if odd count of layers)
-                    if (layersInCurrentGroup > 0 && layersInCurrentGroup % 2 !== 0) {
-                        contentParts.push(`<div class="pagebreak"></div>`);
-                    }
+                    // Page break after the final category
+                    contentParts.push(`<div class="pagebreak"></div>`);
 
                     // ── Retry deferred screenshots (tab was hidden during capture) ──
                     // Process feature-layer deferred items first (imagery basemap),

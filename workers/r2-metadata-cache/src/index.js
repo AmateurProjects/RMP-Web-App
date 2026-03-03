@@ -841,6 +841,62 @@ async function handleRefresh(request, env) {
   );
 }
 
+// ── Feedback → GitHub Issues ─────────────────────────────────────────────────
+
+async function handleFeedback(request, env) {
+  try {
+    const body = await request.json();
+    const { type, description } = body;
+
+    if (!description || typeof description !== "string" || !description.trim()) {
+      return json({ error: "Description is required" }, 400, env);
+    }
+
+    const desc = description.trim().slice(0, 5000); // cap length
+    const feedbackType = type === "suggestion" ? "suggestion" : "bug";
+    const titlePrefix = feedbackType === "bug" ? "[Bug Report]" : "[Suggestion]";
+    const title = `${titlePrefix} ${desc.slice(0, 80)}${desc.length > 80 ? "…" : ""}`;
+    const labels = feedbackType === "bug"
+      ? ["bug", "user-feedback"]
+      : ["enhancement", "user-feedback"];
+
+    const repo = env.GITHUB_REPO || "AmateurProjects/RMP-Web-App";
+    const pat = env.GITHUB_FEEDBACK_PAT;
+
+    if (!pat) {
+      return json({ error: "Feedback submission is not configured on the server" }, 503, env);
+    }
+
+    const ghRes = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${pat}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "BLM-Permit-Screening-Tool",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify({
+        title,
+        body: `## ${feedbackType === "bug" ? "Bug Report" : "Suggestion"}\n\n${desc}\n\n---\n*Submitted via the BLM Permit Screening Tool feedback form*`,
+        labels,
+      }),
+    });
+
+    if (!ghRes.ok) {
+      const errText = await ghRes.text();
+      console.error("GitHub API error:", ghRes.status, errText);
+      return json({ error: "Failed to submit feedback" }, 502, env);
+    }
+
+    const issue = await ghRes.json();
+    return json({ ok: true, issueNumber: issue.number }, 201, env);
+  } catch (err) {
+    console.error("Feedback error:", err);
+    return json({ error: "Invalid request" }, 400, env);
+  }
+}
+
 // ── Main fetch handler ───────────────────────────────────────────────────────
 
 export default {
@@ -911,6 +967,11 @@ export default {
 
     if (request.method === "POST" && pathname === "/cleanup-reports") {
       return handleCleanupReports(request, env);
+    }
+
+    // ── Feedback → GitHub Issues ──
+    if (request.method === "POST" && pathname === "/feedback") {
+      return handleFeedback(request, env);
     }
 
     // ── Report sharing routes ──

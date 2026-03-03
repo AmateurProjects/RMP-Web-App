@@ -89,19 +89,56 @@ define(["app/config-helpers"], function (configHelpers) {
         });
     }
 
+    // Maps permit-type keys to selection-layer title substrings that are relevant
+    var PERMIT_SEARCH_LAYERS = {
+        "oil-gas":  ["oil and gas", "geothermal", "rights-of-way", "lua"],
+        "grazing":  ["grazing allotment", "grazing pasture", "lua"],
+        "mining":   ["mining", "coal", "lua"],
+        "row":      ["oil and gas", "geothermal", "rights-of-way", "lua", "mining", "coal", "grazing allotment", "grazing pasture"],
+        "realty":   ["oil and gas", "geothermal", "rights-of-way", "lua", "mining", "coal", "grazing allotment", "grazing pasture"]
+    };
+
+    function isSelectionLayerRelevant(title, permitType) {
+        var keywords = PERMIT_SEARCH_LAYERS[permitType];
+        if (!keywords) return true; // unknown permit type — include all
+        var titleLower = (title || "").toLowerCase();
+        for (var i = 0; i < keywords.length; i++) {
+            if (titleLower.indexOf(keywords[i]) !== -1) return true;
+        }
+        return false;
+    }
+
     function getSearchableLayers() {
         var layers = [];
         var cfg = state.config;
-        (cfg.reportLayers || []).forEach(function (c) {
-            if (c && c.url) {
-                layers.push({ title: c.title || "Unknown Layer", url: c.url, type: "report" });
-            }
-        });
+        var permitType = state.selectedPermitType || null;
+
+        // 1. Selection layers — primary target for name/ID search.
+        //    When a permit type is selected, only include relevant layers
+        //    and skip PLSS (geographic, not useful for name search).
         (state.selectionLayers || []).forEach(function (entry) {
             if (entry && entry.cfg && entry.cfg.url) {
-                var exists = layers.some(function (l) { return l.url === entry.cfg.url; });
+                if (permitType) {
+                    // Skip PLSS layers for name search
+                    if (entry.cfg.group === "plss") return;
+                    if (!isSelectionLayerRelevant(entry.cfg.title, permitType)) return;
+                }
+                layers.push({ title: entry.cfg.title || "Unknown Layer", url: entry.cfg.url, type: "selection" });
+            }
+        });
+
+        // 2. Report layers — include when no permit type is selected,
+        //    or only those tagged for this permit type / "core".
+        (cfg.reportLayers || []).forEach(function (c) {
+            if (c && c.url) {
+                if (c.excluded) return;
+                if (permitType) {
+                    var pt = c.permitTypes || [];
+                    if (pt.indexOf(permitType) === -1 && pt.indexOf("core") === -1) return;
+                }
+                var exists = layers.some(function (l) { return l.url === c.url; });
                 if (!exists) {
-                    layers.push({ title: entry.cfg.title || "Unknown Layer", url: entry.cfg.url, type: "selection" });
+                    layers.push({ title: c.title || "Unknown Layer", url: c.url, type: "report" });
                 }
             }
         });
@@ -133,15 +170,23 @@ define(["app/config-helpers"], function (configHelpers) {
         return _getFeatureDisplayName(attributes, _searchDisplayFields, 80);
     }
 
-    function calculateRelevance(attributes, searchTerm, nameFields) {
+    function calculateRelevance(attributes, searchTerm, nameFields, otherFields) {
         var termLower = searchTerm.toLowerCase();
         var score = 0;
+        // Name-field matches get high scores
         for (var i = 0; i < nameFields.length; i++) {
             var val = String(attributes[nameFields[i]] || "").toLowerCase();
             if (val) {
                 if (val === termLower) score += 100;
                 else if (val.startsWith(termLower)) score += 50;
                 else if (val.includes(termLower)) score += 25;
+            }
+        }
+        // Other-field matches get a small boost
+        if (otherFields) {
+            for (var j = 0; j < otherFields.length; j++) {
+                var oval = String(attributes[otherFields[j]] || "").toLowerCase();
+                if (oval && oval.includes(termLower)) { score += 5; break; }
             }
         }
         var displayName = getFeatureDisplayName(attributes).toLowerCase();
@@ -204,6 +249,8 @@ define(["app/config-helpers"], function (configHelpers) {
                 })
                 .then(function (data) {
                     var features = (data && data.features) ? data.features : [];
+                    // Trust the server WHERE clause — it already filtered by search term.
+                    // Score and sort by relevance without discarding valid server results.
                     var results = features.map(function (f) {
                         var attrs = f.attributes || {};
                         return {
@@ -211,19 +258,12 @@ define(["app/config-helpers"], function (configHelpers) {
                             layerUrl: layerInfo.url,
                             attributes: attrs,
                             geometry: f.geometry,
-                            relevance: calculateRelevance(attrs, searchTerm, nameFields),
+                            relevance: calculateRelevance(attrs, searchTerm, nameFields, otherFields),
                             hasNameMatch: hasNameFieldMatch(attrs, searchTerm, nameFields)
                         };
                     });
 
-                    var filtered = results.filter(function (r) {
-                        if (r.hasNameMatch) return true;
-                        var dn = getFeatureDisplayName(r.attributes).toLowerCase();
-                        if (dn.includes(searchTerm.toLowerCase())) return true;
-                        return false;
-                    });
-
-                    return filtered
+                    return results
                         .sort(function (a, b) { return b.relevance - a.relevance; })
                         .slice(0, maxResults);
                 });
