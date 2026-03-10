@@ -41,6 +41,14 @@
     </div>
   </div>
 
+  <!-- Pre-Alpha Notice Banner -->
+  <div id="preAlphaBanner" class="pre-alpha-banner">
+    <span class="pre-alpha-text">
+      ⚠️ <strong>Pre-Alpha</strong> — This app is under active development and does not yet contain all available data.
+    </span>
+    <button id="preAlphaDismiss" class="pre-alpha-dismiss" type="button" title="Dismiss notice" aria-label="Dismiss notice">&times;</button>
+  </div>
+
   <div id="viewDiv"></div>
 
   <!-- Overview map container (placed via view.ui.add) -->
@@ -750,5 +758,15 @@
   </div>
 
   <script src="./app.js"></script>
+  <script>
+    document.getElementById('preAlphaDismiss').addEventListener('click', function () {
+      var banner = document.getElementById('preAlphaBanner');
+      banner.classList.add('hidden');
+      try { sessionStorage.setItem('preAlphaDismissed', '1'); } catch (e) {}
+    });
+    if (sessionStorage.getItem('preAlphaDismissed') === '1') {
+      document.getElementById('preAlphaBanner').classList.add('hidden');
+    }
+  </script>
 </body>
 </html>
