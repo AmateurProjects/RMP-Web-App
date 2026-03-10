@@ -1020,7 +1020,7 @@
     {
       "title": "BLM Natl Recreation Site Polygons",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Recreation_Site_Polygons/FeatureServer/3",
-      "category": "special",
+      "category": "authorizations",
       "permitTypes": [
         "row",
         "realty"
@@ -1034,7 +1034,7 @@
     {
       "title": "BLM Field Office Boundaries",
       "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer/3",
-      "category": "special",
+      "category": "land-status",
       "permitTypes": [
         "core"
       ],
