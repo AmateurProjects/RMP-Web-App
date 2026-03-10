@@ -1004,6 +1004,18 @@
       ],
       "serviceType": "feature",
       "useServiceRenderer": true
+    },
+    {
+      "title": "BLM National Monuments National Conservation Areas",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_NLCS_National_Monuments_National_Conservation_Areas_Polygons/FeatureServer/0",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "NCA_NAME"
+      ]
     }
   ],
   "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
