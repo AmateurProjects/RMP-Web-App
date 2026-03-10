@@ -249,7 +249,8 @@
       "serviceType": "feature",
       "permitTypes": [
         "core"
-      ]
+      ],
+      "excluded": true
     },
     {
       "title": "BLM Areas of Critical Environmental Concern (ACEC)",
@@ -440,7 +441,8 @@
       "serviceType": "map",
       "permitTypes": [
         "core"
-      ]
+      ],
+      "excluded": true
     },
     {
       "title": "USFWS At-Risk Species",
