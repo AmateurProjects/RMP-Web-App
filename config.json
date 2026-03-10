@@ -1030,6 +1030,19 @@
         "FET_NAME",
         "DESCRIPTION"
       ]
+    },
+    {
+      "title": "BLM Field Office Boundaries",
+      "url": "https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_AdminUnit_Generalized/FeatureServer/3",
+      "category": "special",
+      "permitTypes": [
+        "core"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "ADMU_NAME",
+        "ADMU_ST_URL"
+      ]
     }
   ],
   "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
