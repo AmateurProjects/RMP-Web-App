@@ -1016,6 +1016,20 @@
       "highlightFields": [
         "NCA_NAME"
       ]
+    },
+    {
+      "title": "BLM Natl Recreation Site Polygons",
+      "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Recreation_Site_Polygons/FeatureServer/3",
+      "category": "special",
+      "permitTypes": [
+        "row",
+        "realty"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "FET_NAME",
+        "DESCRIPTION"
+      ]
     }
   ],
   "metadataWorkerUrl": "https://permitting-web-app-cache.screening-app.workers.dev",
