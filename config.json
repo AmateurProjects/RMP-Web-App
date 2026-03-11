@@ -376,9 +376,13 @@
       "title": "BLM Natl Revision Development Land Use Plans",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_Revision_Development_Land_Use_Plans/FeatureServer/0",
       "category": "land-use",
-      "serviceType": "feature",
       "permitTypes": [
         "core"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "LUPNAME",
+        "EPLINK"
       ]
     },
     {
