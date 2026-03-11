@@ -1541,9 +1541,10 @@ function teardownLayers() {
     resetCoverageCacheForAoi(null);
     clearPreWarmCache();
 
-    // Clear the layerCfgByUrl and alwaysVisibleLayers stored on shared state
+    // Clear alwaysVisibleLayers (rebuilt per permit type)
+    // NOTE: layerCfgByUrl is a config-derived index — do NOT clear it here,
+    // it is built once at init and needed for permit-type filtering throughout the session.
     if (alwaysVisibleLayers) alwaysVisibleLayers.length = 0;
-    if (layerCfgByUrl) layerCfgByUrl.clear();
 
     console.log("[teardownLayers] Removed report layers and cleared caches");
 }
