@@ -946,12 +946,15 @@
       "url": "https://fwsprimary.wim.usgs.gov/server/rest/services/Riparian/MapServer/0",
       "category": "environmental",
       "permitTypes": [
-        "grazing",
         "oil-gas",
+        "grazing",
         "mining",
         "row"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "highlightFields": [
+        "WETLAND_TYPE"
+      ]
     },
     {
       "title": "Riparian Mapping Areas",
