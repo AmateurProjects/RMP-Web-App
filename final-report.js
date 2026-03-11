@@ -174,7 +174,9 @@ define([
                     };
                 }
 
-                // Feature layer — quick 1-feature coverage check (with retry)
+                // Feature layer — quick coverage check using both count and feature queries
+                // (some ArcGIS Server services intermittently return 0 from queryFeatures
+                //  but succeed with queryFeatureCount, or vice versa)
                 let hasCoverage = false;
                 let layerRef = null;
                 try {
@@ -188,25 +190,35 @@ define([
                     checkQuery.num = 1;
                     checkQuery.outFields = [layerRef.objectIdField || "OBJECTID"];
 
-                    const result = await Promise.race([
-                        layerRef.queryFeatures(checkQuery),
-                        new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
-                        )
+                    // Fire both count and feature queries in parallel for robustness
+                    const timeoutPromise = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
+                    );
+                    const [countSettled, featSettled] = await Promise.allSettled([
+                        Promise.race([layerRef.queryFeatureCount(checkQuery), timeoutPromise]),
+                        Promise.race([layerRef.queryFeatures(checkQuery), timeoutPromise])
                     ]);
-                    hasCoverage = result.features && result.features.length > 0;
 
-                    // Retry once if server returned 0 features (BLM services
+                    const countVal = countSettled.status === "fulfilled" ? countSettled.value : 0;
+                    const featVal  = featSettled.status === "fulfilled"
+                        ? (featSettled.value?.features?.length || 0) : 0;
+                    hasCoverage = countVal > 0 || featVal > 0;
+
+                    // Retry once if both returned 0 (BLM services
                     // can intermittently return empty results on first attempt)
                     if (!hasCoverage) {
                         await new Promise(r => setTimeout(r, 1500));
-                        const retry = await Promise.race([
-                            layerRef.queryFeatures(checkQuery),
-                            new Promise((_, reject) =>
-                                setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
-                            )
+                        const retryTimeout = new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
+                        );
+                        const [retryCount, retryFeat] = await Promise.allSettled([
+                            Promise.race([layerRef.queryFeatureCount(checkQuery), retryTimeout]),
+                            Promise.race([layerRef.queryFeatures(checkQuery), retryTimeout])
                         ]);
-                        hasCoverage = retry.features && retry.features.length > 0;
+                        const rc = retryCount.status === "fulfilled" ? retryCount.value : 0;
+                        const rf = retryFeat.status === "fulfilled"
+                            ? (retryFeat.value?.features?.length || 0) : 0;
+                        hasCoverage = rc > 0 || rf > 0;
                         if (hasCoverage) {
                             onLog(`Additional: ${t.title} — retry found features`);
                         }
@@ -4402,8 +4414,11 @@ define([
 
         // Filter to layers with coverage that can generate maps
         // Feature counts are queried during report generation
+        // Additional (Phase 2) layers are always included — their coverage
+        // check can be unreliable for some ArcGIS Server services, so we
+        // let the full querySingleLayer call determine final feature counts.
         const mappableLayers = targetLayers
-            .filter(x => x?.hasCoverage || (x?.count || 0) > 0) // Coverage from screening
+            .filter(x => x?.hasCoverage || (x?.count || 0) > 0 || x?.__isAdditionalLayer) // Coverage from screening + all additional layers
             .filter(x => x?.url || x?.__isImageService)
             .filter(x => !(x.title && x.title.toLowerCase().includes("state boundaries")));
 

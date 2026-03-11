@@ -436,16 +436,21 @@ define([
         q2.num = Math.min(maxSamples, 2000);
 
         const [countResult, sampleResult] = await Promise.all([
-            layer.queryFeatureCount(q),
+            layer.queryFeatureCount(q).catch(() => -1),
             maxSamples > 0 ? layer.queryFeatures(q2).catch(() => null) : Promise.resolve(null)
         ]);
 
-        const count = countResult;
+        const sampleFeats = sampleResult?.features ?? [];
+        // Use whichever is more authoritative: sometimes queryFeatureCount
+        // returns 0 while queryFeatures returns features (observed with
+        // some ArcGIS Server services like BLM NLSDB).
+        const count = (countResult > 0)
+            ? countResult
+            : (sampleFeats.length > 0 ? sampleFeats.length : Math.max(countResult, 0));
         let features = [];
 
-        if (count > 0 && sampleResult) {
-            const raw = sampleResult?.features ?? [];
-            features = applyTouchFilter ? filterTouchingOnly(raw, geom) : raw;
+        if (count > 0 && sampleFeats.length > 0) {
+            features = applyTouchFilter ? filterTouchingOnly(sampleFeats, geom) : sampleFeats;
         }
 
         return { title: layerTitle, url: layerUrl, count, features, layer, exportQuery: q };

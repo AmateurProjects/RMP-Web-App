@@ -2864,7 +2864,9 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             
             if (isReportCanceled(myOp)) return null;
 
-            // Quick check: query for just 1 feature to see if any intersect
+            // Quick check: use both queryFeatureCount and queryFeatures
+            // for robustness (some ArcGIS Server services intermittently
+            // return 0 from one method but succeed with the other).
             const checkQuery = layerRef.createQuery();
             checkQuery.geometry = reportGeom;
             checkQuery.spatialRelationship = "intersects";
@@ -2872,17 +2874,21 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             checkQuery.num = 1; // Only need to find 1 feature to confirm coverage
             checkQuery.outFields = [layerRef.objectIdField || "OBJECTID"];
             
-            // Race the query against a per-layer timeout so a slow service
-            // (e.g. USFWS Critical Habitat with complex geometries) can't
-            // stall the entire analysis batch indefinitely.
+            // Race both queries against a per-layer timeout so a slow service
+            // can't stall the entire analysis batch indefinitely.
             let coverageTimer;
-            const result = await Promise.race([
-                layerRef.queryFeatures(checkQuery, { signal: abortSignal }).finally(() => clearTimeout(coverageTimer)),
-                new Promise((_, reject) => {
-                    coverageTimer = setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS);
-                })
+            const timeoutPromise = new Promise((_, reject) => {
+                coverageTimer = setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS);
+            });
+            const [countSettled, featSettled] = await Promise.allSettled([
+                Promise.race([layerRef.queryFeatureCount(checkQuery, { signal: abortSignal }), timeoutPromise]),
+                Promise.race([layerRef.queryFeatures(checkQuery, { signal: abortSignal }), timeoutPromise])
             ]);
-            hasCoverage = result.features && result.features.length > 0;
+            clearTimeout(coverageTimer);
+            const countVal = countSettled.status === "fulfilled" ? countSettled.value : 0;
+            const featVal  = featSettled.status === "fulfilled"
+                ? (featSettled.value?.features?.length || 0) : 0;
+            hasCoverage = countVal > 0 || featVal > 0;
         } catch (e) {
             if (e.name === "AbortError" || isReportCanceled(myOp)) return null;
             if (e.message === "__coverageTimeout__") {
