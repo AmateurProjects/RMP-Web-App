@@ -1000,7 +1000,11 @@
       "permitTypes": [
         "core"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "highlightFields": [
+        "LUP_NAME",
+        "LUP_URL"
+      ]
     },
     {
       "title": "PADUS4_1FeeManagers",
