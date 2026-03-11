@@ -256,9 +256,13 @@
       "title": "BLM Areas of Critical Environmental Concern (ACEC)",
       "url": "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_ACEC/MapServer/0",
       "category": "special",
-      "serviceType": "map",
       "permitTypes": [
         "core"
+      ],
+      "serviceType": "map",
+      "highlightFields": [
+        "ACEC_NAME",
+        "LUP_NAME"
       ]
     },
     {
