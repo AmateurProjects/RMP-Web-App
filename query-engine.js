@@ -823,6 +823,83 @@ define([
         return null;
     }
 
+    // ── Mean slope grade (steepness) ────────────────────────────
+
+    /**
+     * Compute the mean slope grade for an AOI using the Slope raster
+     * function on a 3DEP ImageServer.  Returns { meanSlopeDeg, meanSlopePct }
+     * or null on failure.
+     */
+    async function computeMeanSlopeGrade(imageServerUrl, geometry) {
+        if (!imageServerUrl || !geometry) return null;
+
+        const { geomJson, geometryType, pixelSize } = _prep3DEPGeometry(geometry);
+
+        function _buildParams(gJson, gType) {
+            const p = {
+                f: "json", geometry: gJson, geometryType: gType,
+                renderingRule: JSON.stringify({ rasterFunction: "Slope_Degrees" })
+            };
+            if (pixelSize) p.pixelSize = JSON.stringify({ x: pixelSize, y: pixelSize });
+            return p;
+        }
+
+        function _tryParse(data) {
+            // computeStatisticsHistograms returns statistics directly
+            const s = data.statistics && data.statistics[0];
+            if (s && s.mean != null && isFinite(s.mean)) {
+                const deg = Math.abs(s.mean);
+                return { meanSlopeDeg: Math.round(deg * 10) / 10, meanSlopePct: Math.round(Math.tan(deg * Math.PI / 180) * 1000) / 10 };
+            }
+            // Fall back to histogram
+            const h = data.histograms && data.histograms[0];
+            if (h && h.counts && h.counts.length) {
+                const bw = (h.max - h.min) / h.counts.length;
+                let sum = 0, n = 0;
+                for (let i = 0; i < h.counts.length; i++) { sum += (h.min + (i + 0.5) * bw) * h.counts[i]; n += h.counts[i]; }
+                if (n > 0) {
+                    const deg = Math.abs(sum / n);
+                    return { meanSlopeDeg: Math.round(deg * 10) / 10, meanSlopePct: Math.round(Math.tan(deg * Math.PI / 180) * 1000) / 10 };
+                }
+            }
+            return null;
+        }
+
+        // Primary: computeStatisticsHistograms with Slope raster function
+        try {
+            const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", _buildParams(geomJson, geometryType), 60000);
+            const result = _tryParse(data);
+            if (result) return result;
+        } catch (e) {
+            console.warn("[3DEP slopeGrade] Primary request failed:", e.message);
+        }
+
+        // Try with "Slope" function name (some services use this instead)
+        try {
+            const altParams = _buildParams(geomJson, geometryType);
+            altParams.renderingRule = JSON.stringify({ rasterFunction: "Slope" });
+            const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", altParams, 60000);
+            const result = _tryParse(data);
+            if (result) return result;
+        } catch (e) {
+            console.warn("[3DEP slopeGrade] Alt function name failed:", e.message);
+        }
+
+        // Envelope fallback
+        if (geometryType !== "esriGeometryEnvelope" && geometry.extent) {
+            const envJson = JSON.stringify(geometry.extent.toJSON ? geometry.extent.toJSON() : geometry.extent);
+            try {
+                const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", _buildParams(envJson, "esriGeometryEnvelope"), 60000);
+                const result = _tryParse(data);
+                if (result) return result;
+            } catch (e2) {
+                console.warn("[3DEP slopeGrade] Envelope fallback failed:", e2.message);
+            }
+        }
+
+        return null;
+    }
+
     // ── Coverage stats ──────────────────────────────────────────
 
     /**
@@ -1340,8 +1417,9 @@ define([
             // Elevation
             computeElevationStats,
 
-            // Slope direction
+            // Slope direction & grade
             computeSlopeAspect,
+            computeMeanSlopeGrade,
 
             // Coverage
             computeLayerCoverageStats,

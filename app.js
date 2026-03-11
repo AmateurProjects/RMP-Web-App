@@ -1835,15 +1835,16 @@ sidebarSelEntries.forEach(({ entry: e, idx: i }) => {
 });
 
         // ---- Report layers: only show layers matching current permit type (+ "core")
+        // When no permit type is selected, show no report layers.
         const sidebarPtKey = selectedPermitType;
         const sidebarRptEntries = [];
-        (config.reportLayers || []).forEach((l, i) => {
-            if (sidebarPtKey) {
+        if (sidebarPtKey) {
+            (config.reportLayers || []).forEach((l, i) => {
                 const pts = l.permitTypes || [];
                 if (pts.indexOf(sidebarPtKey) === -1 && pts.indexOf("core") === -1) return;
-            }
-            sidebarRptEntries.push({ cfg: l, idx: i });
-        });
+                sidebarRptEntries.push({ cfg: l, idx: i });
+            });
+        }
 
         reportLayerTogglesEl.innerHTML = sidebarRptEntries.map(({ cfg: l, idx: i }) => {
             const key = normalizeUrlKey(l.url);
@@ -1985,15 +1986,16 @@ cb.addEventListener("change", async () => {
         });
 
         // Only show report layers matching the current permit type (+ "core")
+        // When no permit type is selected, show no report layers.
         const ptKey = selectedPermitType;
         const visibleRptEntries = [];
-        (config.reportLayers || []).forEach((l, i) => {
-            if (ptKey) {
+        if (ptKey) {
+            (config.reportLayers || []).forEach((l, i) => {
                 const pts = l.permitTypes || [];
                 if (pts.indexOf(ptKey) === -1 && pts.indexOf("core") === -1) return;
-            }
-            visibleRptEntries.push({ cfg: l, idx: i });
-        });
+                visibleRptEntries.push({ cfg: l, idx: i });
+            });
+        }
 
         layerMgrReportList.innerHTML = visibleRptEntries.map(({ cfg: l, idx: i }) => {
             const key = normalizeUrlKey(l.url);

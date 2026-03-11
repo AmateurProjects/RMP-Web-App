@@ -762,23 +762,37 @@ define([
     // ────────────────────────────────────────────
     // buildLayerNarrative — readable summary paragraph under each map
     // ────────────────────────────────────────────
-    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isLine, totalLengthFeet, totalLengthMiles, isImagery, elevStats, slopeAspect, elevError, slopeError }) {
+    function buildLayerNarrative({ aoiAcres, featureCount, layerTitle, acresCovered, pctCovered, isPolygon, isLine, totalLengthFeet, totalLengthMiles, isImagery, elevStats, slopeAspect, slopeGrade, elevError, slopeError }) {
         if (isImagery) {
-            // 3DEP / Imagery layer — structured table of elevation & slope stats
-            let rows = [];
+            // 3DEP / Imagery layer — grouped stats panels for elevation & slope
+            const _stat = (label, val) => `<div class="dep-stat"><span class="dep-stat-val">${val}</span><span class="dep-stat-lbl">${label}</span></div>`;
+            const sections = [];
+
+            // ── Elevation section ──
             if (elevStats) {
-                rows.push({ label: 'Minimum Elevation', value: `${formatNumber(elevStats.minFt, 0)} ft` });
-                rows.push({ label: 'Maximum Elevation', value: `${formatNumber(elevStats.maxFt, 0)} ft` });
-                rows.push({ label: 'Elevation Change', value: `${formatNumber(elevStats.elevationChangeFt, 0)} ft` });
-                if (elevStats.meanFt != null) {
-                    rows.push({ label: 'Mean Elevation', value: `${formatNumber(elevStats.meanFt, 0)} ft` });
-                }
+                let stats = '';
+                stats += _stat('Min', `${formatNumber(elevStats.minFt, 0)} ft`);
+                stats += _stat('Max', `${formatNumber(elevStats.maxFt, 0)} ft`);
+                if (elevStats.meanFt != null) stats += _stat('Mean', `${formatNumber(elevStats.meanFt, 0)} ft`);
+                stats += _stat('Change', `${formatNumber(elevStats.elevationChangeFt, 0)} ft`);
+                sections.push(`<div class="dep-group"><div class="dep-group-hdr">⛰️ Elevation</div><div class="dep-stats-row">${stats}</div></div>`);
             }
-            if (slopeAspect && slopeAspect.concentration > 0.05) {
-                rows.push({ label: 'Mean Slope Direction', value: `${escapeHtml(slopeAspect.cardinalDirection)} (${formatNumber(slopeAspect.meanAspectDeg, 1)}°)` });
-                rows.push({ label: 'Terrain Descends Toward', value: `${escapeHtml(slopeAspect.cardinalDirection)}` });
-            } else if (slopeAspect && slopeAspect.concentration <= 0.05) {
-                rows.push({ label: 'Slope Direction', value: 'Relatively flat terrain — no dominant slope direction' });
+
+            // ── Slope & Aspect section ──
+            const hasSlopeData = slopeGrade || slopeAspect;
+            if (hasSlopeData) {
+                let stats = '';
+                if (slopeGrade) {
+                    stats += _stat('Mean Grade', `${formatNumber(slopeGrade.meanSlopePct, 1)}%`);
+                    stats += _stat('Mean Angle', `${formatNumber(slopeGrade.meanSlopeDeg, 1)}°`);
+                }
+                if (slopeAspect && slopeAspect.concentration > 0.05) {
+                    stats += _stat('Direction', `${escapeHtml(slopeAspect.cardinalDirection)} (${formatNumber(slopeAspect.meanAspectDeg, 1)}°)`);
+                    stats += _stat('Descends Toward', escapeHtml(slopeAspect.cardinalDirection));
+                } else if (slopeAspect && slopeAspect.concentration <= 0.05) {
+                    stats += _stat('Direction', 'Flat — no dominant direction');
+                }
+                sections.push(`<div class="dep-group"><div class="dep-group-hdr">📐 Slope &amp; Aspect</div><div class="dep-stats-row">${stats}</div></div>`);
             }
 
             // Build status notes for anything that failed or was unavailable
@@ -786,31 +800,26 @@ define([
             if (!elevStats && elevError) {
                 statusNotes.push(`Elevation statistics could not be retrieved (${escapeHtml(elevError)}).`);
             } else if (!elevStats) {
-                statusNotes.push('Elevation statistics were not available for this area. The image service may not support histogram queries for the selected geometry.');
+                statusNotes.push('Elevation statistics were not available for this area.');
             }
             if (!slopeAspect && slopeError) {
                 statusNotes.push(`Slope/aspect analysis could not be completed (${escapeHtml(slopeError)}).`);
             } else if (!slopeAspect && !elevStats) {
-                // Only add slope note if elevStats also failed (avoid double messaging)
                 statusNotes.push('Slope direction analysis was not available for this area.');
             } else if (!slopeAspect) {
-                statusNotes.push('Slope direction analysis was not available. The image service may not support the required raster functions.');
+                statusNotes.push('Slope direction analysis was not available.');
             }
 
-            // If we have no stats AND no useful status notes, show a clear fallback
-            if (rows.length === 0 && statusNotes.length === 0) {
-                return `<div class="layer-narrative"><em style="color:var(--muted);">Elevation and slope statistics were not available for this area. This may occur when the image service does not support histogram or statistics queries for the selected geometry.</em></div>`;
+            if (sections.length === 0 && statusNotes.length === 0) {
+                return `<div class="layer-narrative"><em style="color:var(--muted);">Elevation and slope statistics were not available for this area.</em></div>`;
             }
 
             let html = '';
-            if (rows.length > 0) {
-                const tableRows = rows.map(r =>
-                    `<tr><td style="font-weight:600;color:var(--blm-green);width:200px;padding:6px 14px;background:rgba(26,71,42,0.05);border-bottom:1px solid var(--border);">${r.label}</td><td style="padding:6px 14px;border-bottom:1px solid var(--border);">${r.value}</td></tr>`
-                ).join('');
-                html += `<div class="layer-narrative" style="padding:0;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:13.5px;">${tableRows}</table></div>`;
+            if (sections.length > 0) {
+                html += `<div class="dep-panel">${sections.join('')}</div>`;
             }
             if (statusNotes.length > 0) {
-                html += `<div class="layer-narrative" style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 14px;margin-top:${rows.length > 0 ? '4' : '0'}px;">${statusNotes.join(' ')}</div>`;
+                html += `<div class="layer-narrative" style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 14px;margin-top:${sections.length > 0 ? '4' : '0'}px;">${statusNotes.join(' ')}</div>`;
             }
             return html;
         }
@@ -1358,6 +1367,38 @@ define([
                     line-height: 1.65;
                     color: var(--text);
                 }
+                /* 3DEP grouped stats panels */
+                .dep-panel {
+                    display: flex; flex-wrap: wrap; gap: 12px;
+                    margin: 16px 0;
+                }
+                .dep-group {
+                    flex: 1 1 220px;
+                    background: var(--blm-tan);
+                    border-left: 4px solid var(--blm-green);
+                    border-radius: 4px;
+                    padding: 12px 16px;
+                }
+                .dep-group-hdr {
+                    font-weight: 700; font-size: 13px;
+                    color: var(--blm-green);
+                    margin-bottom: 8px;
+                    letter-spacing: 0.02em;
+                }
+                .dep-stats-row {
+                    display: flex; flex-wrap: wrap; gap: 6px 18px;
+                }
+                .dep-stat {
+                    display: flex; flex-direction: column; min-width: 80px;
+                }
+                .dep-stat-val {
+                    font-weight: 700; font-size: 15px; line-height: 1.3;
+                    color: var(--text);
+                }
+                .dep-stat-lbl {
+                    font-size: 11px; color: var(--muted);
+                    text-transform: uppercase; letter-spacing: 0.04em;
+                }
                 table.data-sources-table{ 
                     width:100%; 
                     border-collapse: collapse; 
@@ -1625,6 +1666,12 @@ define([
                     .report-map-page .map img { width: 100%; height: 100%; display: block; object-fit: contain; margin: 0; }
                     .report-map-page .map canvas, .report-map-page .map svg { width: 100% !important; height: 100% !important; max-width: 7in; max-height: 4.5in; display: block; object-fit: contain; }
                     .report-map-page .layer-narrative { margin: 1px 0; padding: 2px 6px; font-size: 11px !important; line-height: 1.3; }
+                    .dep-panel { gap: 6px; margin: 4px 0; }
+                    .dep-group { padding: 6px 10px; }
+                    .dep-group-hdr { font-size: 11px !important; margin-bottom: 3px; }
+                    .dep-stat-val { font-size: 12px !important; }
+                    .dep-stat-lbl { font-size: 9px !important; }
+                    .dep-panel, .dep-group { break-inside: avoid; page-break-inside: avoid; }
                     /* ── 10. Tables — constrained for atomic map pages ── */
                     .report-map-page .interactive-table-wrapper { break-before: auto; break-inside: avoid; page-break-inside: avoid; padding: 2px 6px 6px !important; margin-top: 2px; box-sizing: border-box !important; max-width: 100% !important; max-height: 2.5in; overflow: hidden !important; }
                     .report-map-page .table-scroll { max-height: 2.3in !important; overflow: hidden !important; border: 1px solid #ccc; border-radius: 0; box-sizing: border-box !important; max-width: 100% !important; }
@@ -3619,6 +3666,38 @@ define([
                 line-height: 1.65;
                 color: var(--text);
             }
+            /* 3DEP grouped stats panels */
+            .dep-panel {
+                display: flex; flex-wrap: wrap; gap: 12px;
+                margin: 16px 0;
+            }
+            .dep-group {
+                flex: 1 1 220px;
+                background: var(--blm-tan);
+                border-left: 4px solid var(--blm-green);
+                border-radius: 4px;
+                padding: 12px 16px;
+            }
+            .dep-group-hdr {
+                font-weight: 700; font-size: 13px;
+                color: var(--blm-green);
+                margin-bottom: 8px;
+                letter-spacing: 0.02em;
+            }
+            .dep-stats-row {
+                display: flex; flex-wrap: wrap; gap: 6px 18px;
+            }
+            .dep-stat {
+                display: flex; flex-direction: column; min-width: 80px;
+            }
+            .dep-stat-val {
+                font-weight: 700; font-size: 15px; line-height: 1.3;
+                color: var(--text);
+            }
+            .dep-stat-lbl {
+                font-size: 11px; color: var(--muted);
+                text-transform: uppercase; letter-spacing: 0.04em;
+            }
             /* Interactive Data Tables */
             .interactive-table-wrapper {
                 margin-top: 16px;
@@ -4145,6 +4224,12 @@ define([
                     font-size: 11px !important;
                     line-height: 1.3;
                 }
+                .dep-panel { gap: 6px; margin: 4px 0; }
+                .dep-group { padding: 6px 10px; }
+                .dep-group-hdr { font-size: 11px !important; margin-bottom: 3px; }
+                .dep-stat-val { font-size: 12px !important; }
+                .dep-stat-lbl { font-size: 9px !important; }
+                .dep-panel, .dep-group { break-inside: avoid; page-break-inside: avoid; }
 
                 /* ── 9. Tables — constrained for atomic map pages ── */
                 .report-map-page .interactive-table-wrapper {
@@ -4349,7 +4434,7 @@ define([
             layerMayIntersectAoi
         } = mapUtils;
 
-        const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, computeSlopeAspect, SQM_PER_ACRE } = queryEngine;
+        const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, computeSlopeAspect, computeMeanSlopeGrade, SQM_PER_ACRE } = queryEngine;
 
         // Accumulate content sections
         const contentParts = [];
@@ -4717,8 +4802,19 @@ define([
 
                             let slopeAspect = null;
                             let slopeError = null;
+                            let slopeGrade = null;
                             try {
-                                slopeAspect = await computeSlopeAspect(item.url, selectionGeom);
+                                // Fire aspect and grade in parallel — both use the same server
+                                const [aspectResult, gradeResult] = await Promise.allSettled([
+                                    computeSlopeAspect(item.url, selectionGeom),
+                                    computeMeanSlopeGrade(item.url, selectionGeom)
+                                ]);
+                                slopeAspect = aspectResult.status === 'fulfilled' ? aspectResult.value : null;
+                                slopeGrade  = gradeResult.status === 'fulfilled'  ? gradeResult.value  : null;
+                                if (aspectResult.status === 'rejected') {
+                                    slopeError = aspectResult.reason?.message || 'Unknown error';
+                                    console.warn(`[bg-report] Slope/aspect failed for "${layerTitle}":`, aspectResult.reason);
+                                }
                             } catch (e) {
                                 slopeError = e.message || 'Unknown error';
                                 console.warn(`[bg-report] Slope/aspect failed for "${layerTitle}":`, e);
@@ -4728,11 +4824,11 @@ define([
                                 aoiAcres, featureCount: 0, layerTitle,
                                 acresCovered: 0, pctCovered: 0,
                                 isPolygon: false, isImagery: true, elevStats, slopeAspect,
-                                elevError, slopeError
+                                slopeGrade, elevError, slopeError
                             });
 
                             // Mark imagery layer as having data if any stats or screenshot succeeded
-                            if (elevStats || slopeAspect || dataUrl) {
+                            if (elevStats || slopeAspect || slopeGrade || dataUrl) {
                                 item.__hasImageryData = true;
                             }
 
