@@ -4329,6 +4329,14 @@ body.cv-highcontrast {
   opacity: 0.85;
   margin-top: 4px;
 }
+.aoi-size-warning.aoi-warn-moderate {
+  border-color: #b8a060;
+  background: linear-gradient(135deg, #fffdf4 0%, #fdf6db 100%);
+}
+.aoi-size-warning.aoi-warn-large {
+  border-color: #e6a117;
+  background: linear-gradient(135deg, #fff4cc 0%, #ffe9a0 100%);
+}
 
 /* ============================================
    SCROLL-FADE INDICATORS

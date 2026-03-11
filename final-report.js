@@ -174,7 +174,7 @@ define([
                     };
                 }
 
-                // Feature layer — quick 1-feature coverage check
+                // Feature layer — quick 1-feature coverage check (with retry)
                 let hasCoverage = false;
                 let layerRef = null;
                 try {
@@ -195,6 +195,22 @@ define([
                         )
                     ]);
                     hasCoverage = result.features && result.features.length > 0;
+
+                    // Retry once if server returned 0 features (BLM services
+                    // can intermittently return empty results on first attempt)
+                    if (!hasCoverage) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        const retry = await Promise.race([
+                            layerRef.queryFeatures(checkQuery),
+                            new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error("__coverageTimeout__")), COVERAGE_TIMEOUT_MS)
+                            )
+                        ]);
+                        hasCoverage = retry.features && retry.features.length > 0;
+                        if (hasCoverage) {
+                            onLog(`Additional: ${t.title} — retry found features`);
+                        }
+                    }
                 } catch (e) {
                     if (e.message === "__coverageTimeout__") {
                         onLog(`Additional: ${t.title} timed out — assuming coverage`);
@@ -3045,7 +3061,7 @@ define([
             ensureAoiOnTop();
         }
 
-        async function compositeWithOverview(mainDataUrl, mainExtent, scale) {
+        async function compositeWithOverview(mainDataUrl, mainExtent, scale, { showArrow = true } = {}) {
             const overviewScale = scale * overviewZoomFactor;
             await view.goTo({ target: selectionGeom, scale: overviewScale }, { animate: false });
 
@@ -3106,8 +3122,8 @@ define([
             ctx.lineWidth = 1.5;
             ctx.strokeRect(ix - 1, iy - 1, insetW + 2, insetH + 2);
 
-            // Draw red arrow pointing at the AOI
-            {
+            // Draw red arrow pointing at the AOI (only for zoomed-out maps)
+            if (showArrow) {
                 const aoiExt = selectionGeom.extent;
                 const mw = mainExtent.xmax - mainExtent.xmin;
                 const mh = mainExtent.ymax - mainExtent.ymin;
@@ -3225,7 +3241,7 @@ define([
             const mainExtent2 = view.extent.clone();
 
             if (ss2) {
-                const composited2 = await compositeWithOverview(ss2, mainExtent2, 200000);
+                const composited2 = await compositeWithOverview(ss2, mainExtent2, 200000, { showArrow: false });
                 maps.push(`<p class="aoi-map-title" style="font-size:13px;font-weight:600;color:var(--blm-brown);margin:16px 0 4px;">Orientation Map at scale 1:200,000</p><div class="aoi-map"><img src="${composited2}" alt="AOI Context (County 1:200,000)" /></div>`);
             }
 
@@ -4752,16 +4768,29 @@ define([
                             
                             if (featureCount === 0 && item.url) {
                                 onStep(`Querying features: ${layerTitle}`);
-                                try {
-                                    queryResult = await querySingleLayer(item.url, item.title, selectionGeom, "intersects");
-                                    featureCount = queryResult.count || 0;
-                                    featureRows = queryResult.features ? queryResult.features.map(f => f.attributes) : [];
-                                    item.count = featureCount;
-                                    item.rows = featureRows;
-                                    item._layer = queryResult.layer;
-                                    item._exportQuery = queryResult.exportQuery;
-                                } catch (qe) {
-                                    console.warn(`Feature query failed for ${layerTitle}:`, qe);
+                                // Additional layers with confirmed coverage get a retry if the
+                                // first query returns 0 — BLM services can intermittently fail.
+                                const maxAttempts = (item.__isAdditionalLayer && item.hasCoverage) ? 2 : 1;
+                                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                                    try {
+                                        if (attempt > 1) {
+                                            onStep(`Retrying query: ${layerTitle}`);
+                                            await new Promise(r => setTimeout(r, 2000));
+                                        }
+                                        queryResult = await querySingleLayer(
+                                            item.url, item.title, selectionGeom, "intersects",
+                                            attempt > 1 ? { skipExtentCheck: true } : {}
+                                        );
+                                        featureCount = queryResult.count || 0;
+                                        featureRows = queryResult.features ? queryResult.features.map(f => f.attributes) : [];
+                                        item.count = featureCount;
+                                        item.rows = featureRows;
+                                        item._layer = queryResult.layer;
+                                        item._exportQuery = queryResult.exportQuery;
+                                        if (featureCount > 0) break;
+                                    } catch (qe) {
+                                        console.warn(`Feature query ${attempt > 1 ? 'retry ' : ''}failed for ${layerTitle}:`, qe);
+                                    }
                                 }
                             }
                             

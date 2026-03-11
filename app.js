@@ -895,6 +895,11 @@ function setActiveTab(tabName) {
                 slide.classList.toggle("active", i === slideIndex);
             });
         }
+        // Hide the introductory question/subtext once the user picks a method
+        const qEl = document.getElementById("aoiMethodQuestion");
+        const sEl = document.getElementById("aoiMethodSubtext");
+        if (qEl) qEl.style.display = slideIndex === 0 ? "" : "none";
+        if (sEl) sEl.style.display = slideIndex === 0 ? "" : "none";
     }
 
     function showAoiMethod(method) {
@@ -991,26 +996,51 @@ function setActiveTab(tabName) {
                 if (el) el.textContent = formatNumber(acres, 0) + " acres";
 
                 // Check against warning threshold
-                const warningThreshold = config.report?.aoiWarningAcres ?? 250000;
-                if (acres > warningThreshold) {
+                // Tiered AOI size warnings with time estimates.
+                // Screening is fast (~20-30s) for any size, but report generation
+                // scales with area: each layer needs a screenshot + feature query.
+                const largeThreshold = config.report?.aoiWarningAcres ?? 250000;
+                const moderateThreshold = Math.round(largeThreshold * 0.2); // ~50,000 acres
+                const sqMiles = (acres / 640).toFixed(0);
+
+                if (acres > largeThreshold) {
                     aoiIsLarge = true;
-                    const sqMiles = (acres / 640).toFixed(0);
-                    const estMinutes = Math.max(2, Math.round(acres / 50000));
+                    const estMin = Math.max(5, Math.round(acres / 40000));
+                    const estMax = estMin + Math.round(estMin * 0.5);
                     if (warningEl) {
+                        warningEl.className = "aoi-size-warning aoi-warn-large";
                         warningEl.innerHTML = `
                             <span class="warn-icon">\u26A0\uFE0F</span>
                             <div class="warn-body">
-                                <strong>Large Area of Interest Detected</strong>
+                                <strong>Very Large Area of Interest</strong>
                                 Your AOI is approximately <b>${formatNumber(acres, 0)} acres</b> (~${sqMiles} sq mi).
-                                Analysis over such large areas may take <b>${estMinutes}+ minutes</b> and some service queries may time out.
-                                The analysis will automatically use spatial chunking to improve reliability.
-                                <div class="warn-detail">For faster results, consider selecting a smaller area.</div>
+                                Report generation for this area is estimated to take <b>${estMin}–${estMax} minutes</b>.
+                                Some service queries may time out for areas this large.
+                                <div class="warn-detail">For faster results, consider selecting a smaller area or buffering a specific feature.</div>
                             </div>`;
-                        warningEl.classList.remove("hidden");
+                        scrollPanelToBottom(warningEl);
+                    }
+                } else if (acres > moderateThreshold) {
+                    aoiIsLarge = true;
+                    const estMin = Math.max(2, Math.round(acres / 50000));
+                    const estMax = estMin + Math.max(1, Math.round(estMin * 0.5));
+                    if (warningEl) {
+                        warningEl.className = "aoi-size-warning aoi-warn-moderate";
+                        warningEl.innerHTML = `
+                            <span class="warn-icon">\u26A0\uFE0F</span>
+                            <div class="warn-body">
+                                <strong>Large Area — Longer Processing Time</strong>
+                                Your AOI is approximately <b>${formatNumber(acres, 0)} acres</b> (~${sqMiles} sq mi).
+                                Report generation is estimated to take <b>${estMin}–${estMax} minutes</b>.
+                                <div class="warn-detail">Screening will complete quickly, but the detailed report may take longer.</div>
+                            </div>`;
                         scrollPanelToBottom(warningEl);
                     }
                 } else {
-                    if (warningEl) warningEl.classList.add("hidden");
+                    if (warningEl) {
+                        warningEl.classList.add("hidden");
+                        warningEl.className = "aoi-size-warning hidden";
+                    }
                 }
             } catch (e) {
                 const el = document.getElementById("wizAoiAcres");
