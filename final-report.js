@@ -3181,20 +3181,28 @@ define([
             ctx.lineWidth = 1.5;
             ctx.strokeRect(ix - 1, iy - 1, insetW + 2, insetH + 2);
 
-            // Draw red arrow pointing at the AOI (only for zoomed-out maps)
+            // Draw red arrow pointing at the AOI edge (only for zoomed-out maps)
             if (showArrow) {
                 const aoiExt = selectionGeom.extent;
                 const mw = mainExtent.xmax - mainExtent.xmin;
                 const mh = mainExtent.ymax - mainExtent.ymin;
                 if (aoiExt && mw > 0 && mh > 0) {
-                    const aoiCx = (aoiExt.xmin + aoiExt.xmax) / 2;
-                    const aoiCy = (aoiExt.ymin + aoiExt.ymax) / 2;
-                    const tipX = ((aoiCx - mainExtent.xmin) / mw) * width;
-                    const tipY = ((mainExtent.ymax - aoiCy) / mh) * height;
-
-                    // Shaft from upper-right, 90px at 45°
+                    // Arrow shaft originates from upper-right quadrant
                     const shaftLen = 90;
                     const d = Math.SQRT1_2; // cos(45°)
+
+                    // Map the AOI bounding box edges to pixel coords
+                    const aoiLeftPx  = ((aoiExt.xmin - mainExtent.xmin) / mw) * width;
+                    const aoiRightPx = ((aoiExt.xmax - mainExtent.xmin) / mw) * width;
+                    const aoiTopPx   = ((mainExtent.ymax - aoiExt.ymax) / mh) * height;
+                    const aoiBotPx   = ((mainExtent.ymax - aoiExt.ymin) / mh) * height;
+
+                    // Point at the top-right corner of the AOI bbox — this is
+                    // the closest edge to the arrow shaft's origin direction
+                    // (coming from upper-right at 45°).
+                    const tipX = aoiRightPx;
+                    const tipY = aoiTopPx;
+
                     const tailX = tipX + shaftLen * d;
                     const tailY = tipY - shaftLen * d;
 
