@@ -185,7 +185,47 @@ define([
      * @param {string} geomType — geometry type string from the service
      */
     function thickenLayerSymbology(layer, geomType) {
-        if (!layer || !layer.renderer || !geomType) return;
+        if (!layer || !geomType) return;
+
+        // Some layers don't have their renderer populated yet even after .when().
+        // If the renderer is missing, try to build a simple fallback from the
+        // layer's drawingInfo or just assign a default purple renderer so the
+        // features are still visually distinct in report screenshots.
+        if (!layer.renderer) {
+            const gt = String(geomType).toLowerCase();
+            if (gt.includes("polygon")) {
+                layer.renderer = {
+                    type: "simple",
+                    symbol: {
+                        type: "simple-fill",
+                        color: [128, 0, 128, 0.25],
+                        outline: { color: [128, 0, 128, 1], width: 6 }
+                    }
+                };
+            } else if (gt.includes("polyline") || gt.includes("line")) {
+                layer.renderer = {
+                    type: "simple",
+                    symbol: {
+                        type: "simple-line",
+                        color: [128, 0, 128, 1],
+                        width: 5
+                    }
+                };
+            } else if (gt.includes("point")) {
+                layer.renderer = {
+                    type: "simple",
+                    symbol: {
+                        type: "simple-marker",
+                        style: "circle",
+                        color: [128, 0, 128, 0.85],
+                        size: 18,
+                        outline: { color: [0, 0, 0, 1], width: 2 }
+                    }
+                };
+            }
+            return; // fallback renderer already has the right symbology
+        }
+
         const gt = String(geomType).toLowerCase();
         const isPolygon  = gt.includes("polygon");
         const isPolyline = gt.includes("polyline") || gt.includes("line");
@@ -229,8 +269,15 @@ define([
                         sym.width = Math.max(sym.width, MIN_LINE_WIDTH);
                     }
                 } else if (isPoint) {
-                    if (sym.size != null) {
-                        sym.size = Math.max(sym.size, MIN_POINT_SIZE);
+                    // Override point symbol to purple with black outline for report visibility
+                    sym.color = [128, 0, 128, 0.85];
+                    sym.size = Math.max(sym.size || 0, 18);
+                    sym.style = sym.style || "circle";
+                    if (sym.outline) {
+                        sym.outline.color = [0, 0, 0, 1];
+                        sym.outline.width = Math.max(sym.outline.width || 0, 2);
+                    } else {
+                        sym.outline = { color: [0, 0, 0, 1], width: 2 };
                     }
                 }
             }

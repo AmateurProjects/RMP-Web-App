@@ -163,9 +163,9 @@ define([], function () {
             ]
         },
         "realty": {
-            label: "Realty",
+            label: "Land Tenure",
             icon: "🏠",
-            description: "Screening for realty actions including land sales, exchanges, withdrawals, and other dispositions.",
+            description: "Screening for land tenure actions including land sales, exchanges, withdrawals, and other dispositions.",
             groups: [
                 {
                     key: "land-status",
