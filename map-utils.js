@@ -100,7 +100,8 @@ define([
      * Check whether a layer's cached extent overlaps an AOI geometry's
      * bounding box.  Returns true (should query) if the extents intersect
      * or if the layer has no cached extent (conservative — don't skip).
-     * Coordinates are expected in WGS84 / Web Mercator.
+     * Handles spatial reference mismatches: cached extents from service
+     * metadata may be in WGS84 while the AOI is in Web Mercator.
      */
     function layerMayIntersectAoi(layerUrl, aoiGeom) {
         if (!aoiGeom || !aoiGeom.extent) return true; // no AOI — don't skip
@@ -108,10 +109,37 @@ define([
         const layerExt = _layerExtentCache.get(normUrl);
         if (!layerExt) return true; // no cached extent — be conservative
         const aoi = aoiGeom.extent;
-        // Bounding box disjoint check
-        const lx = layerExt.xmin, ly = layerExt.ymin, lX = layerExt.xmax, lY = layerExt.ymax;
-        const ax = aoi.xmin, ay = aoi.ymin, aX = aoi.xmax, aY = aoi.ymax;
+
+        let lx = layerExt.xmin, ly = layerExt.ymin, lX = layerExt.xmax, lY = layerExt.ymax;
         if (lx == null || ly == null || lX == null || lY == null) return true;
+
+        // Detect spatial reference mismatch: cached extent might be in
+        // WGS84/NAD83 (geographic, WKID 4326/4269) while AOI is in
+        // Web Mercator (WKID 102100/3857).  Convert geographic → Mercator.
+        const sr = layerExt.spatialReference;
+        const wkid = sr && (sr.latestWkid || sr.wkid);
+        const aoiSR = aoi.spatialReference;
+        const aoiWkid = aoiSR && (aoiSR.latestWkid || aoiSR.wkid);
+
+        const isGeographic = wkid === 4326 || wkid === 4269;
+        const aoiIsMercator = aoiWkid === 3857 || aoiWkid === 102100;
+
+        if (isGeographic && aoiIsMercator) {
+            // Quick lon/lat → Web Mercator conversion (no library needed)
+            const toMercX = (lon) => lon * 20037508.34 / 180;
+            const toMercY = (lat) => {
+                const clamped = Math.max(-85, Math.min(85, lat));
+                return Math.log(Math.tan((90 + clamped) * Math.PI / 360)) / (Math.PI / 180) * 20037508.34 / 180;
+            };
+            lx = toMercX(lx); lX = toMercX(lX);
+            ly = toMercY(ly); lY = toMercY(lY);
+        } else if (!isGeographic && !aoiIsMercator && wkid && aoiWkid && wkid !== aoiWkid) {
+            // Unknown SR mismatch — be conservative, don't skip
+            return true;
+        }
+
+        const ax = aoi.xmin, ay = aoi.ymin, aX = aoi.xmax, aY = aoi.ymax;
+        // Bounding box disjoint check
         if (lX < ax || lx > aX || lY < ay || ly > aY) {
             console.log(`[map-utils] Extent skip: layer ${normUrl} does not overlap AOI`);
             return false;

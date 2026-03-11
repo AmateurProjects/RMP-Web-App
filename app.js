@@ -1730,8 +1730,13 @@ function clearAll() {
             // best-effort cleanup
         }
 
-        // ---- Selection layers (already on map): toggle visibility
-        selectionLayerTogglesEl.innerHTML = (selectionLayers || []).map((e, i) => {
+        // ---- Selection layers: only show layers currently on the map
+        const sidebarSelEntries = [];
+        (selectionLayers || []).forEach((e, i) => {
+            if (map.layers.includes(e.layer)) sidebarSelEntries.push({ entry: e, idx: i });
+        });
+
+        selectionLayerTogglesEl.innerHTML = sidebarSelEntries.map(({ entry: e, idx: i }) => {
             const checked = e.layer.visible ? "checked" : "";
             const status = serviceStatus.get(e.cfg.url);
             const statusIcon = (status === "DOWN") 
@@ -1750,7 +1755,7 @@ function clearAll() {
         `;
         }).join("");
 
-(selectionLayers || []).forEach((e, i) => {
+sidebarSelEntries.forEach(({ entry: e, idx: i }) => {
     const cb = document.getElementById(`sellayer_${i}`);
     if (!cb) return;
 
@@ -1799,15 +1804,21 @@ function clearAll() {
     });
 });
 
-        // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
-        // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
-        // We will show it in the list but disable the checkbox to avoid confusion.
-        reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
-            const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
+        // ---- Report layers: only show layers matching current permit type (+ "core")
+        const sidebarPtKey = selectedPermitType;
+        const sidebarRptEntries = [];
+        (config.reportLayers || []).forEach((l, i) => {
+            if (sidebarPtKey) {
+                const pts = l.permitTypes || [];
+                if (pts.indexOf(sidebarPtKey) === -1 && pts.indexOf("core") === -1) return;
+            }
+            sidebarRptEntries.push({ cfg: l, idx: i });
+        });
+
+        reportLayerTogglesEl.innerHTML = sidebarRptEntries.map(({ cfg: l, idx: i }) => {
             const key = normalizeUrlKey(l.url);
             const existing = reportLayerViews.get(key);
 
-            // If existing is an array (expanded root), consider it checked if any layer exists
             const isAlwaysOn = l.alwaysVisible === true;
             const isChecked = isAlwaysOn;
             const status = serviceStatus.get(l.url);
@@ -1819,13 +1830,9 @@ function clearAll() {
 
             const checked = isChecked ? "checked" : "";
 
-            // ✅ Do NOT disable FeatureServer roots anymore (we will expand them to drawable polygon sublayers)
-            // alwaysVisible layers default ON but user can toggle them off on the main map
-            const disabled = "";
-
             return `
                 <div class="toggle-row">
-                    <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
+                    <input type="checkbox" id="rptlayer_${i}" ${checked} />
                     <span class="layer-swatch layer-swatch-report" aria-hidden="true" title="Report layer"></span>
                     <label class="toggle-name" for="rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}</label>
                     <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
@@ -1833,7 +1840,7 @@ function clearAll() {
             `;
         }).join("");
 
-        (config.reportLayers || []).forEach((l, i) => {
+        sidebarRptEntries.forEach(({ cfg: l, idx: i }) => {
             const cb = document.getElementById(`rptlayer_${i}`);
             if (!cb) return;
 
@@ -1893,8 +1900,13 @@ cb.addEventListener("change", async () => {
     function renderLayerManagerToggles() {
         if (!layerMgrSelectionList || !layerMgrReportList) return;
 
-        // Selection layers
-        layerMgrSelectionList.innerHTML = (selectionLayers || []).map((e, i) => {
+        // Only show selection layers that are currently on the map
+        const visibleSelEntries = [];
+        (selectionLayers || []).forEach((e, i) => {
+            if (map.layers.includes(e.layer)) visibleSelEntries.push({ entry: e, idx: i });
+        });
+
+        layerMgrSelectionList.innerHTML = visibleSelEntries.map(({ entry: e, idx: i }) => {
             const checked = e.layer.visible ? "checked" : "";
             const status = serviceStatus.get(e.cfg.url);
             const statusIcon = (status === "DOWN")
@@ -1912,7 +1924,7 @@ cb.addEventListener("change", async () => {
         }).join("");
 
         // Wire selection layer checkboxes
-        (selectionLayers || []).forEach((e, i) => {
+        visibleSelEntries.forEach(({ entry: e, idx: i }) => {
             const cb = document.getElementById(`lm_sellayer_${i}`);
             if (!cb) return;
             cb.addEventListener("change", async () => {
@@ -1942,8 +1954,18 @@ cb.addEventListener("change", async () => {
             });
         });
 
-        // Report layers
-        layerMgrReportList.innerHTML = (config.reportLayers || []).map((l, i) => {
+        // Only show report layers matching the current permit type (+ "core")
+        const ptKey = selectedPermitType;
+        const visibleRptEntries = [];
+        (config.reportLayers || []).forEach((l, i) => {
+            if (ptKey) {
+                const pts = l.permitTypes || [];
+                if (pts.indexOf(ptKey) === -1 && pts.indexOf("core") === -1) return;
+            }
+            visibleRptEntries.push({ cfg: l, idx: i });
+        });
+
+        layerMgrReportList.innerHTML = visibleRptEntries.map(({ cfg: l, idx: i }) => {
             const key = normalizeUrlKey(l.url);
             const existing = reportLayerViews.get(key);
             const isAlwaysOn = l.alwaysVisible === true;
@@ -1967,7 +1989,7 @@ cb.addEventListener("change", async () => {
         }).join("");
 
         // Wire report layer checkboxes
-        (config.reportLayers || []).forEach((l, i) => {
+        visibleRptEntries.forEach(({ cfg: l, idx: i }) => {
             const cb = document.getElementById(`lm_rptlayer_${i}`);
             if (!cb) return;
             cb.addEventListener("change", async () => {

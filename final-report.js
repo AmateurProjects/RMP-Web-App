@@ -4782,9 +4782,10 @@ define([
                             let pctCovered = 0;
                             let totalLengthFeet = 0;
                             let totalLengthMiles = 0;
+                            let covStats = null;
                             try {
                                 if (isPolygonLayer || isLineLayer) {
-                                    const covStats = await (_preCovPromises[item.url] || computeLayerCoverageStats(item, selectionGeom));
+                                    covStats = await (_preCovPromises[item.url] || computeLayerCoverageStats(item, selectionGeom));
                                     if (covStats) {
                                         acresCovered = covStats.acresCovered || 0;
                                         pctCovered = covStats.pctAoiCovered || 0;
@@ -4794,10 +4795,12 @@ define([
                                 }
                             } catch (e) { /* non-critical */ }
 
-                            // Skip screenshot for full-coverage polygon layers (>=99.5%)
-                            const skipScreenshot = isPolygonLayer && pctCovered >= 99.5;
+                            // Skip screenshot only when a SINGLE feature covers >=99.5% of the AOI.
+                            // Multi-feature full coverage still gets a map (visual distinction matters).
+                            const covFeatureCount = covStats?.intersectingFeatureCount ?? 0;
+                            const skipScreenshot = isPolygonLayer && pctCovered >= 99.5 && covFeatureCount <= 1;
                             if (skipScreenshot) {
-                                console.log(`[bg-report] Skipping screenshot for "${layerTitle}" (${pctCovered.toFixed(1)}% coverage)`);
+                                console.log(`[bg-report] Skipping screenshot for "${layerTitle}" (${pctCovered.toFixed(1)}% coverage, ${covFeatureCount} feature)`);
                                 screenshotsSkipped++;
                             }
 
