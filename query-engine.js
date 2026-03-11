@@ -588,123 +588,109 @@ define([
     // ── Elevation / 3DEP helpers ───────────────────────────────
 
     /**
-     * Count vertices in a polygon geometry.
+     * Prepare geometry + adaptive pixelSize for 3DEP ImageServer calls.
+     * Simplifies high-vertex polygons and scales pixel size with AOI area
+     * so the server doesn't choke on huge raster requests.
      */
-    function _countPolyVerts(geom) {
-        if (!geom || !geom.rings) return 0;
-        let n = 0;
-        for (const ring of geom.rings) n += ring.length;
-        return n;
-    }
+    function _prep3DEPGeometry(geometry) {
+        const raw   = geometry.toJSON ? geometry.toJSON() : geometry;
+        const ext   = geometry.extent || raw.extent;
+        let geomJson, geometryType;
 
-    /**
-     * For 3DEP ImageServer calls, produce a simplified geometry payload.
-     * The USGS 3DEP server can choke on large / high-vertex polygons.
-     *
-     * Strategy (applied progressively):
-     * • ≤ 200 vertices  → use as-is
-     * • ≤ 1000 vertices → generalize to ~50 m tolerance
-     * • ≤ 2000 vertices → generalize to ~100 m tolerance
-     * • > 2000 vertices → fall back to bounding envelope
-     *
-     * Returns { geomJson, geometryType } ready for URLSearchParams.
-     */
-    function _simplifyGeomFor3DEP(geometry) {
-        const raw  = geometry.toJSON ? geometry.toJSON() : geometry;
-        const verts = _countPolyVerts(raw);
+        // Count polygon vertices
+        let verts = 0;
+        if (raw.rings) { for (const r of raw.rings) verts += r.length; }
 
-        // Small polygon — use directly
-        if (verts <= 200) {
-            return { geomJson: JSON.stringify(raw), geometryType: "esriGeometryPolygon" };
+        if (verts <= 500) {
+            geomJson     = JSON.stringify(raw);
+            geometryType = "esriGeometryPolygon";
+        } else if (verts <= 2000) {
+            try {
+                const simplified = geometryEngine.generalize(geometry, 100, true, "meters");
+                const sJson = simplified && simplified.toJSON ? simplified.toJSON() : simplified;
+                if (sJson && sJson.rings) {
+                    geomJson     = JSON.stringify(sJson);
+                    geometryType = "esriGeometryPolygon";
+                }
+            } catch (_) { /* fall through to envelope */ }
+            if (!geomJson && ext) {
+                geomJson     = JSON.stringify(ext.toJSON ? ext.toJSON() : ext);
+                geometryType = "esriGeometryEnvelope";
+            }
+        } else if (ext) {
+            geomJson     = JSON.stringify(ext.toJSON ? ext.toJSON() : ext);
+            geometryType = "esriGeometryEnvelope";
+        }
+        if (!geomJson) {
+            geomJson     = JSON.stringify(raw);
+            geometryType = "esriGeometryPolygon";
         }
 
-        // Medium polygon — generalize
-        if (verts <= 2000) {
-            const tol = verts <= 1000 ? 50 : 100; // meters
-            try {
-                const simplified = geometryEngine.generalize(geometry, tol, true, "meters");
-                if (simplified && _countPolyVerts(simplified) >= 3) {
-                    const sJson = simplified.toJSON ? simplified.toJSON() : simplified;
-                    console.log(`[3DEP] Generalized polygon for raster query: ${verts} → ${_countPolyVerts(sJson)} vertices (tol=${tol}m)`);
-                    return { geomJson: JSON.stringify(sJson), geometryType: "esriGeometryPolygon" };
-                }
-            } catch (e) {
-                console.warn("[3DEP] Generalize failed, falling back to envelope", e);
+        // Adaptive pixel size: measure AOI width/height in map units,
+        // cap the raster at ~2000 px per side so the server always responds.
+        let pixelSize = null;
+        if (ext) {
+            const maxDim = Math.max(ext.width || 0, ext.height || 0);
+            if (maxDim > 20000) {          // > ~20 km → coarsen pixels
+                pixelSize = Math.ceil(maxDim / 2000);
             }
         }
 
-        // Large or generalize-failed → use bounding envelope
-        const ext = geometry.extent || raw.extent;
-        if (ext) {
-            const envJson = ext.toJSON ? ext.toJSON() : ext;
-            console.log(`[3DEP] Using bounding envelope for raster query (polygon had ${verts} vertices)`);
-            return { geomJson: JSON.stringify(envJson), geometryType: "esriGeometryEnvelope" };
-        }
+        return { geomJson, geometryType, pixelSize };
+    }
 
-        // Last resort — send raw polygon anyway
-        return { geomJson: JSON.stringify(raw), geometryType: "esriGeometryPolygon" };
+    /**
+     * POST helper with timeout for 3DEP ImageServer endpoints.
+     */
+    async function _post3DEP(url, params, timeoutMs) {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), timeoutMs || 60000);
+        try {
+            const resp = await fetch(url, {
+                method:  "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body:    new URLSearchParams(params).toString(),
+                signal:  controller.signal
+            });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const json = await resp.json();
+            if (json.error) throw new Error("ArcGIS error " + json.error.code + ": " + json.error.message);
+            return json;
+        } finally { clearTimeout(tid); }
+    }
+
+    /** Build envelope-only params for fallback. */
+    function _envelopeParams(geometry, pixelSize) {
+        const ext = geometry.extent;
+        if (!ext) return null;
+        const p = {
+            f: "json",
+            geometry:     JSON.stringify(ext.toJSON ? ext.toJSON() : ext),
+            geometryType: "esriGeometryEnvelope"
+        };
+        if (pixelSize) p.pixelSize = JSON.stringify({ x: pixelSize, y: pixelSize });
+        return p;
     }
 
     // ── Elevation stats ─────────────────────────────────────────
 
     /**
-     * Compute elevation statistics (min/max/mean) for an AOI
-     * via an ImageServer's computeHistograms endpoint (POST).
-     *
-     * For large AOIs the polygon is simplified or replaced with its
-     * bounding envelope to avoid USGS server-side limits.
-     * If all polygon-based attempts fail, an envelope-only retry is
-     * performed automatically.
+     * Compute min / max / mean elevation for an AOI from a 3DEP ImageServer.
+     * Uses computeStatisticsHistograms (returns stats directly) as primary,
+     * with an envelope fallback for large or complex polygons.
      */
     async function computeElevationStats(imageServerUrl, geometry) {
         if (!imageServerUrl || !geometry) return null;
 
-        const { geomJson, geometryType } = _simplifyGeomFor3DEP(geometry);
-        const baseParams = {
-            f:            "json",
-            geometry:     geomJson,
-            geometryType: geometryType
-        };
+        const { geomJson, geometryType, pixelSize } = _prep3DEPGeometry(geometry);
+        const params = { f: "json", geometry: geomJson, geometryType: geometryType };
+        if (pixelSize) params.pixelSize = JSON.stringify({ x: pixelSize, y: pixelSize });
 
-        // Longer timeout for large AOIs (envelope queries are fast,
-        // but polygon-clipped raster histograms can be slow)
-        const defaultTimeout = 60000;
-
-        /**
-         * Helper: issue a POST with timeout + basic error handling.
-         * Returns parsed JSON or throws.
-         */
-        async function _post(url, extraParams, timeoutMs, overrideBaseParams) {
-            const base = overrideBaseParams || baseParams;
-            const params = new URLSearchParams({ ...base, ...extraParams });
-            const controller = new AbortController();
-            const tid = setTimeout(() => controller.abort(), timeoutMs || defaultTimeout);
-            try {
-                const resp = await fetch(url, {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body:    params.toString(),
-                    signal:  controller.signal
-                });
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const json = await resp.json();
-                if (json.error) throw new Error(`ArcGIS error ${json.error.code}: ${json.error.message}`);
-                return json;
-            } finally {
-                clearTimeout(tid);
-            }
-        }
-
-        /** Validate & build the result object from raw min/max/mean (meters). */
         function _buildResult(minElev, maxElev, mean) {
             if (minElev == null || maxElev == null) return null;
             if (!isFinite(minElev) || !isFinite(maxElev)) return null;
-            if (maxElev < minElev) { const tmp = minElev; minElev = maxElev; maxElev = tmp; }
-            // Reject wildly unreasonable values (Dead Sea ≈ -430 m, Everest ≈ 8849 m)
-            if (minElev < -500 || maxElev > 10000) {
-                console.warn("[computeElevationStats] Values outside plausible range:", minElev, maxElev);
-                return null;
-            }
+            if (maxElev < minElev) { const t = minElev; minElev = maxElev; maxElev = t; }
+            if (minElev < -500 || maxElev > 10000) return null;
             if (mean != null && !isFinite(mean)) mean = null;
             return {
                 min: minElev, max: maxElev, mean,
@@ -716,98 +702,46 @@ define([
             };
         }
 
-        /** Extract result from histogram data. */
-        function _fromHistogram(hist) {
-            if (!hist || hist.min == null || hist.max == null) return null;
-            let mean = null;
-            if (hist.counts && hist.counts.length > 0) {
-                const binWidth = (hist.max - hist.min) / hist.counts.length;
-                let sum = 0, total = 0;
-                for (let i = 0; i < hist.counts.length; i++) {
-                    sum   += (hist.min + (i + 0.5) * binWidth) * hist.counts[i];
-                    total += hist.counts[i];
-                }
-                mean = total > 0 ? sum / total : null;
+        function _parseStats(data) {
+            const s = data.statistics && data.statistics[0];
+            if (s && s.min != null && s.max != null) {
+                return _buildResult(s.min, s.max, s.mean != null ? s.mean : null);
             }
-            return _buildResult(hist.min, hist.max, mean);
+            // Fall back to histogram in same response
+            const h = data.histograms && data.histograms[0];
+            if (h && h.min != null && h.max != null) {
+                let mean = null;
+                if (h.counts && h.counts.length) {
+                    const bw = (h.max - h.min) / h.counts.length;
+                    let sum = 0, n = 0;
+                    for (let i = 0; i < h.counts.length; i++) { sum += (h.min + (i + 0.5) * bw) * h.counts[i]; n += h.counts[i]; }
+                    mean = n > 0 ? sum / n : null;
+                }
+                return _buildResult(h.min, h.max, mean);
+            }
+            return null;
         }
 
-        // ── Attempt 1: /computeHistograms ──
+        // Primary: computeStatisticsHistograms with polygon/envelope
         try {
-            const data = await _post(`${imageServerUrl}/computeHistograms`, {}, defaultTimeout);
-            if (data.histograms && data.histograms.length > 0) {
-                const result = _fromHistogram(data.histograms[0]);
-                if (result) return result;
-            }
-            console.warn("[computeElevationStats] /computeHistograms returned no usable histograms — falling back");
+            const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", params, 60000);
+            const result = _parseStats(data);
+            if (result) return result;
         } catch (e) {
-            console.warn("[computeElevationStats] /computeHistograms failed:", e.message, "— falling back");
+            console.warn("[3DEP elevStats] Primary request failed:", e.message);
         }
 
-        // ── Attempt 2: /computeStatisticsHistograms ──
-        try {
-            const data2 = await _post(`${imageServerUrl}/computeStatisticsHistograms`, {}, defaultTimeout);
-
-            // Try statistics array first
-            const stats = data2.statistics && data2.statistics[0];
-            if (stats && stats.min != null && stats.max != null) {
-                const result = _buildResult(stats.min, stats.max, stats.mean != null ? stats.mean : null);
-                if (result) return result;
-            }
-
-            // Fall back to histograms within the same response
-            if (data2.histograms && data2.histograms.length > 0) {
-                const result = _fromHistogram(data2.histograms[0]);
-                if (result) return result;
-            }
-            console.warn("[computeElevationStats] /computeStatisticsHistograms returned no usable data");
-        } catch (e2) {
-            console.warn("[computeElevationStats] /computeStatisticsHistograms also failed:", e2.message);
-        }
-
-        // ── Attempt 3: /computeHistograms with explicit mosaic rule (first raster) ──
-        try {
-            const mosaicRule = JSON.stringify({ mosaicMethod: "esriMosaicNone", ascending: true });
-            const data3 = await _post(`${imageServerUrl}/computeHistograms`, { mosaicRule }, defaultTimeout);
-            if (data3.histograms && data3.histograms.length > 0) {
-                const result = _fromHistogram(data3.histograms[0]);
-                if (result) return result;
-            }
-        } catch (e3) {
-            console.warn("[computeElevationStats] /computeHistograms with mosaicRule failed:", e3.message);
-        }
-
-        // ── Attempt 4: Envelope-only fallback ──
-        // If all polygon-based attempts failed and we weren't already using
-        // an envelope, retry with just the bounding box.  This gives slightly
-        // less precise results but the USGS server handles it much better for
-        // large areas.
-        if (geometryType !== "esriGeometryEnvelope" && geometry.extent) {
-            const envJson = geometry.extent.toJSON ? JSON.stringify(geometry.extent.toJSON()) : JSON.stringify(geometry.extent);
-            const envParams = { f: "json", geometry: envJson, geometryType: "esriGeometryEnvelope" };
-            console.log("[computeElevationStats] All polygon attempts failed — retrying with bounding envelope");
-            try {
-                const data4 = await _post(`${imageServerUrl}/computeHistograms`, {}, defaultTimeout, envParams);
-                if (data4.histograms && data4.histograms.length > 0) {
-                    const result = _fromHistogram(data4.histograms[0]);
+        // Envelope fallback (if not already an envelope)
+        if (geometryType !== "esriGeometryEnvelope") {
+            const envP = _envelopeParams(geometry, pixelSize);
+            if (envP) {
+                try {
+                    const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", envP, 60000);
+                    const result = _parseStats(data);
                     if (result) return result;
+                } catch (e2) {
+                    console.warn("[3DEP elevStats] Envelope fallback failed:", e2.message);
                 }
-            } catch (e4) {
-                console.warn("[computeElevationStats] Envelope fallback also failed:", e4.message);
-            }
-            try {
-                const data5 = await _post(`${imageServerUrl}/computeStatisticsHistograms`, {}, defaultTimeout, envParams);
-                const stats5 = data5.statistics && data5.statistics[0];
-                if (stats5 && stats5.min != null && stats5.max != null) {
-                    const result = _buildResult(stats5.min, stats5.max, stats5.mean != null ? stats5.mean : null);
-                    if (result) return result;
-                }
-                if (data5.histograms && data5.histograms.length > 0) {
-                    const result = _fromHistogram(data5.histograms[0]);
-                    if (result) return result;
-                }
-            } catch (e5) {
-                console.warn("[computeElevationStats] Envelope /computeStatisticsHistograms also failed:", e5.message);
             }
         }
 
@@ -816,117 +750,151 @@ define([
 
     // ── Slope aspect (mean slope direction) ─────────────────────
 
-    /**
-     * Convert degrees (0 = N, clockwise) to an 8-point cardinal string.
-     */
     function degToCardinal(deg) {
         const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
         return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
     }
 
     /**
-     * Compute the mean slope direction (aspect) for an AOI by applying
-     * the Aspect raster function and computing a circular mean from its
-     * histogram.  Returns { meanAspectDeg, concentration, cardinalDirection }
-     * or null on failure / flat terrain.
-     *
-     * For large AOIs the polygon is simplified / replaced with its envelope
-     * (via _simplifyGeomFor3DEP) to avoid USGS server-side limits.
-     * If polygon-based attempts all fail, an envelope-only retry runs.
+     * Compute the mean slope direction (aspect) for an AOI using the
+     * Aspect raster function histogram and circular-mean math.
      */
     async function computeSlopeAspect(imageServerUrl, geometry) {
         if (!imageServerUrl || !geometry) return null;
 
-        const { geomJson, geometryType } = _simplifyGeomFor3DEP(geometry);
+        const { geomJson, geometryType, pixelSize } = _prep3DEPGeometry(geometry);
 
-        // Try multiple aspect raster function names — different ImageServer
-        // instances use different names for the same operation.
-        const aspectFunctionNames = ["Aspect", "Aspect_Map", "Aspect Map", "Aspect Degrees"];
+        function _tryParse(data) {
+            if (!data.histograms || !data.histograms.length) return null;
+            const hist = data.histograms[0];
+            if (!hist.counts || !hist.counts.length) return null;
+            const binWidth = (hist.max - hist.min) / hist.counts.length;
+            let sumSin = 0, sumCos = 0, total = 0;
+            for (let i = 0; i < hist.counts.length; i++) {
+                const c = hist.counts[i];
+                if (!c) continue;
+                const deg = hist.min + (i + 0.5) * binWidth;
+                if (deg < 0) continue;  // flat pixels (aspect = -1)
+                const rad = deg * Math.PI / 180;
+                sumSin += c * Math.sin(rad);
+                sumCos += c * Math.cos(rad);
+                total  += c;
+            }
+            if (!total) return null;
+            let mean = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+            if (mean < 0) mean += 360;
+            return {
+                meanAspectDeg:     Math.round(mean * 10) / 10,
+                concentration:     Math.round(Math.sqrt(sumSin * sumSin + sumCos * sumCos) / total * 1000) / 1000,
+                cardinalDirection: degToCardinal(mean)
+            };
+        }
 
-        /**
-         * Inner helper: attempt the aspect histogram with the given geometry
-         * payload.  Returns result object or null.
-         */
-        async function _tryAspect(gJson, gType) {
-            let lastError = null;
-            for (const fnName of aspectFunctionNames) {
-                const controller = new AbortController();
-                const tid = setTimeout(() => controller.abort(), 60000);
-                try {
-                    const url    = `${imageServerUrl}/computeHistograms`;
-                    const params = new URLSearchParams({
-                        f:            "json",
-                        geometry:     gJson,
-                        geometryType: gType,
-                        renderingRule: JSON.stringify({ rasterFunction: fnName })
-                    });
+        function _buildParams(gJson, gType) {
+            const p = {
+                f: "json", geometry: gJson, geometryType: gType,
+                renderingRule: JSON.stringify({ rasterFunction: "Aspect" })
+            };
+            if (pixelSize) p.pixelSize = JSON.stringify({ x: pixelSize, y: pixelSize });
+            return p;
+        }
 
-                    const response = await fetch(url, {
-                        method:  "POST",
-                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                        body:    params.toString(),
-                        signal:  controller.signal
-                    });
-                    if (!response.ok) { lastError = `HTTP ${response.status}`; continue; }
+        // Primary attempt
+        try {
+            const data = await _post3DEP(imageServerUrl + "/computeHistograms", _buildParams(geomJson, geometryType), 60000);
+            const result = _tryParse(data);
+            if (result) return result;
+        } catch (e) {
+            console.warn("[3DEP aspect] Primary request failed:", e.message);
+        }
 
-                    const data = await response.json();
-                    if (data.error) { lastError = data.error.message || `code ${data.error.code}`; continue; }
+        // Envelope fallback
+        if (geometryType !== "esriGeometryEnvelope" && geometry.extent) {
+            const envJson = JSON.stringify(geometry.extent.toJSON ? geometry.extent.toJSON() : geometry.extent);
+            try {
+                const data = await _post3DEP(imageServerUrl + "/computeHistograms", _buildParams(envJson, "esriGeometryEnvelope"), 60000);
+                const result = _tryParse(data);
+                if (result) return result;
+            } catch (e2) {
+                console.warn("[3DEP aspect] Envelope fallback failed:", e2.message);
+            }
+        }
 
-                    if (!data.histograms || !data.histograms.length) { lastError = 'no histogram data'; continue; }
+        return null;
+    }
 
-                    const hist     = data.histograms[0];
-                    const binCount = hist.counts ? hist.counts.length : 0;
-                    if (binCount === 0) { lastError = 'empty histogram bins'; continue; }
+    // ── Mean slope grade (steepness) ────────────────────────────
 
-                    const binWidth = (hist.max - hist.min) / binCount;
-                    let sumSin = 0, sumCos = 0, totalCount = 0;
+    /**
+     * Compute the mean slope grade for an AOI using the Slope raster
+     * function on a 3DEP ImageServer.  Returns { meanSlopeDeg, meanSlopePct }
+     * or null on failure.
+     */
+    async function computeMeanSlopeGrade(imageServerUrl, geometry) {
+        if (!imageServerUrl || !geometry) return null;
 
-                    for (let i = 0; i < binCount; i++) {
-                        const count = hist.counts[i];
-                        if (count === 0) continue;
-                        const angleDeg = hist.min + (i + 0.5) * binWidth;
-                        if (angleDeg < 0) continue;           // skip flat pixels (aspect = -1)
-                        const angleRad = angleDeg * Math.PI / 180;
-                        sumSin     += count * Math.sin(angleRad);
-                        sumCos     += count * Math.cos(angleRad);
-                        totalCount += count;
-                    }
+        const { geomJson, geometryType, pixelSize } = _prep3DEPGeometry(geometry);
 
-                    if (totalCount === 0) { lastError = 'all flat pixels'; continue; }
+        function _buildParams(gJson, gType) {
+            const p = {
+                f: "json", geometry: gJson, geometryType: gType,
+                renderingRule: JSON.stringify({ rasterFunction: "Slope_Degrees" })
+            };
+            if (pixelSize) p.pixelSize = JSON.stringify({ x: pixelSize, y: pixelSize });
+            return p;
+        }
 
-                    // Circular mean direction (degrees, 0 = North, clockwise)
-                    let meanAspect = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
-                    if (meanAspect < 0) meanAspect += 360;
-
-                    // Resultant length R ∈ [0,1]: 0 = uniform / flat, 1 = perfectly aligned
-                    const R = Math.sqrt(sumSin * sumSin + sumCos * sumCos) / totalCount;
-
-                    return {
-                        meanAspectDeg:     Math.round(meanAspect * 10) / 10,
-                        concentration:     Math.round(R * 1000) / 1000,
-                        cardinalDirection: degToCardinal(meanAspect)
-                    };
-                } catch (e) {
-                    lastError = e.name === 'AbortError' ? 'request timed out' : e.message;
-                    continue;
-                } finally {
-                    clearTimeout(tid);
+        function _tryParse(data) {
+            // computeStatisticsHistograms returns statistics directly
+            const s = data.statistics && data.statistics[0];
+            if (s && s.mean != null && isFinite(s.mean)) {
+                const deg = Math.abs(s.mean);
+                return { meanSlopeDeg: Math.round(deg * 10) / 10, meanSlopePct: Math.round(Math.tan(deg * Math.PI / 180) * 1000) / 10 };
+            }
+            // Fall back to histogram
+            const h = data.histograms && data.histograms[0];
+            if (h && h.counts && h.counts.length) {
+                const bw = (h.max - h.min) / h.counts.length;
+                let sum = 0, n = 0;
+                for (let i = 0; i < h.counts.length; i++) { sum += (h.min + (i + 0.5) * bw) * h.counts[i]; n += h.counts[i]; }
+                if (n > 0) {
+                    const deg = Math.abs(sum / n);
+                    return { meanSlopeDeg: Math.round(deg * 10) / 10, meanSlopePct: Math.round(Math.tan(deg * Math.PI / 180) * 1000) / 10 };
                 }
             }
-            console.warn("[computeSlopeAspect] All raster function names failed with", gType, "— last error:", lastError);
             return null;
         }
 
-        // Primary attempt with simplified geometry
-        const result = await _tryAspect(geomJson, geometryType);
-        if (result) return result;
+        // Primary: computeStatisticsHistograms with Slope raster function
+        try {
+            const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", _buildParams(geomJson, geometryType), 60000);
+            const result = _tryParse(data);
+            if (result) return result;
+        } catch (e) {
+            console.warn("[3DEP slopeGrade] Primary request failed:", e.message);
+        }
 
-        // Envelope fallback (if we weren't already using one)
+        // Try with "Slope" function name (some services use this instead)
+        try {
+            const altParams = _buildParams(geomJson, geometryType);
+            altParams.renderingRule = JSON.stringify({ rasterFunction: "Slope" });
+            const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", altParams, 60000);
+            const result = _tryParse(data);
+            if (result) return result;
+        } catch (e) {
+            console.warn("[3DEP slopeGrade] Alt function name failed:", e.message);
+        }
+
+        // Envelope fallback
         if (geometryType !== "esriGeometryEnvelope" && geometry.extent) {
-            const envJson = geometry.extent.toJSON ? JSON.stringify(geometry.extent.toJSON()) : JSON.stringify(geometry.extent);
-            console.log("[computeSlopeAspect] Polygon attempt failed — retrying with bounding envelope");
-            const envResult = await _tryAspect(envJson, "esriGeometryEnvelope");
-            if (envResult) return envResult;
+            const envJson = JSON.stringify(geometry.extent.toJSON ? geometry.extent.toJSON() : geometry.extent);
+            try {
+                const data = await _post3DEP(imageServerUrl + "/computeStatisticsHistograms", _buildParams(envJson, "esriGeometryEnvelope"), 60000);
+                const result = _tryParse(data);
+                if (result) return result;
+            } catch (e2) {
+                console.warn("[3DEP slopeGrade] Envelope fallback failed:", e2.message);
+            }
         }
 
         return null;
@@ -1031,7 +999,7 @@ define([
         const acresCovered  = coveredSqm / SQM_PER_ACRE;
         const pctAoiCovered = Math.min(100, Math.max(0, (coveredSqm / aoiAreaSqm) * 100));
 
-        const out = { acresCovered, pctAoiCovered, totalLengthFeet, totalLengthMiles };
+        const out = { acresCovered, pctAoiCovered, totalLengthFeet, totalLengthMiles, intersectingFeatureCount: perFeatureResults.size };
         coverageCache.set(cacheKey, out);
         return out;
     }
@@ -1449,8 +1417,9 @@ define([
             // Elevation
             computeElevationStats,
 
-            // Slope direction
+            // Slope direction & grade
             computeSlopeAspect,
+            computeMeanSlopeGrade,
 
             // Coverage
             computeLayerCoverageStats,

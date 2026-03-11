@@ -447,6 +447,8 @@ function setBusy(isBusy) {
 
     // ---------- Service Down Warning Modal Helpers ----------
     let serviceDownNoticeShown = false;
+    // Deferred service warning data — stored at startup, shown after permit type selection
+    let _deferredServiceWarning = null; // { items, sourceLabel, refreshedAt }
 
     const serviceDownModal = {
         show(downItems, warnItems, sourceLabel, refreshedAt) {
@@ -501,9 +503,19 @@ function setBusy(isBusy) {
         }
     };
 
-    function maybeShowDownServiceWarning(items, sourceLabel, refreshedAt) {
+    function maybeShowDownServiceWarning(items, sourceLabel, refreshedAt, permitTypeKey) {
         if (serviceDownNoticeShown || !items || !items.length) return;
-        const downItems = items.filter(it => {
+
+        // Filter to only permit-type-relevant layers if a permit type is selected
+        let filteredItems = items;
+        if (permitTypeKey) {
+            filteredItems = items.filter(it => {
+                const pts = it.permitTypes || [];
+                return pts.indexOf(permitTypeKey) !== -1 || pts.indexOf("core") !== -1;
+            });
+        }
+
+        const downItems = filteredItems.filter(it => {
             if (serviceStatus.get(it.url) !== "DOWN") return false;
             if (sourceLabel !== "r2") return true;
             const hasHistory = serviceStatus.get(it.url + "::normallyHasFeatures");
@@ -512,7 +524,7 @@ function setBusy(isBusy) {
         });
         // Also collect WARN items (only from R2 source, not fallback pings)
         const warnItems = (sourceLabel === "r2")
-            ? items.filter(it => serviceStatus.get(it.url) === "WARN").map(it => ({ ...it, _warnLevel: "WARN" }))
+            ? filteredItems.filter(it => serviceStatus.get(it.url) === "WARN").map(it => ({ ...it, _warnLevel: "WARN" }))
             : [];
         if (!downItems.length && !warnItems.length) return;
         serviceDownModal.show(downItems, warnItems, sourceLabel, refreshedAt);
@@ -883,6 +895,11 @@ function setActiveTab(tabName) {
                 slide.classList.toggle("active", i === slideIndex);
             });
         }
+        // Hide the introductory question/subtext once the user picks a method
+        const qEl = document.getElementById("aoiMethodQuestion");
+        const sEl = document.getElementById("aoiMethodSubtext");
+        if (qEl) qEl.style.display = slideIndex === 0 ? "" : "none";
+        if (sEl) sEl.style.display = slideIndex === 0 ? "" : "none";
     }
 
     function showAoiMethod(method) {
@@ -979,26 +996,51 @@ function setActiveTab(tabName) {
                 if (el) el.textContent = formatNumber(acres, 0) + " acres";
 
                 // Check against warning threshold
-                const warningThreshold = config.report?.aoiWarningAcres ?? 250000;
-                if (acres > warningThreshold) {
+                // Tiered AOI size warnings with time estimates.
+                // Screening is fast (~20-30s) for any size, but report generation
+                // scales with area: each layer needs a screenshot + feature query.
+                const largeThreshold = config.report?.aoiWarningAcres ?? 250000;
+                const moderateThreshold = Math.round(largeThreshold * 0.2); // ~50,000 acres
+                const sqMiles = (acres / 640).toFixed(0);
+
+                if (acres > largeThreshold) {
                     aoiIsLarge = true;
-                    const sqMiles = (acres / 640).toFixed(0);
-                    const estMinutes = Math.max(2, Math.round(acres / 50000));
+                    const estMin = Math.max(5, Math.round(acres / 40000));
+                    const estMax = estMin + Math.round(estMin * 0.5);
                     if (warningEl) {
+                        warningEl.className = "aoi-size-warning aoi-warn-large";
                         warningEl.innerHTML = `
                             <span class="warn-icon">\u26A0\uFE0F</span>
                             <div class="warn-body">
-                                <strong>Large Area of Interest Detected</strong>
+                                <strong>Very Large Area of Interest</strong>
                                 Your AOI is approximately <b>${formatNumber(acres, 0)} acres</b> (~${sqMiles} sq mi).
-                                Analysis over such large areas may take <b>${estMinutes}+ minutes</b> and some service queries may time out.
-                                The analysis will automatically use spatial chunking to improve reliability.
-                                <div class="warn-detail">For faster results, consider selecting a smaller area.</div>
+                                Report generation for this area is estimated to take <b>${estMin}–${estMax} minutes</b>.
+                                Some service queries may time out for areas this large.
+                                <div class="warn-detail">For faster results, consider selecting a smaller area or buffering a specific feature.</div>
                             </div>`;
-                        warningEl.classList.remove("hidden");
+                        scrollPanelToBottom(warningEl);
+                    }
+                } else if (acres > moderateThreshold) {
+                    aoiIsLarge = true;
+                    const estMin = Math.max(2, Math.round(acres / 50000));
+                    const estMax = estMin + Math.max(1, Math.round(estMin * 0.5));
+                    if (warningEl) {
+                        warningEl.className = "aoi-size-warning aoi-warn-moderate";
+                        warningEl.innerHTML = `
+                            <span class="warn-icon">\u26A0\uFE0F</span>
+                            <div class="warn-body">
+                                <strong>Large Area — Longer Processing Time</strong>
+                                Your AOI is approximately <b>${formatNumber(acres, 0)} acres</b> (~${sqMiles} sq mi).
+                                Report generation is estimated to take <b>${estMin}–${estMax} minutes</b>.
+                                <div class="warn-detail">Screening will complete quickly, but the detailed report may take longer.</div>
+                            </div>`;
                         scrollPanelToBottom(warningEl);
                     }
                 } else {
-                    if (warningEl) warningEl.classList.add("hidden");
+                    if (warningEl) {
+                        warningEl.classList.add("hidden");
+                        warningEl.className = "aoi-size-warning hidden";
+                    }
                 }
             } catch (e) {
                 const el = document.getElementById("wizAoiAcres");
@@ -1507,9 +1549,42 @@ function setActiveTab(tabName) {
         }
     }
 
+/**
+ * teardownLayers — remove previous permit type's report display layers
+ * from the map and clear associated caches. Called when the user changes
+ * permit type or starts a new screening.
+ */
+function teardownLayers() {
+    // Remove all report display layers from map
+    if (reportLayerViews && reportLayerViews.size > 0) {
+        for (const [, layerOrArr] of reportLayerViews) {
+            if (Array.isArray(layerOrArr)) {
+                layerOrArr.forEach(l => { try { map.remove(l); } catch (_) {} });
+            } else if (layerOrArr) {
+                try { map.remove(layerOrArr); } catch (_) {}
+            }
+        }
+        reportLayerViews.clear();
+    }
+
+    // Clear query-engine caches
+    resetCoverageCacheForAoi(null);
+    clearPreWarmCache();
+
+    // Clear alwaysVisibleLayers (rebuilt per permit type)
+    // NOTE: layerCfgByUrl is a config-derived index — do NOT clear it here,
+    // it is built once at init and needed for permit-type filtering throughout the session.
+    if (alwaysVisibleLayers) alwaysVisibleLayers.length = 0;
+
+    console.log("[teardownLayers] Removed report layers and cleared caches");
+}
+
 function clearAll() {
     // Cancel any active sketch drawing session
     if (sketch) sketch.cancel();
+
+    // Teardown previous report display layers
+    teardownLayers();
 
     selectionGeom = null;
     aoiOriginalGeom = null;
@@ -1546,8 +1621,7 @@ function clearAll() {
 
     if (runBtn) runBtn.disabled = true;
     setStatus("cleared");
-    resetCoverageCacheForAoi(null);
-    clearPreWarmCache();
+    // Coverage + pre-warm caches already cleared by teardownLayers()
     setBusy(false);
 
     // Reset wizard-specific UI state
@@ -1686,8 +1760,13 @@ function clearAll() {
             // best-effort cleanup
         }
 
-        // ---- Selection layers (already on map): toggle visibility
-        selectionLayerTogglesEl.innerHTML = (selectionLayers || []).map((e, i) => {
+        // ---- Selection layers: only show layers currently on the map
+        const sidebarSelEntries = [];
+        (selectionLayers || []).forEach((e, i) => {
+            if (map.layers.includes(e.layer)) sidebarSelEntries.push({ entry: e, idx: i });
+        });
+
+        selectionLayerTogglesEl.innerHTML = sidebarSelEntries.map(({ entry: e, idx: i }) => {
             const checked = e.layer.visible ? "checked" : "";
             const status = serviceStatus.get(e.cfg.url);
             const statusIcon = (status === "DOWN") 
@@ -1706,7 +1785,7 @@ function clearAll() {
         `;
         }).join("");
 
-(selectionLayers || []).forEach((e, i) => {
+sidebarSelEntries.forEach(({ entry: e, idx: i }) => {
     const cb = document.getElementById(`sellayer_${i}`);
     if (!cb) return;
 
@@ -1755,15 +1834,22 @@ function clearAll() {
     });
 });
 
-        // ---- Report layers (ALWAYS included in report): toggle ONLY map visibility
-        // If a report URL is a FeatureServer ROOT (no /0 etc.), it cannot be drawn directly.
-        // We will show it in the list but disable the checkbox to avoid confusion.
-        reportLayerTogglesEl.innerHTML = (config.reportLayers || []).map((l, i) => {
-            const isRoot = isFeatureServerRoot(l.url) || isMapServerRoot(l.url);
+        // ---- Report layers: only show layers matching current permit type (+ "core")
+        // When no permit type is selected, show no report layers.
+        const sidebarPtKey = selectedPermitType;
+        const sidebarRptEntries = [];
+        if (sidebarPtKey) {
+            (config.reportLayers || []).forEach((l, i) => {
+                const pts = l.permitTypes || [];
+                if (pts.indexOf(sidebarPtKey) === -1 && pts.indexOf("core") === -1) return;
+                sidebarRptEntries.push({ cfg: l, idx: i });
+            });
+        }
+
+        reportLayerTogglesEl.innerHTML = sidebarRptEntries.map(({ cfg: l, idx: i }) => {
             const key = normalizeUrlKey(l.url);
             const existing = reportLayerViews.get(key);
 
-            // If existing is an array (expanded root), consider it checked if any layer exists
             const isAlwaysOn = l.alwaysVisible === true;
             const isChecked = isAlwaysOn;
             const status = serviceStatus.get(l.url);
@@ -1775,13 +1861,9 @@ function clearAll() {
 
             const checked = isChecked ? "checked" : "";
 
-            // ✅ Do NOT disable FeatureServer roots anymore (we will expand them to drawable polygon sublayers)
-            // alwaysVisible layers default ON but user can toggle them off on the main map
-            const disabled = "";
-
             return `
                 <div class="toggle-row">
-                    <input type="checkbox" id="rptlayer_${i}" ${checked} ${disabled} />
+                    <input type="checkbox" id="rptlayer_${i}" ${checked} />
                     <span class="layer-swatch layer-swatch-report" aria-hidden="true" title="Report layer"></span>
                     <label class="toggle-name" for="rptlayer_${i}">${statusIcon}${escapeHtml(l.title)}</label>
                     <span id="rptlayer_spin_${i}" class="layer-spinner hidden" aria-label="loading"></span>
@@ -1789,7 +1871,7 @@ function clearAll() {
             `;
         }).join("");
 
-        (config.reportLayers || []).forEach((l, i) => {
+        sidebarRptEntries.forEach(({ cfg: l, idx: i }) => {
             const cb = document.getElementById(`rptlayer_${i}`);
             if (!cb) return;
 
@@ -1849,8 +1931,13 @@ cb.addEventListener("change", async () => {
     function renderLayerManagerToggles() {
         if (!layerMgrSelectionList || !layerMgrReportList) return;
 
-        // Selection layers
-        layerMgrSelectionList.innerHTML = (selectionLayers || []).map((e, i) => {
+        // Only show selection layers that are currently on the map
+        const visibleSelEntries = [];
+        (selectionLayers || []).forEach((e, i) => {
+            if (map.layers.includes(e.layer)) visibleSelEntries.push({ entry: e, idx: i });
+        });
+
+        layerMgrSelectionList.innerHTML = visibleSelEntries.map(({ entry: e, idx: i }) => {
             const checked = e.layer.visible ? "checked" : "";
             const status = serviceStatus.get(e.cfg.url);
             const statusIcon = (status === "DOWN")
@@ -1868,7 +1955,7 @@ cb.addEventListener("change", async () => {
         }).join("");
 
         // Wire selection layer checkboxes
-        (selectionLayers || []).forEach((e, i) => {
+        visibleSelEntries.forEach(({ entry: e, idx: i }) => {
             const cb = document.getElementById(`lm_sellayer_${i}`);
             if (!cb) return;
             cb.addEventListener("change", async () => {
@@ -1898,8 +1985,19 @@ cb.addEventListener("change", async () => {
             });
         });
 
-        // Report layers
-        layerMgrReportList.innerHTML = (config.reportLayers || []).map((l, i) => {
+        // Only show report layers matching the current permit type (+ "core")
+        // When no permit type is selected, show no report layers.
+        const ptKey = selectedPermitType;
+        const visibleRptEntries = [];
+        if (ptKey) {
+            (config.reportLayers || []).forEach((l, i) => {
+                const pts = l.permitTypes || [];
+                if (pts.indexOf(ptKey) === -1 && pts.indexOf("core") === -1) return;
+                visibleRptEntries.push({ cfg: l, idx: i });
+            });
+        }
+
+        layerMgrReportList.innerHTML = visibleRptEntries.map(({ cfg: l, idx: i }) => {
             const key = normalizeUrlKey(l.url);
             const existing = reportLayerViews.get(key);
             const isAlwaysOn = l.alwaysVisible === true;
@@ -1923,7 +2021,7 @@ cb.addEventListener("change", async () => {
         }).join("");
 
         // Wire report layer checkboxes
-        (config.reportLayers || []).forEach((l, i) => {
+        visibleRptEntries.forEach(({ cfg: l, idx: i }) => {
             const cb = document.getElementById(`lm_rptlayer_${i}`);
             if (!cb) return;
             cb.addEventListener("change", async () => {
@@ -2159,7 +2257,10 @@ async function checkServiceStatusBackground() {
                 }
 
                 renderLayerToggles(map);
-                maybeShowDownServiceWarning(items, "r2", cached.lastRefresh || null);
+                // PERF: Pre-populate geometry type cache from R2 sublayer schemas
+                mapUtils.seedGeometryTypeCache(cached.layers);
+                // Defer service-down warning until permit type is selected (filter to relevant layers)
+                _deferredServiceWarning = { items, sourceLabel: "r2", refreshedAt: cached.lastRefresh || null };
                 console.log(`[metadata-cache] Loaded ${Object.keys(cached.layers).length} layers from R2 (refreshed ${cached.lastRefresh})`);
                 return; // cache hit — skip direct pings
             }
@@ -2189,7 +2290,8 @@ async function checkServiceStatusBackground() {
 
     // Re-render layer toggles to show status icons
     renderLayerToggles(map);
-    maybeShowDownServiceWarning(items, "fallback", null);
+    // Defer service-down warning until permit type is selected (filter to relevant layers)
+    _deferredServiceWarning = { items, sourceLabel: "fallback", refreshedAt: null };
 }
 
 /**
@@ -2414,10 +2516,10 @@ async function runAnalysis() {
 
         setStatus("Screening complete!");
         
-        // ✅ Show success animation
+        // ✅ Show success briefly then proceed directly to report generation
         analysisModal.showSuccess(layersQueried, layersWithFeatures, 0, Date.now() - analysisStartTime);
 
-        // Permitting mode: populate results and enable report button
+        // Permitting mode: populate results and advance to step 3
         if (currentAppMode === "permit") {
             populatePermitResults();
             if (wizFullReport) {
@@ -2426,22 +2528,21 @@ async function runAnalysis() {
                 wizFullReport.disabled = false;
                 wizFullReport.innerHTML = '📋 Generate ' + escapeHtml(ptLabel) + ' Report';
             }
-            // Advance to step 3 (results)
             goToWizardStep(3);
         }
 
         // Enable "View Report" button (for Advanced mode, if ever re-enabled)
         if (viewReportBtn) viewReportBtn.disabled = false;
 
-        // ── Background pre-warm for faster report generation ──
-        // Silently pre-load FeatureLayer metadata + pre-fire polygon
-        // coverage stats while the user reviews screening results.
-        // Everything is fire-and-forget — errors are swallowed.
+        // ── Merged: proceed directly to report generation ──
+        // Eliminates the separate "Generate Report" click and removes one full
+        // pass of coverage re-queries. The report builder handles all further
+        // data fetching.
         if (lastReportRowsByLayer.length > 0) {
-            const preWarmGeom = getReportGeometry();
-            preWarmReportLayers(lastReportRowsByLayer)
-                .then(() => preFireCoverageStats(lastReportRowsByLayer, preWarmGeom))
-                .catch(() => {});
+            // Brief delay so screening success UI is visible
+            await new Promise(r => setTimeout(r, 600));
+            analysisModal.hide();
+            generateFullProgressiveReport();
         }
 
     } catch (e) {
@@ -2723,6 +2824,34 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         // 4. Regular feature layer — quick check if any features intersect AOI
         // Full feature queries are deferred to report generation
         if (isReportCanceled(myOp)) return null;
+
+        // PERF: Coarse spatial filter — skip query if layer extent doesn't overlap AOI
+        if (!mapUtils.layerMayIntersectAoi(t.url, reportGeom)) {
+            if (modal) modal.addLog(`${t.title}: skipped (outside AOI extent)`, "info");
+            return {
+                card: `
+          <div class="result-card">
+            <div class="result-head">
+              <div class="result-title">${escapeHtml(t.title)}</div>
+              <div class="badge">no features</div>
+            </div>
+            <div class="small mono">
+              <a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">Service URL</a>
+            </div>
+            <div class="small" style="margin-top:4px; color: var(--muted);">Layer extent does not overlap project area</div>
+          </div>`,
+                reportEntry: {
+                    title: t.title,
+                    url: t.url,
+                    hasCoverage: false,
+                    count: 0,
+                    rows: [],
+                    _layer: null,
+                    _exportQuery: null,
+                    fullRows: null
+                }
+            };
+        }
 
         let hasCoverage = false;
         let layerRef = null;
@@ -3421,21 +3550,19 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             })
         }));
 
-        selectionLayers.forEach(e => map.add(e.layer));
+        // Only add PLSS layers at startup; permit selection layers are added
+        // when the user selects a permit type (reduces initial map.layers count)
+        selectionLayers.forEach(e => {
+            if (e.cfg.group === "plss") map.add(e.layer);
+        });
 
         // Render selection layer toggles immediately (report layers will populate later)
         renderLayerToggles(map);
         ensureAoiOnTop();
 
-        // ✅ Build report layers in BACKGROUND (don't block init)
-        // This can take 30+ seconds with 50+ layer configs
-        buildReportDisplayLayers().then(() => {
-            console.log("[init] Report layers ready, refreshing layer toggles");
-            renderLayerToggles(map);
-            ensureAoiOnTop();
-        }).catch(e => {
-            console.error("[init] Failed to build report layers:", e);
-        });
+        // ✅ Report layers are now deferred until permit type is selected (Step 1)
+        // This avoids loading ~76 layers at startup — only ~30-45 relevant layers
+        // will be loaded after the user picks a permit type.
 
         setLoadingState("Waiting for map view...", 55);
 
@@ -3465,6 +3592,48 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // All permit layer indices (used for mutual exclusion)
         const allPermitIndices = [allotmentIdx, pastureIdx, oilGasIdx, rowIdx, miningIdx, luaIdx, geothermalIdx, coalIdx].filter(i => i >= 0);
+
+        // Map data-permit values → selection layer indices (for permit-type-scoped loading)
+        const PERMIT_KEY_TO_IDX = {
+            allotment: allotmentIdx, pasture: pastureIdx, oilgas: oilGasIdx,
+            row: rowIdx, mining: miningIdx, lua: luaIdx,
+            geothermal: geothermalIdx, coal: coalIdx
+        };
+
+        // Tracks which permit selection layers are currently on the map
+        let _activePermitSelectionIndices = [];
+
+        /**
+         * Add only the permit-type-relevant selection layers to the map.
+         * Removes any previously added permit selection layers first.
+         */
+        function addPermitSelectionLayers(ptKey) {
+            // Remove previous permit selection layers from map
+            for (const idx of _activePermitSelectionIndices) {
+                if (idx >= 0 && selectionLayers[idx]) {
+                    try { map.remove(selectionLayers[idx].layer); } catch (_) {}
+                }
+            }
+            _activePermitSelectionIndices = [];
+
+            const relevant = ptKey ? (PERMIT_ITEM_RELEVANCE[ptKey] || []) : [];
+            if (!relevant.length) {
+                // No permit type or unknown — add all permit layers
+                for (const idx of allPermitIndices) {
+                    map.add(selectionLayers[idx].layer);
+                    _activePermitSelectionIndices.push(idx);
+                }
+            } else {
+                for (const permitKey of relevant) {
+                    const idx = PERMIT_KEY_TO_IDX[permitKey];
+                    if (idx >= 0 && selectionLayers[idx]) {
+                        map.add(selectionLayers[idx].layer);
+                        _activePermitSelectionIndices.push(idx);
+                    }
+                }
+            }
+            console.log(`[selection-layers] Added ${_activePermitSelectionIndices.length} permit selection layers for "${ptKey}"`);
+        }
 
 
         // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
@@ -4251,6 +4420,28 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 // Update badge in step 2
                 const badge = document.getElementById("wizStep2PermitBadge");
                 if (badge) badge.textContent = PERMIT_TYPES[ptKey].label;
+
+                // Teardown any previously loaded report layers before loading new set
+                teardownLayers();
+
+                // Build permit-type-scoped report layers in background
+                // Only layers relevant to this permit type (or "core") are loaded
+                buildReportDisplayLayers(ptKey).then(() => {
+                    console.log(`[init] Report layers ready for "${ptKey}", refreshing toggles`);
+                    renderLayerToggles(map);
+                    ensureAoiOnTop();
+                }).catch(e => {
+                    console.error("[init] Failed to build report layers:", e);
+                });
+
+                // Add only permit-type-relevant selection layers to map
+                addPermitSelectionLayers(ptKey);
+
+                // Show deferred service-down warnings filtered to this permit type
+                if (_deferredServiceWarning) {
+                    const { items: svcItems, sourceLabel, refreshedAt } = _deferredServiceWarning;
+                    maybeShowDownServiceWarning(svcItems, sourceLabel, refreshedAt, ptKey);
+                }
 
                 // Advance to step 2 (AOI selection)
                 goToWizardStep(2);
