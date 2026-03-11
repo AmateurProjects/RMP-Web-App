@@ -963,7 +963,8 @@
         "mining",
         "row"
       ],
-      "serviceType": "map"
+      "serviceType": "map",
+      "excluded": true
     },
     {
       "title": "Administrative Forest Boundaries - National Extent",
