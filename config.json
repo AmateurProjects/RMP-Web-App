@@ -163,7 +163,7 @@
       "group": "permit"
     },
     {
-      "title": "BLM Rights-of-Way (ROW)",
+      "title": "BLM Natl MLRS LUA ROW",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_ROW/FeatureServer/0",
       "visible": false,
       "group": "permit"
@@ -235,11 +235,16 @@
       "title": "BLM Natl MLRS LUA ROW",
       "url": "https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_LUA_ROW/FeatureServer/0",
       "category": "authorizations",
-      "serviceType": "feature",
       "permitTypes": [
-        "row",
         "oil-gas",
+        "row",
         "realty"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "BLM_PROD",
+        "CSE_DISP",
+        "CUST_NM_SEC"
       ]
     },
     {
