@@ -55,6 +55,69 @@ define([
 
     // PERF: Cache geometry type lookups to avoid refetching ?f=pjson
     const _geomTypeCache = new Map();
+    // PERF: Cache layer extents from R2 for coarse spatial filtering
+    const _layerExtentCache = new Map();
+
+    /**
+     * Seed the geometry type and extent caches with data from R2 metadata,
+     * so getLayerGeometryType() returns instantly and extent checks skip
+     * layers that don't overlap the AOI.
+     */
+    function seedGeometryTypeCache(r2Layers) {
+        if (!r2Layers) return;
+        let seededGeom = 0, seededExtent = 0;
+        for (const [url, meta] of Object.entries(r2Layers)) {
+            const normUrl = url.replace(/\/+$/, "");
+            // Direct layer geometry type
+            if (meta.geometryType) {
+                _geomTypeCache.set(normUrl, meta.geometryType);
+                seededGeom++;
+            }
+            // Direct layer extent
+            if (meta.extent) {
+                _layerExtentCache.set(normUrl, meta.extent);
+                seededExtent++;
+            }
+            // Sublayer schemas from the worker
+            if (meta.sublayerSchemas) {
+                for (const [id, schema] of Object.entries(meta.sublayerSchemas)) {
+                    if (schema.geometryType) {
+                        _geomTypeCache.set(`${normUrl}/${id}`, schema.geometryType);
+                        seededGeom++;
+                    }
+                    if (schema.extent) {
+                        _layerExtentCache.set(`${normUrl}/${id}`, schema.extent);
+                        seededExtent++;
+                    }
+                }
+            }
+        }
+        if (seededGeom) console.log(`[map-utils] Seeded ${seededGeom} geometry types from R2 cache`);
+        if (seededExtent) console.log(`[map-utils] Seeded ${seededExtent} layer extents from R2 cache`);
+    }
+
+    /**
+     * Check whether a layer's cached extent overlaps an AOI geometry's
+     * bounding box.  Returns true (should query) if the extents intersect
+     * or if the layer has no cached extent (conservative — don't skip).
+     * Coordinates are expected in WGS84 / Web Mercator.
+     */
+    function layerMayIntersectAoi(layerUrl, aoiGeom) {
+        if (!aoiGeom || !aoiGeom.extent) return true; // no AOI — don't skip
+        const normUrl = layerUrl.replace(/\/+$/, "");
+        const layerExt = _layerExtentCache.get(normUrl);
+        if (!layerExt) return true; // no cached extent — be conservative
+        const aoi = aoiGeom.extent;
+        // Bounding box disjoint check
+        const lx = layerExt.xmin, ly = layerExt.ymin, lX = layerExt.xmax, lY = layerExt.ymax;
+        const ax = aoi.xmin, ay = aoi.ymin, aX = aoi.xmax, aY = aoi.ymax;
+        if (lx == null || ly == null || lX == null || lY == null) return true;
+        if (lX < ax || lx > aX || lY < ay || ly > aY) {
+            console.log(`[map-utils] Extent skip: layer ${normUrl} does not overlap AOI`);
+            return false;
+        }
+        return true;
+    }
 
     async function getLayerGeometryType(layerUrl) {
         const cacheKey = layerUrl.replace(/\/$/, "");
@@ -823,7 +886,8 @@ define([
         });
     }
 
-    async function buildReportDisplayLayers() {
+    async function buildReportDisplayLayers(permitTypeKey) {
+        const _t0 = performance.now();
         const map = S.map;
         if (!map) return;
 
@@ -832,12 +896,17 @@ define([
         const BATCH_SIZE = 10;          // concurrent layers per batch
         const LOAD_TIMEOUT_MS = 15000;  // per-layer load timeout
 
-        // Deduplicate by URL key
+        // Deduplicate by URL key, filtering by permit type relevance
         const cfgs = [];
         const seenKeys = new Set();
         for (const cfg of (S.config.reportLayers || [])) {
             const key = helpers.normalizeUrlKey(cfg.url);
             if (!key || seenKeys.has(key)) continue;
+            // Filter by permit type: only load layers tagged with this permit type or "core"
+            if (permitTypeKey) {
+                const pts = cfg.permitTypes || [];
+                if (pts.indexOf(permitTypeKey) === -1 && pts.indexOf("core") === -1) continue;
+            }
             seenKeys.add(key);
             cfgs.push({ cfg, key });
         }
@@ -1013,7 +1082,9 @@ define([
             }
         }
 
-        console.log(`[buildReportDisplayLayers] ${cfgs.length} layer configs processed in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+        const totalAvailable = (S.config.reportLayers || []).length;
+        console.log(`[buildReportDisplayLayers] ${cfgs.length}/${totalAvailable} layer configs processed in ${((performance.now() - _t0) / 1000).toFixed(1)}s` +
+            (permitTypeKey ? ` (filtered for "${permitTypeKey}")` : " (unfiltered)"));
         ensureAoiOnTop();
     }
 
@@ -1092,6 +1163,8 @@ define([
         // Renderers
         getPresetRenderer,
         getLayerGeometryType,
+        seedGeometryTypeCache,
+        layerMayIntersectAoi,
         makeRendererOpaque,
         thickenLayerSymbology,
         createReportHashOverlay,

@@ -447,6 +447,8 @@ function setBusy(isBusy) {
 
     // ---------- Service Down Warning Modal Helpers ----------
     let serviceDownNoticeShown = false;
+    // Deferred service warning data — stored at startup, shown after permit type selection
+    let _deferredServiceWarning = null; // { items, sourceLabel, refreshedAt }
 
     const serviceDownModal = {
         show(downItems, warnItems, sourceLabel, refreshedAt) {
@@ -501,9 +503,19 @@ function setBusy(isBusy) {
         }
     };
 
-    function maybeShowDownServiceWarning(items, sourceLabel, refreshedAt) {
+    function maybeShowDownServiceWarning(items, sourceLabel, refreshedAt, permitTypeKey) {
         if (serviceDownNoticeShown || !items || !items.length) return;
-        const downItems = items.filter(it => {
+
+        // Filter to only permit-type-relevant layers if a permit type is selected
+        let filteredItems = items;
+        if (permitTypeKey) {
+            filteredItems = items.filter(it => {
+                const pts = it.permitTypes || [];
+                return pts.indexOf(permitTypeKey) !== -1 || pts.indexOf("core") !== -1;
+            });
+        }
+
+        const downItems = filteredItems.filter(it => {
             if (serviceStatus.get(it.url) !== "DOWN") return false;
             if (sourceLabel !== "r2") return true;
             const hasHistory = serviceStatus.get(it.url + "::normallyHasFeatures");
@@ -512,7 +524,7 @@ function setBusy(isBusy) {
         });
         // Also collect WARN items (only from R2 source, not fallback pings)
         const warnItems = (sourceLabel === "r2")
-            ? items.filter(it => serviceStatus.get(it.url) === "WARN").map(it => ({ ...it, _warnLevel: "WARN" }))
+            ? filteredItems.filter(it => serviceStatus.get(it.url) === "WARN").map(it => ({ ...it, _warnLevel: "WARN" }))
             : [];
         if (!downItems.length && !warnItems.length) return;
         serviceDownModal.show(downItems, warnItems, sourceLabel, refreshedAt);
@@ -1507,9 +1519,41 @@ function setActiveTab(tabName) {
         }
     }
 
+/**
+ * teardownLayers — remove previous permit type's report display layers
+ * from the map and clear associated caches. Called when the user changes
+ * permit type or starts a new screening.
+ */
+function teardownLayers() {
+    // Remove all report display layers from map
+    if (reportLayerViews && reportLayerViews.size > 0) {
+        for (const [, layerOrArr] of reportLayerViews) {
+            if (Array.isArray(layerOrArr)) {
+                layerOrArr.forEach(l => { try { map.remove(l); } catch (_) {} });
+            } else if (layerOrArr) {
+                try { map.remove(layerOrArr); } catch (_) {}
+            }
+        }
+        reportLayerViews.clear();
+    }
+
+    // Clear query-engine caches
+    resetCoverageCacheForAoi(null);
+    clearPreWarmCache();
+
+    // Clear the layerCfgByUrl and alwaysVisibleLayers stored on shared state
+    if (alwaysVisibleLayers) alwaysVisibleLayers.length = 0;
+    if (layerCfgByUrl) layerCfgByUrl.clear();
+
+    console.log("[teardownLayers] Removed report layers and cleared caches");
+}
+
 function clearAll() {
     // Cancel any active sketch drawing session
     if (sketch) sketch.cancel();
+
+    // Teardown previous report display layers
+    teardownLayers();
 
     selectionGeom = null;
     aoiOriginalGeom = null;
@@ -1546,8 +1590,7 @@ function clearAll() {
 
     if (runBtn) runBtn.disabled = true;
     setStatus("cleared");
-    resetCoverageCacheForAoi(null);
-    clearPreWarmCache();
+    // Coverage + pre-warm caches already cleared by teardownLayers()
     setBusy(false);
 
     // Reset wizard-specific UI state
@@ -2159,7 +2202,10 @@ async function checkServiceStatusBackground() {
                 }
 
                 renderLayerToggles(map);
-                maybeShowDownServiceWarning(items, "r2", cached.lastRefresh || null);
+                // PERF: Pre-populate geometry type cache from R2 sublayer schemas
+                mapUtils.seedGeometryTypeCache(cached.layers);
+                // Defer service-down warning until permit type is selected (filter to relevant layers)
+                _deferredServiceWarning = { items, sourceLabel: "r2", refreshedAt: cached.lastRefresh || null };
                 console.log(`[metadata-cache] Loaded ${Object.keys(cached.layers).length} layers from R2 (refreshed ${cached.lastRefresh})`);
                 return; // cache hit — skip direct pings
             }
@@ -2189,7 +2235,8 @@ async function checkServiceStatusBackground() {
 
     // Re-render layer toggles to show status icons
     renderLayerToggles(map);
-    maybeShowDownServiceWarning(items, "fallback", null);
+    // Defer service-down warning until permit type is selected (filter to relevant layers)
+    _deferredServiceWarning = { items, sourceLabel: "fallback", refreshedAt: null };
 }
 
 /**
@@ -2414,10 +2461,10 @@ async function runAnalysis() {
 
         setStatus("Screening complete!");
         
-        // ✅ Show success animation
+        // ✅ Show success briefly then proceed directly to report generation
         analysisModal.showSuccess(layersQueried, layersWithFeatures, 0, Date.now() - analysisStartTime);
 
-        // Permitting mode: populate results and enable report button
+        // Permitting mode: populate results and advance to step 3
         if (currentAppMode === "permit") {
             populatePermitResults();
             if (wizFullReport) {
@@ -2426,22 +2473,21 @@ async function runAnalysis() {
                 wizFullReport.disabled = false;
                 wizFullReport.innerHTML = '📋 Generate ' + escapeHtml(ptLabel) + ' Report';
             }
-            // Advance to step 3 (results)
             goToWizardStep(3);
         }
 
         // Enable "View Report" button (for Advanced mode, if ever re-enabled)
         if (viewReportBtn) viewReportBtn.disabled = false;
 
-        // ── Background pre-warm for faster report generation ──
-        // Silently pre-load FeatureLayer metadata + pre-fire polygon
-        // coverage stats while the user reviews screening results.
-        // Everything is fire-and-forget — errors are swallowed.
+        // ── Merged: proceed directly to report generation ──
+        // Eliminates the separate "Generate Report" click and removes one full
+        // pass of coverage re-queries. The report builder handles all further
+        // data fetching.
         if (lastReportRowsByLayer.length > 0) {
-            const preWarmGeom = getReportGeometry();
-            preWarmReportLayers(lastReportRowsByLayer)
-                .then(() => preFireCoverageStats(lastReportRowsByLayer, preWarmGeom))
-                .catch(() => {});
+            // Brief delay so screening success UI is visible
+            await new Promise(r => setTimeout(r, 600));
+            analysisModal.hide();
+            generateFullProgressiveReport();
         }
 
     } catch (e) {
@@ -2723,6 +2769,34 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
         // 4. Regular feature layer — quick check if any features intersect AOI
         // Full feature queries are deferred to report generation
         if (isReportCanceled(myOp)) return null;
+
+        // PERF: Coarse spatial filter — skip query if layer extent doesn't overlap AOI
+        if (!mapUtils.layerMayIntersectAoi(t.url, reportGeom)) {
+            if (modal) modal.addLog(`${t.title}: skipped (outside AOI extent)`, "info");
+            return {
+                card: `
+          <div class="result-card">
+            <div class="result-head">
+              <div class="result-title">${escapeHtml(t.title)}</div>
+              <div class="badge">no features</div>
+            </div>
+            <div class="small mono">
+              <a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">Service URL</a>
+            </div>
+            <div class="small" style="margin-top:4px; color: var(--muted);">Layer extent does not overlap project area</div>
+          </div>`,
+                reportEntry: {
+                    title: t.title,
+                    url: t.url,
+                    hasCoverage: false,
+                    count: 0,
+                    rows: [],
+                    _layer: null,
+                    _exportQuery: null,
+                    fullRows: null
+                }
+            };
+        }
 
         let hasCoverage = false;
         let layerRef = null;
@@ -3421,21 +3495,19 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
             })
         }));
 
-        selectionLayers.forEach(e => map.add(e.layer));
+        // Only add PLSS layers at startup; permit selection layers are added
+        // when the user selects a permit type (reduces initial map.layers count)
+        selectionLayers.forEach(e => {
+            if (e.cfg.group === "plss") map.add(e.layer);
+        });
 
         // Render selection layer toggles immediately (report layers will populate later)
         renderLayerToggles(map);
         ensureAoiOnTop();
 
-        // ✅ Build report layers in BACKGROUND (don't block init)
-        // This can take 30+ seconds with 50+ layer configs
-        buildReportDisplayLayers().then(() => {
-            console.log("[init] Report layers ready, refreshing layer toggles");
-            renderLayerToggles(map);
-            ensureAoiOnTop();
-        }).catch(e => {
-            console.error("[init] Failed to build report layers:", e);
-        });
+        // ✅ Report layers are now deferred until permit type is selected (Step 1)
+        // This avoids loading ~76 layers at startup — only ~30-45 relevant layers
+        // will be loaded after the user picks a permit type.
 
         setLoadingState("Waiting for map view...", 55);
 
@@ -3465,6 +3537,48 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
 
         // All permit layer indices (used for mutual exclusion)
         const allPermitIndices = [allotmentIdx, pastureIdx, oilGasIdx, rowIdx, miningIdx, luaIdx, geothermalIdx, coalIdx].filter(i => i >= 0);
+
+        // Map data-permit values → selection layer indices (for permit-type-scoped loading)
+        const PERMIT_KEY_TO_IDX = {
+            allotment: allotmentIdx, pasture: pastureIdx, oilgas: oilGasIdx,
+            row: rowIdx, mining: miningIdx, lua: luaIdx,
+            geothermal: geothermalIdx, coal: coalIdx
+        };
+
+        // Tracks which permit selection layers are currently on the map
+        let _activePermitSelectionIndices = [];
+
+        /**
+         * Add only the permit-type-relevant selection layers to the map.
+         * Removes any previously added permit selection layers first.
+         */
+        function addPermitSelectionLayers(ptKey) {
+            // Remove previous permit selection layers from map
+            for (const idx of _activePermitSelectionIndices) {
+                if (idx >= 0 && selectionLayers[idx]) {
+                    try { map.remove(selectionLayers[idx].layer); } catch (_) {}
+                }
+            }
+            _activePermitSelectionIndices = [];
+
+            const relevant = ptKey ? (PERMIT_ITEM_RELEVANCE[ptKey] || []) : [];
+            if (!relevant.length) {
+                // No permit type or unknown — add all permit layers
+                for (const idx of allPermitIndices) {
+                    map.add(selectionLayers[idx].layer);
+                    _activePermitSelectionIndices.push(idx);
+                }
+            } else {
+                for (const permitKey of relevant) {
+                    const idx = PERMIT_KEY_TO_IDX[permitKey];
+                    if (idx >= 0 && selectionLayers[idx]) {
+                        map.add(selectionLayers[idx].layer);
+                        _activePermitSelectionIndices.push(idx);
+                    }
+                }
+            }
+            console.log(`[selection-layers] Added ${_activePermitSelectionIndices.length} permit selection layers for "${ptKey}"`);
+        }
 
 
         // Helper: make ONE PLSS layer active, disable the other two, and auto-zoom if needed
@@ -4251,6 +4365,28 @@ async function queryAllLayers(reportGeom, myOp, modal = null) {
                 // Update badge in step 2
                 const badge = document.getElementById("wizStep2PermitBadge");
                 if (badge) badge.textContent = PERMIT_TYPES[ptKey].label;
+
+                // Teardown any previously loaded report layers before loading new set
+                teardownLayers();
+
+                // Build permit-type-scoped report layers in background
+                // Only layers relevant to this permit type (or "core") are loaded
+                buildReportDisplayLayers(ptKey).then(() => {
+                    console.log(`[init] Report layers ready for "${ptKey}", refreshing toggles`);
+                    renderLayerToggles(map);
+                    ensureAoiOnTop();
+                }).catch(e => {
+                    console.error("[init] Failed to build report layers:", e);
+                });
+
+                // Add only permit-type-relevant selection layers to map
+                addPermitSelectionLayers(ptKey);
+
+                // Show deferred service-down warnings filtered to this permit type
+                if (_deferredServiceWarning) {
+                    const { items: svcItems, sourceLabel, refreshedAt } = _deferredServiceWarning;
+                    maybeShowDownServiceWarning(svcItems, sourceLabel, refreshedAt, ptKey);
+                }
 
                 // Advance to step 2 (AOI selection)
                 goToWizardStep(2);

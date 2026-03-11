@@ -210,6 +210,32 @@ function extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFe
   };
 }
 
+/**
+ * For FeatureServer/MapServer roots, fetch each sublayer's field schema
+ * and geometry type. This lets the client skip ~25+ individual ?f=pjson calls.
+ */
+async function fetchSublayerSchemas(serviceUrl, layers) {
+  if (!layers || !layers.length) return null;
+  const base = stripQueryAndSlash(serviceUrl);
+  const schemas = {};
+  const fns = layers.slice(0, 20).map((l) => async () => {
+    const layerUrl = `${base}/${l.id}`;
+    try {
+      const meta = await fetchJsonWithTimeout(`${layerUrl}?f=json`, FETCH_TIMEOUT_MS);
+      schemas[l.id] = {
+        geometryType: meta.geometryType ?? null,
+        fields: (meta.fields || []).map((f) => ({ name: f.name, alias: f.alias, type: f.type })),
+        maxRecordCount: meta.maxRecordCount ?? null,
+        extent: meta.extent ?? null,
+      };
+    } catch (_) {
+      // Skip sublayers that fail
+    }
+  });
+  await parallelLimit(fns, MAX_CONCURRENCY);
+  return Object.keys(schemas).length > 0 ? schemas : null;
+}
+
 async function probeFeatureOrMapLayerForGeometry(layerUrl) {
   const base = stripQueryAndSlash(layerUrl);
   const queryUrl =
@@ -550,11 +576,25 @@ async function probeService(url, previousEntry = null) {
     }
 
     // Pull out useful metadata fields
+    const meta = extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures, featuresAbsentCount);
+
+    // For FeatureServer/MapServer roots with sublayers, cache per-sublayer
+    // field schemas and geometry types so the client avoids ~25+ ?f=pjson calls
+    const kind = detectServiceKind(url);
+    if ((kind === "feature-root" || kind === "map-root") && meta.layers && meta.layers.length > 0) {
+      try {
+        const schemas = await fetchSublayerSchemas(url, meta.layers);
+        if (schemas) meta.sublayerSchemas = schemas;
+      } catch (_) {
+        // Non-critical — client falls back to individual fetches
+      }
+    }
+
     return {
       url,
       status: "UP",
       responseMs: elapsed,
-      ...extractServiceMetadata(body, probeResult, hasFeaturesNow, normallyHasFeatures, featuresAbsentCount),
+      ...meta,
     };
   } catch (err) {
     const { normallyHasFeatures, featuresAbsentCount } =

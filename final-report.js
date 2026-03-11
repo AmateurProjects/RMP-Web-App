@@ -4215,6 +4215,7 @@ define([
     // Returns complete HTML document ready to open
     // ────────────────────────────────────────────
     async function buildReportInBackground(options = {}) {
+        const _reportT0 = performance.now();
         console.log("[buildReportInBackground] entered");
         const bucketKey = options.bucketKey || null;
         const permitTypeKey = options.permitTypeKey || null;
@@ -4328,7 +4329,8 @@ define([
             acquireWakeLock, releaseWakeLock,
             getLayerGeometryType, makeRendererOpaque, getPresetRenderer,
             thickenLayerSymbology, createReportHashOverlay, createPlssTownshipLayer,
-            lockViewContainer, unlockViewContainer
+            lockViewContainer, unlockViewContainer,
+            layerMayIntersectAoi
         } = mapUtils;
 
         const { computeLayerCoverageStats, buildPerFeatureTable, computeElevationStats, computeSlopeAspect, SQM_PER_ACRE } = queryEngine;
@@ -4336,6 +4338,7 @@ define([
         // Accumulate content sections
         const contentParts = [];
         let mapsGenerated = 0;
+        let screenshotsSkipped = 0;
         let sectionsComplete = 0;
 
         try {
@@ -4531,6 +4534,8 @@ define([
                     console.log("[buildReportInBackground] starting pre-load phase…");
                     const _preGeomTypes = {};
                     const _preCovPromises = {};
+                    // PERF: Track layers whose cached extent doesn't overlap the AOI — skip queries for them
+                    const _extentSkipped = new Set();
                     {
                         const featureItems = mappableLayers.filter(x => !x.__isImageService && x.url);
                         const gtPromises = featureItems.map(x =>
@@ -4538,14 +4543,22 @@ define([
                         );
                         const gtResults = await Promise.all(gtPromises);
                         featureItems.forEach((x, idx) => { _preGeomTypes[x.url] = gtResults[idx]; });
-                        // Fire all coverage stat queries in parallel (polygon + polyline)
+                        // Fire all coverage stat queries in parallel (polygon + polyline),
+                        // but skip layers whose extent doesn't intersect the AOI
                         featureItems.forEach(x => {
+                            if (!layerMayIntersectAoi(x.url, selectionGeom)) {
+                                _extentSkipped.add(x.url);
+                                return;
+                            }
                             const gt = _preGeomTypes[x.url];
                             const gtLower = gt ? String(gt).toLowerCase() : '';
                             if (gtLower.includes('polygon') || gtLower.includes('polyline')) {
                                 _preCovPromises[x.url] = computeLayerCoverageStats(x, selectionGeom).catch(() => null);
                             }
                         });
+                        if (_extentSkipped.size) {
+                            console.log(`[buildReportInBackground] Skipped ${_extentSkipped.size} layer(s) via extent check`);
+                        }
                     }
 
                     // Create persistent PLSS township overlay (shared across all screenshots)
@@ -4603,6 +4616,13 @@ define([
 
                         const item = mappableLayers[i];
                         const layerTitle = item.title || "Unknown Layer";
+
+                        // PERF: Skip layers whose extent doesn't overlap AOI
+                        if (item.url && _extentSkipped.has(item.url)) {
+                            console.log(`[buildReportInBackground] Extent-skip: ${layerTitle}`);
+                            sectionsComplete++;
+                            continue;
+                        }
 
                         // Insert group section header when transitioning between groups
                         if (layerGroupMap) {
@@ -4753,11 +4773,41 @@ define([
                             onStep(`Generating map ${i + 1}/${mappableLayers.length}: ${layerTitle}`);
                             
                             const tempGeomType = _preGeomTypes[item.url] || (await getLayerGeometryType(item.url));
+
+                            // Coverage stats — compute BEFORE screenshot so we can skip capture for full-coverage layers
+                            const tempGeomTypeLower = tempGeomType ? String(tempGeomType).toLowerCase() : '';
+                            const isPolygonLayer = tempGeomTypeLower.includes('polygon');
+                            const isLineLayer = tempGeomTypeLower.includes('polyline');
+                            let acresCovered = 0;
+                            let pctCovered = 0;
+                            let totalLengthFeet = 0;
+                            let totalLengthMiles = 0;
+                            try {
+                                if (isPolygonLayer || isLineLayer) {
+                                    const covStats = await (_preCovPromises[item.url] || computeLayerCoverageStats(item, selectionGeom));
+                                    if (covStats) {
+                                        acresCovered = covStats.acresCovered || 0;
+                                        pctCovered = covStats.pctAoiCovered || 0;
+                                        totalLengthFeet = covStats.totalLengthFeet || 0;
+                                        totalLengthMiles = covStats.totalLengthMiles || 0;
+                                    }
+                                }
+                            } catch (e) { /* non-critical */ }
+
+                            // Skip screenshot for full-coverage polygon layers (>=99.5%)
+                            const skipScreenshot = isPolygonLayer && pctCovered >= 99.5;
+                            if (skipScreenshot) {
+                                console.log(`[bg-report] Skipping screenshot for "${layerTitle}" (${pctCovered.toFixed(1)}% coverage)`);
+                                screenshotsSkipped++;
+                            }
+
                             let dataUrl = null;
                             let screenshotDeferred = false;
                             const deferToken = `__BG_DEFERRED_MAP_${i}__`;
 
-                            if (!document.hidden) {
+                            if (skipScreenshot) {
+                                // Full-coverage layer — no screenshot needed
+                            } else if (!document.hidden) {
                                 const tempLayer = queryEngine.getPreWarmedLayer(item.url) || new FeatureLayer({
                                     url: item.url,
                                     outFields: ["*"],
@@ -4793,26 +4843,6 @@ define([
                                 console.log(`[bg-report] Deferring screenshot for "${layerTitle}" (tab hidden)`);
                             }
 
-                            // Coverage stats — use pre-fired parallel promise if available
-                            const tempGeomTypeLower = tempGeomType ? String(tempGeomType).toLowerCase() : '';
-                            const isPolygonLayer = tempGeomTypeLower.includes('polygon');
-                            const isLineLayer = tempGeomTypeLower.includes('polyline');
-                            let acresCovered = 0;
-                            let pctCovered = 0;
-                            let totalLengthFeet = 0;
-                            let totalLengthMiles = 0;
-                            try {
-                                if (isPolygonLayer || isLineLayer) {
-                                    const covStats = await (_preCovPromises[item.url] || computeLayerCoverageStats(item, selectionGeom));
-                                    if (covStats) {
-                                        acresCovered = covStats.acresCovered || 0;
-                                        pctCovered = covStats.pctAoiCovered || 0;
-                                        totalLengthFeet = covStats.totalLengthFeet || 0;
-                                        totalLengthMiles = covStats.totalLengthMiles || 0;
-                                    }
-                                }
-                            } catch (e) { /* non-critical */ }
-
                             const perFeatureTableHtml = (featureCount > 0)
                                 ? await buildPerFeatureTable(item, selectionGeom, i)
                                 : "";
@@ -4824,9 +4854,22 @@ define([
                             });
 
                             const attrSummary = generateLayerAttributeSummary(item);
-                            const mapImgHtml = dataUrl
-                                ? `<img src="${dataUrl}" alt="AOI + ${escapeHtml(layerTitle)}"/>`
-                                : screenshotDeferred ? deferToken : '<div class="sub">Map generation failed</div>';
+                            let mapImgHtml;
+                            if (skipScreenshot) {
+                                mapImgHtml = '<div class="full-coverage-placeholder" style="'
+                                    + 'background:#f0f7f0;border:1px solid #c8e6c9;border-radius:8px;'
+                                    + 'padding:24px 16px;text-align:center;color:#2e7d32;font-size:14px;'
+                                    + 'margin:8px 0;">'
+                                    + '<strong>✔ This layer covers the entire Area of Interest.</strong><br>'
+                                    + 'Map screenshot omitted.'
+                                    + '</div>';
+                            } else if (dataUrl) {
+                                mapImgHtml = `<img src="${dataUrl}" alt="AOI + ${escapeHtml(layerTitle)}"/>`;
+                            } else if (screenshotDeferred) {
+                                mapImgHtml = deferToken;
+                            } else {
+                                mapImgHtml = '<div class="sub">Map generation failed</div>';
+                            }
 
                             contentParts.push(`
                                 <section class="report-map-page" data-category="${escapeHtml(lastGroupKey || '')}">
@@ -5181,6 +5224,9 @@ ${getA11yWidgetBlock()}
                 totalFeatures
             });
 
+            console.log(`[buildReportInBackground] Complete in ${((performance.now() - _reportT0) / 1000).toFixed(1)}s — ` +
+                `${mapsGenerated} maps, ${screenshotsSkipped} screenshots skipped, ${totalLayers} layers, ${totalFeatures} features` +
+                (_extentSkipped.size ? `, ${_extentSkipped.size} extent-skipped` : ''));
             return fullHtml;
 
         } finally {

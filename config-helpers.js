@@ -161,15 +161,17 @@ define([], function () {
         const seen = new Set();
         const out = [];
 
-        const add = (kind, title, url) => {
+        const add = (kind, title, url, permitTypes) => {
             const normUrl = String(url).replace(/\/+$/, "");
             if (seen.has(normUrl)) return;
             seen.add(normUrl);
-            out.push({ kind, title, url });
+            const item = { kind, title, url };
+            if (permitTypes) item.permitTypes = permitTypes;
+            out.push(item);
         };
 
         (config.selectionLayers || []).forEach(l => add("Selection", l.title, l.url));
-        (config.reportLayers || []).forEach(l => add("Report", l.title, l.url));
+        (config.reportLayers || []).forEach(l => add("Report", l.title, l.url, l.permitTypes));
 
         return out;
     }
