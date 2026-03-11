@@ -313,9 +313,12 @@
       "title": "USFWS Regions",
       "url": "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/FWS_Legacy_Regional_Boundaries/FeatureServer/0",
       "category": "land-status",
-      "serviceType": "feature",
       "permitTypes": [
         "core"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "REGNAME"
       ]
     },
     {
