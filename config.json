@@ -364,12 +364,16 @@
       "title": "BLM National Recreation Sites",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_National_Recreation_Site_Points/FeatureServer/1",
       "category": "special",
-      "serviceType": "feature",
       "permitTypes": [
         "oil-gas",
         "mining",
         "row",
         "realty"
+      ],
+      "serviceType": "feature",
+      "highlightFields": [
+        "FET_NAME",
+        "FET_SUBTYPE"
       ]
     },
     {
