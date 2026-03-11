@@ -4434,6 +4434,8 @@ define([
             // === STEP 3: Generate maps for each layer ===
 
             let categoryNumber = 3; // Continues from "2. Area of Interest"
+            // PERF: Track layers whose cached extent doesn't overlap the AOI — skip queries for them
+            const _extentSkipped = new Set();
 
             if (mappableLayers.length === 0) {
                 const ptDef = permitTypeKey ? PERMIT_TYPES[permitTypeKey] : null;
@@ -4534,8 +4536,6 @@ define([
                     console.log("[buildReportInBackground] starting pre-load phase…");
                     const _preGeomTypes = {};
                     const _preCovPromises = {};
-                    // PERF: Track layers whose cached extent doesn't overlap the AOI — skip queries for them
-                    const _extentSkipped = new Set();
                     {
                         const featureItems = mappableLayers.filter(x => !x.__isImageService && x.url);
                         const gtPromises = featureItems.map(x =>
